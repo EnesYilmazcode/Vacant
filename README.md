@@ -2,9 +2,10 @@
 
 Find an empty classroom near you, free for as long as you need it.
 
-> **Status: blueprint.** Nothing is built yet. This document is the design, and
-> the numbers in it come from real probes of Ohio State's class API on
-> 2026-08-26, not from guesses.
+> **Status: blueprint, with a filed plan.** No code yet. The design below is backed
+> by live measurement, not guesses, and the work is broken into 30 ordered issues.
+> Start at [#1](https://github.com/EnesYilmazcode/Vacant/issues/1), or read
+> [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ---
 
@@ -325,4 +326,6 @@ this one.
 
 ## License
 
-TBD.
+TBD. The research recommends a three way split: MIT for the code, ODbL 1.0 for
+the OSM derived building data, and no rights asserted over the OSU derived schedule.
+See [#25](https://github.com/EnesYilmazcode/Vacant/issues/25).

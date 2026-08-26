@@ -20,7 +20,19 @@
   },
   "warning": "Campus is an ADMINISTRATIVE field, not a geographic one. 82 records here with Campus = Columbus or Medical Center sit more than 10 km from the Oval (remote clinics, transmitters). Filter on km_from_oval, not on campus. Also: the class API returns three Wooster buildings (404, 414, 549) under campus=col, 126 km away.",
   "km_from_oval": "great-circle km from 40.0006,-83.0140. 77 of the 80 observed buildings are within 2.62 km. The one legitimate far outlier is 1019 Knowlton Executive Terminal at 9.79 km, which is Don Scott Field, where AVIATN sections really meet.",
-  "note": "This file is a DRAFT produced by research, not by the build pipeline. Regenerate it from the GIS layer, do not hand-edit."
+  "note": "This file is a DRAFT produced by research, not by the build pipeline. Regenerate it from the GIS layer, do not hand-edit.",
+  "verified_2026_08_26_partII": {
+   "by": "second geocoding agent, independent pass",
+   "observed_building_codes": 88,
+   "join_rate": "88/88 resolved, re-fetched live from the GIS layer",
+   "max_drift_vs_live_service_m": 0.068,
+   "note": "observed_in_schedule is now the UNION of two independently drawn schedule samples (36 subjects page-1, and the catalog-number bucket harvest). buildingNumber is NOT unique in the GIS layer: codes 246 and 1243 have duplicate features, dedupe before indexing. Use km_from_oval <= 10 as the data filter, NOT 3 km: a 3 km cap drops 837 Outpatient Care East (4.98 km) and 1019 Knowlton Executive Terminal (9.79 km), both of which host real Autumn 2026 classes. 10 km drops exactly the three Wooster buildings. Campus and InstType are both unusable as filters; InstType=Academic includes \"Refuse Vehicle Storage\". The published Latitude/Longitude is a polygon CENTROID, not an entrance.",
+   "attribution_required": [
+    "Building locations (c) 2025 The Ohio State University, Facilities Information and Technology Services",
+    "(c) OpenStreetMap contributors - https://www.openstreetmap.org/copyright - ODbL 1.0"
+   ],
+   "osu_gis_licence": "OSU GIS Hub item 361279ecd67a422fba0ec357ca1c0f4c licenseInfo: \"For use by anyone interested in OSU data. This data is hosted by Facilities Information and Technology Services (FITS) at The Ohio State University. Requests and Questions can be sent to gismaps@osu.edu\". Footer: \"Copyright 2025. OSU GIS\". No formal terms page exists; the hub's Terms of Service link is href=\"#\". Email gismaps@osu.edu before shipping."
+  }
  },
  "001": {
   "name": "Bricker Hall",
@@ -84,11 +96,13 @@
   "lat": 40.00151,
   "lon": -83.014429,
   "source": "osu-gis:FacilitiesStreets_RO/11",
-  "confidence": "unconfirmed",
+  "confidence": "high",
   "campus": "Columbus",
   "km_from_oval": 0.11,
   "address": "231 W 18th Ave",
-  "observed_in_schedule": false
+  "observed_in_schedule": true,
+  "api_name": "Mathematics Tower",
+  "api_short": "MW"
  },
  "009": {
   "name": "ElectroScience Laboratory",
@@ -542,11 +556,13 @@
   "lat": 40.006252,
   "lon": -83.042972,
   "source": "osu-gis:FacilitiesStreets_RO/11",
-  "confidence": "unconfirmed",
+  "confidence": "high",
   "campus": "Columbus",
   "km_from_oval": 2.55,
   "address": "1248 Arthur Adams Dr",
-  "observed_in_schedule": false
+  "observed_in_schedule": true,
+  "api_name": "Edison Joining Technology Cntr",
+  "api_short": "ED"
  },
  "059": {
   "name": "Fry Hall",
@@ -835,11 +851,13 @@
   "lat": 39.997018,
   "lon": -83.011765,
   "source": "osu-gis:FacilitiesStreets_RO/11",
-  "confidence": "unconfirmed",
+  "confidence": "high",
   "campus": "Columbus",
   "km_from_oval": 0.44,
   "address": "154 W 12th Ave",
-  "observed_in_schedule": false
+  "observed_in_schedule": true,
+  "api_name": "Frank W. Hale Jr Hall",
+  "api_short": "FWH"
  },
  "086": {
   "name": "French Field House",
@@ -2378,11 +2396,13 @@
   "lat": 40.003534,
   "lon": -83.011685,
   "source": "osu-gis:FacilitiesStreets_RO/11",
-  "confidence": "unconfirmed",
+  "confidence": "high",
   "campus": "Columbus",
   "km_from_oval": 0.38,
   "address": "2041 College Rd",
-  "observed_in_schedule": false
+  "observed_in_schedule": true,
+  "api_name": "Engineering Research and Educa",
+  "api_short": "EREL"
  },
  "266": {
   "name": "Riffe Building",
@@ -2752,12 +2772,15 @@
   "short": "AE",
   "lat": 40.005518,
   "lon": -83.024985,
-  "source": "osu-gis:FacilitiesStreets_RO/11",
-  "confidence": "unconfirmed",
+  "source": "osu-gis:FacilitiesStreets_RO/11 + osm-crosscheck",
+  "confidence": "verified",
   "campus": "Columbus",
   "km_from_oval": 1.08,
   "address": "590 Woody Hayes Dr",
-  "observed_in_schedule": false
+  "observed_in_schedule": true,
+  "api_name": "Agricultural Engineering Bldg",
+  "api_short": "AE",
+  "osm_check_m": 14.0
  },
  "299": {
   "name": "Veterinary Medical Center",
@@ -2866,12 +2889,15 @@
   "short": "PR",
   "lat": 40.003942,
   "lon": -83.037942,
-  "source": "osu-gis:FacilitiesStreets_RO/11",
-  "confidence": "unconfirmed",
+  "source": "osu-gis:FacilitiesStreets_RO/11 + osm-crosscheck",
+  "confidence": "verified",
   "campus": "Columbus",
   "km_from_oval": 2.07,
   "address": "1070 Carmack Rd",
-  "observed_in_schedule": false
+  "observed_in_schedule": true,
+  "api_name": "Pressey Hall",
+  "api_short": "PR",
+  "osm_check_m": 2.1
  },
  "310": {
   "name": "Scott Hall",
@@ -3511,12 +3537,15 @@
   "short": "WX",
   "lat": 40.000821,
   "lon": -83.009485,
-  "source": "osu-gis:FacilitiesStreets_RO/11",
-  "confidence": "unconfirmed",
+  "source": "osu-gis:FacilitiesStreets_RO/11 + osm-crosscheck",
+  "confidence": "verified",
   "campus": "Columbus",
   "km_from_oval": 0.39,
   "address": "1871 N High St",
-  "observed_in_schedule": false
+  "observed_in_schedule": true,
+  "api_name": "Wexner Center For The Arts",
+  "api_short": "WX",
+  "osm_check_m": 14.9
  },
  "387": {
   "name": "Parking Garage - Twelfth Ave",
@@ -3698,11 +3727,13 @@
   "lat": 39.978556,
   "lon": -82.96311,
   "source": "osu-gis:FacilitiesStreets_RO/11",
-  "confidence": "unconfirmed",
+  "confidence": "high",
   "campus": "Medical Center",
   "km_from_oval": 4.98,
   "address": "543 Taylor Ave",
-  "observed_in_schedule": false
+  "observed_in_schedule": true,
+  "api_name": "Outpatient Care East",
+  "api_short": "OCE"
  },
  "840": {
   "name": "Hawthorne Ave, 1413",

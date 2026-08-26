@@ -2,6 +2,11 @@
 
 Research note, 2026-08-26. Everything below was measured against live services, not reasoned about.
 
+> **Read Part II first if you are implementing this.** A second agent re-verified everything below
+> on the same day against a wider sample. The primary finding holds and gets stronger, but six numbers
+> here are wrong and the 3 km distance cap recommended in section 7 deletes two buildings that host
+> real classes. Part II starts at "Part II: independent verification pass".
+
 62 HTTP requests total: 38 to `content.osu.edu`, 7 to `gissvc.osu.edu`, 7 to `maps.osu.edu`
 (1 useful, 6 spent on config paths that 404), 3 to Overpass, 3 to Wikidata, 2 to `arcgis.com`,
 2 to Nominatim. Eight of the 62 produced nothing: the six `maps.osu.edu` 404s, one Overpass 429
@@ -670,3 +675,399 @@ Scratch scripts and raw captures live in
 
 On this box run Python as `python -X utf8 script.py` or it dies on the unicode in building names.
 Do not name a helper module `http.py`; it shadows the stdlib package and breaks `requests`.
+
+---
+---
+
+# Part II: independent verification pass
+
+Second geocoding agent, same day, 9 HTTP requests. I did not take Part I on trust. I re-fetched the
+GIS layer, re-derived the join against a **different** sample of buildings, wrote my own matcher
+from scratch, and checked the coordinates against a third source. Part I holds up. Six numbers in
+it need correcting and one recommendation in it will send students to the wrong place.
+
+**Problem:** Part I proves the join on the 80 buildings that one subject sample happened to contain,
+and nothing proves the sample is the campus. **Fix:** the harvest agent's independent sample
+contributes 8 more building codes, the union is 88, and all 88 still join on the first try.
+
+My 9 requests: 1 GIS query for the 88 codes, 1 GIS query with geometry, 1 GIS service metadata,
+1 CORS probe, 1 ArcGIS Online item search, 1 fetch of the OSU GIS Hub page, 3 Nominatim reverse
+lookups. No new class API traffic. The Overpass captures in the scratchpad were reused rather than
+re-pulled.
+
+## 1. The join, verified against a second sample
+
+Part I observed 80 building codes across 36 subjects, page 1 each. The harvest-feasibility agent
+independently sampled by `catalog-number` bucket and observed 77 real codes. Those two sets are not
+the same set. The union is **88 codes**, and 8 of them Part I never saw:
+
+| code | Class API name | GIS name | km from Oval |
+|---|---|---|---|
+| `007` | Mathematics Tower | Mathematics Tower | 0.11 |
+| `057` | Edison Joining Technology Cntr | Edison Joining Technology Center | 2.55 |
+| `085` | Frank W. Hale Jr Hall | Hale Hall | 0.44 |
+| `265` | Engineering Research and Educa | Engineering Research and Education Laboratories | 0.38 |
+| `298` | Agricultural Engineering Bldg | Agricultural Engineering Building | 1.08 |
+| `309` | Pressey Hall | Pressey Hall | 2.07 |
+| `386` | Wexner Center For The Arts | Wexner Center for the Arts | 0.39 |
+| `837` | Outpatient Care East | Outpatient Care East | 4.98 |
+
+**All 88 of 88 resolve out of the committed draft, and all 88 come back from a live GIS query.**
+That is the single most important number in this document, because it is now measured on two samples
+drawn by two different methods rather than one.
+
+```bash
+curl -s -G "https://gissvc.osu.edu/arcgis/rest/services/Data/FacilitiesStreets_RO/MapServer/11/query" \
+  --data-urlencode "where@where88.txt" \
+  --data-urlencode "outFields=buildingNumber,BLDG_NUM,BLDG_NAME,SchedulingAbbreviation,Latitude,Longitude,Campus,Address,Status,InstType,FloorCount" \
+  --data-urlencode "returnGeometry=false" --data-urlencode "outSR=4326" --data-urlencode "f=json"
+# HTTP 200, 26036 bytes, 0.36 s, 89 features, exceededTransferLimit absent
+# 88 distinct buildingNumber, 0 missing, 0 rows with a null Latitude, Status = Active on all 88
+```
+
+The re-fetch also confirms the committed file is not stale. Great-circle distance between every live
+coordinate and the coordinate sitting in `data/buildings.draft.json` is **at most 0.068 m**, which is
+just the rounding to six decimal places. The draft is a faithful copy of what the service returns
+today.
+
+One more thing that cuts against a worry Part I raised: the harvest agent's building-name strings
+agree with the GIS names on all 8 new codes, so `buildingCode` really is a stable key rather than a
+label that drifts between samples.
+
+## 2. Six corrections to Part I
+
+| Part I says | Measured | Impact |
+|---|---|---|
+| "1330 distinct `buildingNumber` values" | **1331**. 1347 features, 13 with a null or empty `buildingNumber`, 3 surplus rows from duplicate codes, so 1347 - 13 - 3 = 1331 | cosmetic |
+| "`buildingNumber` is the join key", implying unique | **It is not unique.** `246` appears twice and `1243` three times | a build that asserts uniqueness fails, one that appends double-counts |
+| "80 of 80 matched" | 88 of 88, on a wider sample | strengthens the claim |
+| "Exactly one record has a `buildingNumber` and no coordinate" | True, `1072`. But **14 features total have no coordinate**, the other 13 also have no `buildingNumber` | breaks a naive `float(a["Latitude"])` loop over the raw pull |
+| "A 3 km cap is the sane default" | **A 3 km cap drops two real scheduled buildings.** See below | students sent nowhere |
+| "the OSU point says centroid", offered as a hint | **Now measured.** It is a centroid. See section 5 | bounds the walk-time error |
+
+### The duplicate key, concretely
+
+```
+buildingNumber 246  -> 2 features, identical attributes, RPAC
+buildingNumber 1243 -> 3 features, identical attributes, "Bus Shelter 403 - Carmack 2"
+```
+
+Both duplicate sets carry identical coordinates, so `index[code] = row` in a loop is harmless, and
+that is exactly why it is dangerous. It works silently, and then a `len(features) == len(index)`
+assertion in the guard script fails for a reason nobody can reproduce. Dedupe on `buildingNumber`
+explicitly and move on.
+
+### The distance cap is wrong
+
+Part I recommends a 3 km cap because it covers 77 of the 80 buildings it saw. On the 88-building
+union:
+
+| Cutoff | Observed buildings kept |
+|---|---|
+| 2.0 km | 78 of 88 |
+| 2.5 km | 81 of 88 |
+| **3.0 km** | **83 of 88** |
+| 5.0 km | 84 of 88 |
+| **10.0 km** | **85 of 88** |
+| no cap | 88 of 88 |
+
+A 3 km cap silently deletes `837` Outpatient Care East at 4.98 km and `1019` Knowlton Executive
+Terminal at 9.79 km. Both host real Autumn 2026 classes. Everything past 10 km is the three Wooster
+buildings at 126 km.
+
+**A 10 km cap drops exactly the three Wooster buildings and nothing else.** That is not a coincidence
+of this sample, it is the shape of the campus. There is a 116 km gap in the distance distribution
+between Don Scott Field and Wooster, so 10 km is a stable choice rather than a tuned one. Use it as
+the data filter, and let "how far will you walk" be a separate user-facing setting on top, defaulted
+to something like 1.5 km. Never bake the walking preference into the shipped dataset.
+
+## 3. Neither Campus nor InstType is a usable filter
+
+Part I already showed `Campus` is administrative rather than geographic. `InstType` is worse than it
+looks, and it is the field a reader would reach for next. Breakdown of the 548 `unconfirmed` draft
+rows:
+
+```
+154 (blank)   140 Academic   53 Student Life   35 Athletics   19 OSUHS - UH   18 Airport
+ 15 CampusParc  15 OSUP  14 OSUHS - EAST  12 OSUHS - SHARED  10 On-Site  10 OSUHS - AMBULATORY ...
+```
+
+`InstType = "Academic"` includes **Refuse Vehicle Storage**. It also includes Biological Sciences
+Greenhouses and the Ornamental Plant Germplasm Center. 150 of the 548 unconfirmed rows, 27 percent,
+have a name matching an obvious non-classroom keyword: parking garage, bus shelter, electrical
+substation, corrosive storage, chiller, transmitter.
+
+**The only filter that works is the harvest itself.** Intersect the GIS layer with the building codes
+the class harvest actually produced. Every other filter is a heuristic that either keeps refuse
+storage or drops an airport terminal where aviation classes meet. Ship the 88, or whatever the full
+harvest yields, not the 628.
+
+The 628 in the draft are still the right thing to have committed. They are the lookup table the
+harvest joins against, and at 13 KB gzipped minified there is no cost to keeping them. They are just
+not the shipped index.
+
+## 4. My own matcher, written independently
+
+Part I reports 87.5 percent on 80 buildings. I wrote a separate normaliser and scorer without reading
+its code first, and ran it on the 88-building union against the same cached Overpass captures,
+1259 candidates carrying a name and a centre from `osm_wide.json` plus `osm_extra.json`.
+
+Script: `scratchpad/geo/mymatch.py`. The normaliser does comma inversion, `&` to `and`, punctuation
+strip, about 30 expansion rules, ordinal word to digit, stopword removal. The scorer takes
+`max(Jaccard, 0.5*coverage + 0.5*SequenceMatcher)` with Part I's anti-fake guard of requiring at
+least one shared token of 4 or more characters.
+
+```
+MATCH RATE on 88 observed buildings: strong (>= 0.90) 74 = 84.1% | grey band 9 | miss 5 = 5.7%
+strong matches whose OSM centre is more than 100 m from the OSU GIS point: 0
+agreement on the 74 strong matches: median 3.3 m, mean 5.6 m, max 42.8 m
+   within  5 m: 46/74      within 10 m: 61/74
+   within 25 m: 73/74      within 50 m: 74/74
+```
+
+Two independently written matchers, on overlapping but different building sets, land at 87.5 and
+84.1 percent. **Treat mid-80s as the real ceiling for name matching against OSM and stop tuning.**
+The median 3.3 m agreement reproduces Part I's 3.1 m almost exactly, which is the number that
+actually matters here: two unrelated survey efforts put these buildings in the same place.
+
+### The grey band is where the danger is
+
+| code | Class API name | Best OSM name | Score | Distance to the OSU point |
+|---|---|---|---|---|
+| `007` | Mathematics Tower | Mathematics Building | 0.893 | 27.4 m |
+| `049` | Drinko Hall, John Deaver | Drinko Hall | 0.750 | 15.1 m |
+| `222` | Heffner Wetland Rsch & Educ | Heffner Wetland Building | 0.875 | 0.8 m |
+| `248` | Chem & Biomolecular Eng & Chem | Chemical and Biomolecular Engineering | 0.760 | 5.8 m |
+| `249` | Fisher Hall, Max M | Fisher Hall | 0.833 | 4.0 m |
+| `265` | Engineering Research and Educa | Engineering Research and Education | 0.785 | 13.2 m |
+| `297` | Howlett Greenhouses | Howlett Hall | 0.769 | **73.2 m, wrong structure** |
+| `371` | Celeste Laboratory Of Chem | Celeste Laboratory of Chemistry | 0.766 | 2.9 m |
+| `1019` | Knowlton Airport Terminal | Knowlton Hall | 0.742 | **9385.3 m, wrong building** |
+
+Seven of those nine are correct and a human would wave them through. The other two are the reason an
+OSM-first design is a bad idea:
+
+- **`1019` Knowlton Airport Terminal scores 0.742 against Knowlton Hall.** Accepting it puts Don
+  Scott Field, 9.4 km north, on the Oval. An `aviatn` student told to walk 4 minutes would be
+  looking at the wrong building in the wrong township.
+- **`297` Howlett Greenhouses scores 0.769 against Howlett Hall**, 73 m away and a different
+  structure. Vacant should not send anyone into a greenhouse in the first place, but this is how it
+  would happen.
+
+There is no threshold that separates those two from the seven good ones. `Fisher Hall, Max M` at
+0.833 is right and `Mathematics Tower` at 0.893 is right, both scoring above something dangerous and
+below something else dangerous. The grey band cannot be automated, and that is a permanent property
+of name matching rather than a bug in my scorer.
+
+### The 5 misses, every one by name
+
+| code | Class API name | GIS name | Best OSM guess | Score |
+|---|---|---|---|---|
+| `250` | Gerlach Graduate Programs Bldg | Gerlach Hall | Gerlach Hall | 0.719 |
+| `085` | Frank W. Hale Jr Hall | Hale Hall | Hale Hall | 0.711 |
+| `1321` | Waterman- Multispecies Animal | Waterman - Multispecies Animal Learning Complex | Multispecies Animal Learning Center | 0.650 |
+| `837` | Outpatient Care East | Outpatient Care East | Martha Morehouse Outpatient Care | 0.639 |
+| `057` | Edison Joining Technology Cntr | Edison Joining Technology Center | Parker Food Science and Technology | 0.311 |
+
+All five have a correct coordinate in the draft, from the GIS layer. `837` is the nastiest of the
+five. The best OSM name it found, "Martha Morehouse Outpatient Care", is a **different real OSU
+outpatient building**, so a name-matching pipeline with a lower threshold would confidently place it
+in the wrong place rather than admitting it does not know.
+
+`404`, `414` and `549`, the three Wooster buildings Part I lists as unmatchable, matched at 1.000
+here, at 8.6 m, 14.0 m and 1.0 m. The difference is that my candidate pool included `osm_extra.json`,
+Part I's own fixup pull. Both statements are true. Wooster buildings are absent from any Columbus
+bounding box and present in OSM once you look at Wooster. Same for Ohio Stadium, which scored 1.000
+at 2.6 m against `way/119153498` once the untagged element is in the pool.
+
+## 5. The published point is a centroid, and here is the walk-time error it costs
+
+Open question from Part I: is the OSU coordinate an entrance or a centroid? It is a centroid.
+Measured by pulling the polygon geometry and comparing the published `Latitude`/`Longitude` to a
+shoelace centroid of the largest ring:
+
+| code | Building | Centroid to published point | Footprint | Published point inside the polygon |
+|---|---|---|---|---|
+| `017` | Knowlton Hall | 1.7 m | 145 x 61 m | yes |
+| `246` | RPAC | 1.7 m | 113 x 139 m | yes |
+| `065` | Smith Laboratory | 3.4 m | 54 x 97 m | yes |
+| `148` | Scott Laboratory | 4.1 m | 87 x 98 m | yes |
+| `280` | Baker Systems Engineering | 8.1 m | 35 x 71 m | yes |
+| `279` | Dreese Laboratories | 9.0 m | 90 x 97 m | yes |
+| `082` | Ohio Stadium | 26.5 m | 210 x 281 m | **no**, 35 rings |
+| `038` | Hamilton Hall | 27.3 m | 141 x 97 m | yes |
+
+7 of 8 published points fall inside their own footprint. The two outliers, Ohio Stadium and Hamilton
+Hall, are exactly the two shapes where a centroid is meaningless: a 35-ring donut and an L.
+
+**What this costs the app.** At 80 m per minute, the centroid-versus-door error is bounded by half
+the building's longest dimension:
+
+- a typical classroom building at 90 x 100 m: up to 50 m, about **38 seconds**
+- Knowlton at 145 m long: up to 73 m, about **55 seconds**
+- Ohio Stadium at 281 m: up to 140 m, about **1 minute 45 seconds**
+
+For a "4 min walk" label that is fine. For the `usable = gapEnd - now - walkTime` arithmetic that is
+the whole product, it is a systematic **under**estimate, because you always walk past the centroid to
+reach a door and then walk inside to the room. Round walk time up, and consider a flat 1 minute
+door-to-room constant. Do not chase per-building entrance overrides until somebody complains.
+
+There is **no entrance or door layer** to chase even if you wanted one. The full service is:
+
+```
+ 1 StreetFurniture   5 SiteAmenityLine   7 PavementMarkingLine   8 RightofWay
+ 9 LandscapeArea    10 Parking          11 Building            12 StreetPavement   13 WaterBody
+```
+
+No pedestrian network either, so if straight-line distance ever needs to become real walking
+distance, that comes from OSM footways, not from OSU.
+
+## 6. Three coordinates checked against a third source
+
+Part I checked the draft against OSM by name. I checked it by reverse geocoding the draft's own
+coordinate through Nominatim, which asks a different question: what is actually at this point on the
+ground.
+
+| code | Draft coordinate | Nominatim reverse says | Verdict |
+|---|---|---|---|
+| `279` | 40.002221, -83.015990 | `Dreese Laboratories, 2015, Neil Avenue, University District, Columbus, OH 43210` | correct |
+| `161` | 39.997660, -83.008642 | `Sloopy's Diner, 1739, North High Street, Columbus, OH 43201` | correct, Sloopy's is inside the Ohio Union at 1739 N High St |
+| `082` | 40.001670, -83.019729 | `Safelite Field, Cannon Dr, University District, Columbus, OH 43210` | correct, Safelite Field is the playing surface inside Ohio Stadium |
+
+All three land on or inside the right structure. Two of the three return the name of a **tenant**
+rather than the building, which matters if anyone ever plans to reverse geocode as a verification
+step: a correct coordinate can return a name that does not look like a match at all.
+
+**The brief's Dreese anchor is wrong, and Part I is right to say so.** The brief says Dreese
+Laboratories is "on the west side of College Rd near 19th". Nominatim, independently of the OSU GIS
+`Address` field and independently of the OSM name match, puts the point at 2015 Neil Avenue. Three
+sources, one answer. A regression test written from the brief would fail against correct data.
+
+## 7. The licence question, answered
+
+Part I leaves this open. It is now closed enough to act on.
+
+The OSU GIS Hub item (`361279ecd67a422fba0ec357ca1c0f4c`, `https://data-OSUGIS.opendata.arcgis.com`)
+carries this `licenseInfo`, verbatim:
+
+> For use by anyone interested in OSU data. This data is hosted by Facilities Information and
+> Technology Services (FITS) at The Ohio State University. Requests and Questions can be sent to
+> gismaps@osu.edu
+
+The site's own footer card reads `Copyright 2025. OSU GIS`. The hub's "Terms of Service" navigation
+link is `href="#"`, a placeholder that goes nowhere, so there is no formal terms page to read.
+
+That is an explicit grant of public use with an asserted copyright and a named contact, not an open
+licence. What to do:
+
+1. **Credit it.** `Building locations (c) 2025 The Ohio State University, Facilities Information and Technology Services.`
+2. **Email `gismaps@osu.edu`** before the app goes public. One paragraph saying what Vacant is, that
+   it caches the Building layer weekly at build time rather than hitting the service at runtime, and
+   asking whether they want anything specific in the credit. FITS publishes this so people use it,
+   and the request costs nothing.
+3. Note that `FacilitiesStreets_RO` is **not** one of the 13 items the OSU GIS account publishes to
+   ArcGIS Online. It lives on `gissvc.osu.edu` directly. The Hub licence statement is the closest
+   applicable statement, not a statement about this exact layer, which is another reason to send the
+   email.
+
+### The OSM attribution string, unchanged
+
+If any shipped coordinate or name comes from OpenStreetMap, ODbL 1.0 requires this exact credit:
+
+```
+(c) OpenStreetMap contributors
+```
+
+rendered with a real copyright symbol, linked to `https://www.openstreetmap.org/copyright`, plus a
+note that the data is available under the Open Database License at
+`https://opendatacommons.org/licenses/odbl/1-0/`.
+
+Vacant has no map view, so there is no basemap corner to put it in. Three places:
+
+1. The About or Info panel in the app: `Building locations (c) OpenStreetMap contributors, ODbL.`
+2. A `_meta` block inside the shipped `buildings.json`, so the obligation travels with the file.
+3. The repo `README.md` under a Data sources heading.
+
+**Ship both credits regardless of which source won.** The current draft takes every coordinate from
+OSU GIS and uses OSM only to compute the `osm_check_m` audit field, which is arguably a derived
+measurement and arguably not. Two lines of text is not worth the argument.
+
+## 8. CORS is open, which changes one architectural option
+
+```
+$ curl -D - -H "Origin: https://enesyilmazcode.github.io" ".../MapServer/11/query?..."
+HTTP/1.1 200 OK
+Vary: Origin
+Access-Control-Allow-Origin: https://enesyilmazcode.github.io
+Access-Control-Allow-Credentials: true
+Server: Microsoft-IIS/10.0
+```
+
+The service reflects any origin. A GitHub Pages page can query it directly from the browser with no
+proxy and no key. That does **not** change the plan. The whole point of Vacant is answering offline
+from a cached file, and a runtime dependency on someone else's ArcGIS server is the opposite of that.
+What it does change is that the weekly build can run anywhere, including a browser-based one-off, and
+that a future "report a wrong coordinate" tool has an easy path.
+
+Do not send credentials. The service sets an `AGS_ROLES` cookie with a 60 second `Max-Age` on every
+response and there is no reason to carry it.
+
+## 9. What surprised me, on top of Part I's list
+
+1. **The join key is not unique.** `246` and `1243` each appear more than once in a layer whose whole
+   value is being a lookup table. The rows are identical, which is worse than if they differed.
+2. **`InstType = "Academic"` includes "Refuse Vehicle Storage".** There is no attribute filter that
+   yields "buildings with classrooms". The harvest is the filter.
+3. **The recommended 3 km cap deletes two buildings that host real classes.** 10 km is the number
+   that separates campus from Wooster, with a 116 km empty gap on either side of it.
+4. **Name matching's worst failure is confident and wrong, not uncertain.** Knowlton Airport Terminal
+   to Knowlton Hall at 0.742 is a 9.4 km error sitting inside the grey band a human is most likely to
+   approve in bulk. Outpatient Care East to Martha Morehouse Outpatient Care is the same failure at
+   0.639.
+5. **Reverse geocoding a correct coordinate can return a tenant, not a building.** The Ohio Union
+   reverse-geocodes to "Sloopy's Diner" and Ohio Stadium to "Safelite Field". Both are right. A
+   verification script comparing reverse-geocoded names to API names would flag both as failures.
+6. **Two independent samples of the class schedule agree the campus is about 88 buildings**, matching
+   the harvest agent's Chao1 estimate of 88 exactly. The building list may be closer to saturated
+   than Part I's still-climbing rarefaction curve suggests, though the two samples share a subject
+   bias, so treat that as encouraging rather than settled.
+7. **The GIS point sits outside its own building for Ohio Stadium.** 35 rings. Any code doing a
+   point-in-polygon check as a sanity gate will fail on a correct row.
+
+## 10. Standing recommendation
+
+Nothing in the draft dataset needs to change. It is correct, it is current to within 7 centimetres of
+what the service returns today, and the join rate is now 88 of 88 across two independent samples. The
+changes belong in the build script that consumes it:
+
+```
+dedupe on buildingNumber                     -> 246 and 1243 are duplicated
+drop km_from_oval > 10                       -> removes exactly the 3 Wooster buildings
+intersect with harvested building codes      -> the only filter that works
+do not filter on Campus or InstType          -> both keep refuse storage and drop real classrooms
+round walk time up, add a door-to-room const -> the point is a centroid, error up to 1m45s
+assert every harvested code resolves         -> fail the build loudly if the join ever breaks
+credit OSU FITS and OpenStreetMap both       -> two lines, no argument
+```
+
+## 11. Reproducing Part II
+
+New scratch files, alongside Part I's, in
+`C:/Users/galax/AppData/Local/Temp/claude/C--Users-galax-Downloads-Projects/ff09d3ae-8ad6-40bb-942d-f7cf03ac4117/scratchpad/geo/`:
+
+| File | What it is |
+|---|---|
+| `mymatch.py` | the independently written normaliser, scorer and match report |
+| `mymatch_out.json` | per-building match result, 88 rows |
+| `union88.json` | the 88 observed building codes, union of both agents' samples |
+| `where88.txt` | the ArcGIS `where` clause for those 88 |
+| `gis88.json` | the live re-fetch, 89 features |
+| `geom5.json` | 8 buildings with polygon geometry, for the centroid test |
+| `fac_layers.json` | the full FacilitiesStreets service layer list |
+| `items.json`, `hub.html` | the ArcGIS Online item search and the GIS Hub page, for the licence |
+
+The building-code union comes from `scratchpad/hf/rooms-union.json` and `rooms-sample.json`, which
+the harvest-feasibility agent produced. If you rerun this after a real full harvest, replace
+`union88.json` with the harvest's actual building list and expect the join rate to stay at 100
+percent. If it does not, the GIS layer was republished, and the assertion in the build script is the
+thing that should have told you.

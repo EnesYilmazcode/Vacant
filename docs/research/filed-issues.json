@@ -1,0 +1,182 @@
+[
+  {
+    "number": 1,
+    "order": 1,
+    "title": "Scaffold the repo, turn on Pages at /Vacant/, and land the MIT licence",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/1"
+  },
+  {
+    "number": 2,
+    "order": 2,
+    "title": "Snapshot terms 1262 and 1264 before Spring 2026 leaves the API on August 31",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/2"
+  },
+  {
+    "number": 3,
+    "order": 3,
+    "title": "Build data/buildings.json from Ohio State's own GIS building layer",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/3"
+  },
+  {
+    "number": 4,
+    "order": 4,
+    "title": "Walking skeleton: one catalog-number bucket to a ranked list of real rooms on a phone",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/4"
+  },
+  {
+    "number": 5,
+    "order": 5,
+    "title": "SPIKE: does geolocation work in an installed PWA on current iOS?",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/5"
+  },
+  {
+    "number": 6,
+    "order": 6,
+    "title": "Harvest a full term by walking the catalog-number buckets twice, as a polite client",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/6"
+  },
+  {
+    "number": 7,
+    "order": 7,
+    "title": "Filter meetings to real Columbus rooms with a counted funnel, and strip instructors at the parse boundary",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/7"
+  },
+  {
+    "number": 8,
+    "order": 8,
+    "title": "Invert sections into data/rooms-<term>.json, with intervals deduped, merged and propagated",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/8"
+  },
+  {
+    "number": 9,
+    "order": 9,
+    "title": "Ship the room safety filter: facilityType allow list plus the Registrar general-assignment cross-check",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/9"
+  },
+  {
+    "number": 10,
+    "order": 10,
+    "title": "Refuse a bad build on busy blocks and minutes, not room count, with a fatal PII scan",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/10"
+  },
+  {
+    "number": 11,
+    "order": 11,
+    "title": "Emit closed days and the exam window into the room index",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/11"
+  },
+  {
+    "number": 12,
+    "order": 12,
+    "title": "Ship rooms.yml on a Sunday cron, with a failure alerter and a dead-man's switch",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/12"
+  },
+  {
+    "number": 13,
+    "order": 13,
+    "title": "Add a weekly live rot detector behind VACANT_LIVE=1",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/13"
+  },
+  {
+    "number": 14,
+    "order": 14,
+    "title": "Scrape the Registrar classroom pool building schedule into data/buildings-hours.json",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/14"
+  },
+  {
+    "number": 15,
+    "order": 15,
+    "title": "Harden the query engine: edge cases, the corrected usable formula, ranking and the fallback ladder",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/15"
+  },
+  {
+    "number": 16,
+    "order": 16,
+    "title": "Wrap geolocation in a wall-clock watchdog, with distinct error paths and an off-campus gate",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/16"
+  },
+  {
+    "number": 17,
+    "order": 17,
+    "title": "Build the manual building picker as a first-class origin screen",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/17"
+  },
+  {
+    "number": 18,
+    "order": 18,
+    "title": "Build the result screen: shell, confidence-tiered rows, duration chips and the detail sheet",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/18"
+  },
+  {
+    "number": 19,
+    "order": 19,
+    "title": "Ship the term, calendar and staleness states, including an explicit exam-week refusal",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/19"
+  },
+  {
+    "number": 20,
+    "order": 20,
+    "title": "Build the unscheduled-hours screen that ranks buildings, not rooms",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/20"
+  },
+  {
+    "number": 21,
+    "order": 21,
+    "title": "Ship manifest.webmanifest and the iOS icon set on absolute /Vacant/ paths",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/21"
+  },
+  {
+    "number": 22,
+    "order": 22,
+    "title": "Write sw.js with two caches, a navigation fallback, build stamping and term eviction",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/22"
+  },
+  {
+    "number": 23,
+    "order": 23,
+    "title": "Build the install hint and the cold-and-offline first-run journey",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/23"
+  },
+  {
+    "number": 24,
+    "order": 24,
+    "title": "Add a diagnostics panel and a report-a-problem path",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/24"
+  },
+  {
+    "number": 25,
+    "order": 25,
+    "title": "Ship the trust surfaces: attribution, docs/DATA.md, /privacy, the kill switch and the README corrections",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/25"
+  },
+  {
+    "number": 26,
+    "order": 26,
+    "title": "Walk to twenty rooms the app calls free and record what was actually true",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/26"
+  },
+  {
+    "number": 27,
+    "order": 27,
+    "title": "Write the launch plan and the words that go with it",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/27"
+  },
+  {
+    "number": 28,
+    "order": 28,
+    "title": "Design the was-it-open report schema and its privacy model before any backend exists",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/28"
+  },
+  {
+    "number": 29,
+    "order": 29,
+    "title": "SPIKE: measure cold launch on a real phone, then decide on the packed binary",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/29"
+  },
+  {
+    "number": 30,
+    "order": 30,
+    "title": "SPIKE: does a genuinely never-scheduled room exist in our own data?",
+    "url": "https://github.com/EnesYilmazcode/Vacant/issues/30"
+  }
+]

@@ -309,11 +309,14 @@ Counted over all 8284 unique meetings.
 | `facilityDescription` null | 4063 | 49.0% |
 | `facilityGroup` null | 4063 | 49.0% |
 | `facilityId === "ONLINE"` | 850 | 10.3% |
-| `room` null | 4913 | 59.3% |
+| `room` null | 4915 | 59.3% |
 | `facilityCapacity` null | **0** | 0% |
-| `facilityCapacity === 0` | 4095 | 49.4% |
+| `facilityCapacity === 0` | 4208 | 50.8% |
 | `facilityCapacity === 998` | 850 | 10.3% |
 | `facilityId` empty string | **0** | 0% |
+
+`room` null exceeds `facilityId` null by 852: the 850 `ONLINE` rows plus 2 rows in a second
+pseudo-room, `OFFCAMPUS` (see below).
 
 Four things to take from this.
 
@@ -338,11 +341,12 @@ in-person meetings with the room left unassigned or TBA. Example: several ACCTMI
 sections, Hybrid Delivery, 7:15 pm to 9:00 pm, `location: CS-COLMBUS`, no room.
 
 That is an unfixable hole and it points the wrong way for safety: those classes occupy some
-room that Vacant will believe is empty. 384 out of 3753 timed meetings is 10.2%. It belongs
-in the same honesty note as "no class scheduled, the door may still be locked".
+room that Vacant will believe is empty. Of the 3753 timed non-online meetings, 384 are
+roomless, so **10.2% of scheduled in-person class time is invisible to the index**. It
+belongs in the same honesty note as "no class scheduled, the door may still be locked".
 
-**4. Online rows are a well-formed pseudo-room, and `facilityType` will not find them.**
-The shape is fixed:
+**4. There are two pseudo-rooms, and `facilityType` will not find either.**
+`ONLINE` is the well-known one and its shape is fixed:
 
 ```json
 {"facilityId":"ONLINE","facilityType":"6F","facilityDescription":"ONLINE",
@@ -354,9 +358,17 @@ The shape is fixed:
 `buildingCode === "ONLINE"` catches all 850 and is what Finder already does in
 `js/format.js`. Do not use `facilityType === "6F"` for this: 6F also contains 9 physical
 rooms. Do not use `instructionMode` either, since the 850 ONLINE rows split across
-`Distance Learning` (627), `Distance Enhanced` (17) and `Hybrid Delivery` (16), and 2
-`Distance Learning` meetings have a real physical room. 197 ONLINE rows even carry a real
-start time and day flags.
+`Distance Learning` (810), `Hybrid Delivery` (21) and `Distance Enhanced` (19), and 2
+`Distance Learning` meetings have a real physical room. 240 ONLINE rows even carry a real
+start time and day flags, so they will produce plausible-looking busy blocks if you let them.
+
+The second pseudo-room is easy to miss: `facilityId: "OFFCAMPUS"`, `buildingCode: "OFFCAMPUS"`,
+`facilityDescription: "Off Campus"`, `facilityType: "6F"`, capacity 0, `room: null`,
+`location: "CS-OFFCAMP"`. Only 2 meetings in this sample (SOCWORK 4189 field placement), but
+it is the same class of thing and it will pass a naive "has a facilityId" test. **Filter on
+a set: `buildingCode` in `{ONLINE, OFFCAMPUS}` is out.** A safer general rule is to require
+`room != null`, which catches both and costs nothing, since every genuine room in the sample
+has one.
 
 ---
 
@@ -386,15 +398,25 @@ Two rules that go with it:
   deliberately.
 - **Never drop a room for `facilityCapacity === 0`.** Show "seats unknown". 9 of the 422
   show-by-default rooms would vanish otherwise, seven of them in Campbell Hall.
+- **Drop the pseudo-rooms before the type filter runs.** `buildingCode` in
+  `{ONLINE, OFFCAMPUS}`, or equivalently `room == null`. Both are typed `6F` so the exclude
+  list already covers them, but relying on that couples two unrelated decisions.
 
 ### What the type filter does not solve
 
 `facilityType` describes the room, not the building's front door. 32 of the 422
 show-by-default rooms sit in buildings a random undergraduate should not wander into:
-Drinko Hall (law, 7 rooms), Atwell Hall (health sciences, 9), Postle Hall (dentistry, 3),
-Riffe Building (2), Newton Hall (pharmacy, 3), Meiling Hall (medicine, 2), Lincoln Tower (1),
-plus the Wooster rooms below. That needs a hand-maintained building allow or deny list, which
-is the geo work item's problem, not this one, but it should be filed now.
+
+```
+10  Atwell Hall (health sciences)        2  Meiling Hall (medicine)
+ 7  Drinko Hall (law)                    2  Riffe Building
+ 3  Postle Hall (dentistry)              1  Lincoln Tower
+ 3  Newton Hall (pharmacy)               3  Wooster / Selby (60 miles away)
+                                         1  Heffner Wetland Research
+```
+
+That needs a hand-maintained building allow or deny list, which is the geo work item's
+problem, not this one, but it should be filed now.
 
 Also worth knowing: clinical courses do meet in ordinary classrooms. `AH0261`, `AH0141`,
 `AH0161`, `AH0343` and `AH0240` are all `1B` and all host RADSCI practicums; `DI0345` and
@@ -419,8 +441,9 @@ hospital and have no room record, so they never enter the index.
 3. **`facilityCapacity` has no null.** It has 0 for unknown and 998 for online. Any
    `capacity ?? 0` or `capacity || fallback` written against this field is already wrong.
 
-4. **The `ONLINE` pseudo-room lives inside `6F` alongside a climbing wall.** Detect online by
-   `buildingCode`, never by type.
+4. **The `ONLINE` pseudo-room lives inside `6F` alongside a climbing wall, and it has a
+   sibling.** `OFFCAMPUS` is a second pseudo-room with the same shape. Detect both by
+   `buildingCode` or by `room == null`, never by type.
 
 5. **`component: "Laboratory"` is not a proxy for a lab room.** 296 `Laboratory` meetings
    happen in `1B` general classrooms and 28 in `1C` lecture halls, because OSU labels

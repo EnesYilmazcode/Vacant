@@ -11,8 +11,8 @@ Find an empty classroom near you, free for as long as you need it.
 ## The problem
 
 You have ninety minutes between classes and nowhere to sit. The library is full,
-the union is loud, and there are roughly fifteen hundred classrooms within a ten
-minute walk that are sitting empty right now. You cannot find any of them without
+the union is loud, and there are hundreds of classrooms within a ten minute walk
+that are sitting empty right now. You cannot find any of them without
 walking into buildings and trying doors.
 
 [Roomix](https://roomix.app), an unofficial room matrix for Ohio State, already
@@ -77,14 +77,14 @@ The whole thing is a static site. There is no server, no database, and no login.
 ```
    Ohio State class API  (content.osu.edu/v2)
               |
-              |  weekly harvest, all 243 subjects
+              |  weekly harvest, 8 catalog-number buckets
               v
      +------------------------+
      |  invert the schedule   |     course -> sections -> meetings
      |  into a room index     |          becomes
      +------------------------+     room -> when it is busy
               |
-              |  rooms-1268.json   (~100 KB gzipped)
+              |  rooms-1268.json   (~30 KB gzipped)
               v
      +------------------------+
      |  static site on Pages  |  <---- service worker caches everything
@@ -142,9 +142,14 @@ sections 2699    meetings 2719
 distinct rooms 272    distinct buildings 45
 ```
 
-Extrapolated across all 243 subjects, that is roughly 1,200 to 1,800 rooms in
-about 100 to 150 buildings. Small enough that the whole campus fits in one file
-the phone can hold offline.
+A full-term measurement on 2026-08-26 put the real campus at **about 625 rooms in
+about 88 buildings**, across 26,298 sections. The room index for all of it is
+**27 to 33 KB gzipped**, 256 to 285 KB raw. The whole campus fits in one file the
+phone can hold offline without noticing.
+
+The harvest itself costs **136 requests** and under a minute, by paging the
+`catalog-number` facet in 8 buckets rather than walking 243 subjects the way
+Finder does. See `docs/research/harvest-feasibility.md`.
 
 ### 4. The room index
 

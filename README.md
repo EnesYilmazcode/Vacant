@@ -16,17 +16,28 @@ that are sitting empty right now. You cannot find any of them without
 walking into buildings and trying doors.
 
 [Roomix](https://roomix.app), an unofficial room matrix for Ohio State, already
-does part of this, and it is the reason this project exists rather than being a
-copy of it. Roomix is organized building by building, so you pick a building
-first. That only helps if you already know which buildings are near you, which
-ones have classrooms as opposed to offices and labs, and which ones you are
-allowed to walk into. It answers "what is free in Dreese," when the question you
-actually have is **"where do I go, right now, from here."**
+does a lot of this, and it deserves an honest description. It is a maintained
+three year old product: a Flutter app with iOS and Android builds, a backend,
+accounts, bookmarks, a GPS "nearest facility" button and a vacancy search. Its
+data was regenerated the day before this was written. Anyone calling it a toy has
+not looked at it.
 
-The second thing it does not do is respect the clock. A room being empty is
-useless if it is empty for eleven more minutes. What you need is a room that is
-empty for as long as you need it, *after* accounting for the time it takes you to
-walk there.
+What it does is bolt location and time onto a building browser, and the seams show
+in two places that are measurable rather than matters of taste.
+
+**It costs 3.3 MB to open.** Its API serves eleven static JSON files and
+`courses.json` alone is 2.4 MB. Vacant's entire index is one file in the low
+hundreds of kilobytes. Outdoors on a phone, that is the difference between an
+answer and a spinner.
+
+**It answers Saturday wrong.** Roomix computes "no class is scheduled, therefore
+free." On a Saturday that reports over a thousand rooms free while 41 of the 47
+classroom pool buildings are locked. Every project in this category makes that
+mistake, and at Ohio State it is avoidable, because the Registrar publishes the
+open hours and nobody reads them.
+
+Neither app can tell you the thing that actually decides where you go, which is
+how long a room is yours **after** you finish walking to it.
 
 ## What Vacant does
 
@@ -142,10 +153,16 @@ sections 2699    meetings 2719
 distinct rooms 272    distinct buildings 45
 ```
 
-A full-term measurement on 2026-08-26 put the real campus at **about 625 rooms in
-about 88 buildings**, across 26,298 sections. The room index for all of it is
-**27 to 33 KB gzipped**, 256 to 285 KB raw. The whole campus fits in one file the
-phone can hold offline without noticing.
+The true campus figure, read directly out of Roomix's own published index for the
+same term, is **1,067 rooms across 116 buildings**. The index for all of it lands
+in the low hundreds of kilobytes raw and well under 100 KB gzipped, so the whole
+campus fits in one file the phone holds offline without noticing.
+
+One number in there is a free feature. **190 of those 1,067 rooms, 17.8%, have no
+class at all this term.** A room with zero classes all semester is the best study
+room on campus, and a single term harvest cannot see it, because a room with no
+meetings never appears in that term's class API. Harvesting three terms and
+unioning the room identities finds them.
 
 The harvest itself costs **136 requests** and under a minute, by paging the
 `catalog-number` facet in 8 buckets rather than walking 243 subjects the way
@@ -194,50 +211,80 @@ Given your location, the current time, and a duration `D`:
 Haversine distance to the building centroid is plenty at campus scale. No routing
 engine, no map tiles required.
 
+### 5b. Cold launch is the real performance problem
+
+The query is a non-problem. Benchmarked over a synthetic 1,800 room index with no
+spatial index at all, a full ranked answer takes **0.4 to 1.3 ms** warm.
+
+Cold launch is where the time goes. `JSON.parse` plus building the in-memory index
+costs **365 to 469 ms** before the first answer appears, which is exactly the
+moment the app is being judged. Shipping the busy intervals as a packed binary
+blob that the app reads straight off an `ArrayBuffer`, with only the names and
+coordinates left as JSON, takes that to **29 to 38 ms** with byte identical
+results. See `docs/research/query-engine.md`.
+
 ### 6. Where the coordinates come from
 
 The class API gives `buildingCode: "279"` but no latitude or longitude, and Ohio
-State's campus map is a single-page app with no JSON behind it. Three candidate
-endpoints were probed and all three return the same HTML shell.
+State's campus map is a single-page app with no JSON behind it.
 
-OpenStreetMap has it. This Overpass query returns 298 named buildings across
-campus:
+The original plan was to fuzzy match building names against OpenStreetMap, which
+works but leaves about one in eight for a human to fix. There is something much
+better. **Ohio State publishes its own building layer on its own public ArcGIS
+server, and its `buildingNumber` field is character for character the same value
+as the class API's `buildingCode`.**
 
 ```
-[out:json][timeout:90];
-way[building][name](39.990,-83.040,40.008,-83.008);
-out center tags;
+   THE PLAN                                 WHAT ACTUALLY WORKS
+
+   facilityDescription                      buildingCode = "279"
+     = "Dreese Laboratories"                       |
+          |  normalise, fuzzy match               |  exact string equality
+          v                                       v
+   OpenStreetMap via Overpass               OSU's own GIS building layer
+     70 of 80 matched  (87.5%)                80 of 80 matched  (100%)
+     10 need a human                          lat, lon, campus, address
+     Ohio Stadium silently missing            all already on the record
 ```
 
-Of eight spot-checked Ohio State building names, six matched exactly and the two
-misses were wording differences rather than absences. So building coordinates are
-a one-time script plus an afternoon of hand-fixing about 130 rows, committed as
-`buildings.json`, and then it never changes again.
+It is a key join, not a name match, and every building observed in live Autumn
+2026 schedule data joined on the first try. OSM stays useful as a second opinion
+for cross-checking coordinates, not as the source. Details and the draft dataset
+are in `docs/research/geocoding.md` and `data/buildings.draft.json`.
 
 ---
 
 ## What Vacant will not pretend to know
 
 **A class schedule is not a room reservation calendar.** A room with no class in
-it can still be booked for a club meeting, a review session, a departmental
-event, or simply locked for the night. Every tool in this category has this hole,
-including Roomix, and most of them hide it.
+it can still be booked for a club meeting, a review session, or a departmental
+event, and it can simply be locked. Every tool in this category has this hole and
+most of them hide it.
 
-Vacant says it out loud on every result:
+Three quarters of it turns out to be closeable, which was the biggest surprise in
+the research.
 
-> No class is scheduled here. The door may still be locked.
+**Building hours are published.** The Registrar puts out a per building, per
+weekday open and close table covering all 47 classroom pool buildings, refreshed
+every semester, as scrapable HTML, with the term's holidays and exam dates on the
+same page. The blueprint assumed this dataset did not exist. It does, and reading
+it is what separates "no class is scheduled" from "open until 7:30pm today."
 
-The plan to actually close the gap is a one-tap **"was it open?"** report on each
-room, which builds per-room confidence over time from people who walked there.
-That crowdsourced layer is the only real moat this idea has, and it is also the
-only piece that needs a backend, so it comes last rather than first.
+**The calendar is knowable.** Twelve of the 83 weekdays between the first day of
+class and the last final are wrong for calendar reasons alone, before any room
+level problem: seven no class weekdays that the naive model calls busy and hides,
+and five exam days it calls free and walks you into a final.
 
-Two known unknowns to sort out before launch:
+**Non class bookings are not knowable.** A club meeting in an empty room is
+invisible to every public source. This is the part that stays honest rather than
+solved, so every result carries the caveat and phase 4 adds a one tap "was it
+open?" report that builds per room confidence from people who actually walked
+there.
 
-- `facilityType` is a code (`"1B"` and friends) whose meaning is undocumented.
-  It needs a pass so the app is not sending people into wet labs and studios.
-- Building access hours are a separate dataset that may not exist publicly. Start
-  with plausible open hours and let the reports refine it.
+One thing that is now answered rather than open: `facilityType` is a property of
+the room and never varies within a term, across 633 rooms and 8,284 meetings, so
+the index stores one type per room and trusts it. Twenty seven codes exist and
+`docs/research/facility-types.md` has the decode.
 
 ---
 
@@ -245,8 +292,9 @@ Two known unknowns to sort out before launch:
 
 | Phase | What | Notes |
 | --- | --- | --- |
-| 1 | Harvester emitting `rooms-<term>.json` | Port the fetch pipeline from [Finder](https://github.com/EnesYilmazcode/Finder), swap the projection, add a refusal guard on room count so a bad pull cannot ship an empty grid |
-| 2 | `buildings.json` | Overpass pull, fuzzy name match, manual fix pass |
+| 1 | Harvester emitting the room index | Port the bucket walk from [Finder](https://github.com/EnesYilmazcode/Finder), swap the projection, union three terms so zero-class rooms are not lost, strip instructor emails, and guard on busy blocks rather than room count |
+| 2 | `buildings.json` | Key join on `buildingCode` against OSU's own GIS layer. OSM as a cross-check |
+| 2 | Building hours and the academic calendar | Scrape the Registrar's classroom pool table and the term's holiday and exam dates. This is what makes Saturday correct |
 | 3 | The app | Geolocation, duration chips, ranked list, PWA manifest, service worker |
 | 4 | "Was it open?" reports | Only if it gets real use. Needs a small backend |
 

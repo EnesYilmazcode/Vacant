@@ -75,9 +75,39 @@ export function newCounter() {
     pseudoRoom: 0,
     unknownBuilding: 0,
     noWeekday: 0,
+    // A subset of noWeekday, not another bucket: the stages still sum to
+    // meetings. These are the rows that name a real room and a real clock
+    // window and only lack the day, which is the difference between a row that
+    // holds no occupancy and a room we know is used at a time we cannot place.
+    noWeekdayTimed: 0,
     badTime: 0,
     usable: 0,
   };
+}
+
+const hasWeekday = (meeting) => DAYS.some((d) => meeting?.[d] === true);
+
+// The same window test the badTime stage uses, so noWeekdayTimed counts exactly
+// the rows isUnplaceable will pick up and nothing else.
+function hasWindow(meeting) {
+  const start = toMinutes(meeting?.startTime);
+  const end = toMinutes(meeting?.endTime);
+  return start != null && end != null && end > start;
+}
+
+// A booking we know is real and cannot place on a weekday.
+//
+// Nine of these exist across the three archives: four Dreese Lab 280 CSE lab
+// slots in Summer 2026, each cross-listed twice, and one Denney 368 seminar in
+// Spring 2026. Autumn 2026 has none. See isRealRoom's noWeekday stage for why
+// the day is not recoverable and DECISIONS.md for what the index does with them.
+export function isUnplaceable(meeting, { isKnownBuilding } = {}) {
+  if (typeof meeting !== 'object' || meeting === null) return false;
+  if (meeting.facilityId == null) return false;
+  if (isPseudoRoom(meeting)) return false;
+  if (isKnownBuilding && !isKnownBuilding(meeting.buildingCode)) return false;
+  if (hasWeekday(meeting)) return false;
+  return hasWindow(meeting);
 }
 
 // The five stages run in this order, each with its own counter, so an upstream
@@ -111,15 +141,37 @@ export function isRealRoom(meeting, section, counter, { isKnownBuilding } = {}) 
   // and the caller is responsible for the join.
   if (isKnownBuilding && !isKnownBuilding(meeting.buildingCode)) return drop('unknownBuilding');
 
-  // Drops 23 real-room meetings across both archives. 14 carry no times either,
-  // but 9 DO: Dreese Lab 280 has four distinct Summer 2026 lab slots and Derby
-  // 368 a Spring seminar. Those 9 are real occupancy, and the day is not
-  // recoverable from anywhere: standingMeetingPattern is null and meetingDays is
-  // absent on every one of them. So Dreese 280 will read free during those lab
-  // hours. That is a known honesty gap, not an untimed row, and it is recorded
-  // in DECISIONS.md rather than papered over here. A jump in this counter means
-  // the upstream shape moved.
-  if (!DAYS.some((d) => meeting[d] === true)) return drop('noWeekday');
+  // Drops 28 real-room meetings across the three archives. 19 carry no times
+  // either, but 9 DO: four Dreese Lab 280 CSE lab slots in Summer 2026, each
+  // cross-listed under a second course number, plus one Denney 368 seminar in
+  // Spring 2026. Those 9 are real occupancy in a real room.
+  //
+  // The day is not recoverable, measured three ways over all 68,600 meetings in
+  // the three archives:
+  //
+  //   standingMeetingPattern  non-null on 0 of the 47,490 no-weekday rows, and
+  //                           it disagrees with the day flags on 135 of the
+  //                           3,741 rows that carry both, so it is not a second
+  //                           source even where it exists.
+  //   section.meetingDays     the empty string on all 40,452 sections in 1262
+  //                           and 1264, and absent from the 1268 harvest shape.
+  //   a sibling meeting       the Denney row has one at the identical time and
+  //                           dates carrying Friday, which looks recoverable and
+  //                           is not: of 161 same-section same-time same-dates
+  //                           multi-room groups in 1262, 60 put the two rooms on
+  //                           DIFFERENT days. Engineering 1182.01 is HI0308 on
+  //                           Monday and HI0224 on Thursday. Borrowing the
+  //                           sibling's day would be right about 63% of the
+  //                           time, which is a guess wearing a fact's clothes.
+  //
+  // So the funnel refuses to place them, and build-index refuses to call the
+  // room free: isUnplaceable picks these rows back up and blocks the clock
+  // window on every day of the session. A jump in noWeekdayTimed means the
+  // upstream shape moved and the day may have become recoverable.
+  if (!hasWeekday(meeting)) {
+    if (counter && hasWindow(meeting)) counter.noWeekdayTimed++;
+    return drop('noWeekday');
+  }
 
   const start = toMinutes(meeting.startTime);
   const end = toMinutes(meeting.endTime);
@@ -134,7 +186,8 @@ export function formatFunnel(c) {
   return (
     `meetings ${c.meetings} | blankFacilityId ${c.blankFacilityId} | ` +
     `pseudoRoom ${c.pseudoRoom} | unknownBuilding ${c.unknownBuilding} | ` +
-    `noWeekday ${c.noWeekday} | badTime ${c.badTime} | usable ${c.usable} (${pct}%)`
+    `noWeekday ${c.noWeekday} (${c.noWeekdayTimed} timed) | badTime ${c.badTime} | ` +
+    `usable ${c.usable} (${pct}%)`
   );
 }
 

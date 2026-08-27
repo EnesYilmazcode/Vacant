@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   formatFunnel,
   isRealRoom,
+  isUnplaceable,
   newCounter,
   stripMeetingInstructors,
   toMinutes,
@@ -136,7 +137,8 @@ test('a Laboratory component in an ordinary classroom is kept', () => {
 });
 
 test('a room with no weekday flag at all is dropped', () => {
-  // 23 of these across both archives, all with a null standingMeetingPattern.
+  // 28 of these across the three archives, all with a null
+  // standingMeetingPattern.
   const c = newCounter();
   const noDay = meeting({
     monday: false,
@@ -147,7 +149,59 @@ test('a room with no weekday flag at all is dropped', () => {
   });
   assert.equal(isRealRoom(noDay, COL, c), false);
   assert.equal(c.noWeekday, 1);
+  assert.equal(c.noWeekdayTimed, 0, 'no clock window, so it holds no occupancy');
   assert.equal(c.badTime, 0, 'the weekday stage runs before the time stage');
+});
+
+test('a no-weekday row that DOES carry a clock window is counted apart', () => {
+  // Issue #33. Nine of these exist and they are real occupancy, so the count
+  // that matters is the timed one. A jump in it means the upstream shape moved.
+  const c = newCounter();
+  const dreese = meeting({
+    facilityId: 'DL0280',
+    monday: false,
+    wednesday: false,
+    standingMeetingPattern: null,
+    startTime: '9:10 am',
+    endTime: '10:05 am',
+  });
+  assert.equal(isRealRoom(dreese, COL, c), false, 'still not a placeable busy block');
+  assert.equal(c.noWeekday, 1);
+  assert.equal(c.noWeekdayTimed, 1);
+  assert.match(formatFunnel(c), /noWeekday 1 \(1 timed\)/);
+});
+
+test('isUnplaceable picks up exactly the rows the app must not call free', () => {
+  const noDay = (over = {}) =>
+    meeting({ monday: false, wednesday: false, standingMeetingPattern: null, ...over });
+
+  assert.equal(isUnplaceable(noDay()), true, 'real room, real window, no day');
+  assert.equal(isUnplaceable(meeting()), false, 'Monday and Wednesday are placeable');
+  assert.equal(isUnplaceable(noDay({ startTime: null })), false, 'no window, no occupancy');
+  assert.equal(isUnplaceable(noDay({ endTime: '8:00 am' })), false, 'zero-length is not a booking');
+  assert.equal(isUnplaceable(noDay({ endTime: '7:00 am' })), false, 'inverted is not a booking');
+  assert.equal(isUnplaceable(noDay({ facilityId: null })), false);
+  assert.equal(isUnplaceable(noDay({ facilityId: 'ONLINE', buildingCode: 'ONLINE' })), false);
+  assert.equal(isUnplaceable(noDay({ buildingCode: 'OFFCAMPUS' })), false);
+  for (const bad of [null, undefined, 42, 'x']) assert.equal(isUnplaceable(bad), false);
+
+  const known = (code) => code === '279';
+  assert.equal(isUnplaceable(noDay({ buildingCode: '118' }), { isKnownBuilding: known }), false);
+  assert.equal(isUnplaceable(noDay(), { isKnownBuilding: known }), true);
+});
+
+test('standingMeetingPattern is never read as a weekday source', () => {
+  // Measured over all 68,600 meetings in the three archives: non-null on 0 of
+  // the 47,490 no-weekday rows, and disagreeing with the day flags on 135 of
+  // the 3,741 rows carrying both. It is not a second source anywhere.
+  const c = newCounter();
+  const withPattern = meeting({
+    monday: false,
+    wednesday: false,
+    standingMeetingPattern: 'MWF',
+  });
+  assert.equal(isRealRoom(withPattern, COL, c), false);
+  assert.equal(c.noWeekday, 1);
 });
 
 test('unparseable, missing or inverted times are dropped as badTime', () => {

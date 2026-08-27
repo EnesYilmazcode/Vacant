@@ -701,3 +701,74 @@ point at.
 
 **Not in the Sunday cron.** Campus geometry does not change weekly. This is a
 one-off fetch, 13 requests.
+
+---
+
+## 2026-08-27  The nine unplaceable bookings: refuse, do not recover ([#33](https://github.com/EnesYilmazcode/Vacant/issues/33))
+
+**Decided.** The weekday is not recoverable and we will not guess it. A booking
+that names a real room and a real clock window with no weekday now has that
+window blocked on **all seven days** of its session, and is listed separately in
+the index as `unplaceable` so a screen can say what it is. This reverses the
+"Known honesty gap" entry of 2026-08-26 above: Dreese Lab 280 no longer reads
+free during its own Summer labs.
+
+**Decided against three recovery paths, each killed by a measurement over all
+68,600 meetings in the three committed archives.**
+
+```
+standingMeetingPattern   non-null on 0 of the 47,490 no-weekday rows.
+                         Where it does exist it is not even a second opinion:
+                         it disagrees with the day flags on 135 of the 3,741
+                         rows carrying both. MTOF on a row flagged MTWRF,
+                         TR on a row flagged T.
+section.meetingDays      the empty string on all 40,452 sections in 1262 and
+                         1264, and absent from the 1268 harvest shape. One
+                         distinct value per term, and it is "".
+a sibling meeting        the strongest looking one, and the most wrong. The
+                         Denney 368 row has a sibling in the SAME section at
+                         the identical time and the identical dates carrying
+                         Friday, so the pair reads like one booking in two
+                         rooms. It is not. Of 161 same-section same-time
+                         same-dates multi-room groups in 1262, 60 put the two
+                         rooms on DIFFERENT days. Engineering 1182.01 is
+                         HI0308 on Monday and HI0224 on Thursday. Borrowing
+                         the sibling's day would be right about 63% of the
+                         time.
+```
+
+**Nine rows, four distinct bookings, two rooms.** Dreese Lab 280 carries four
+Summer 2026 CSE lab slots (9:10-10:05, 10:20-11:15, 11:30-12:25, 12:40-1:35),
+each appearing twice because CSE 2221/2231 are cross-listed with CSE 5022/5023.
+Denney 368 carries one Spring 2026 English 6768.01 seminar at 12:15-3:00. Autumn
+2026 has none: `noWeekdayTimed` is 0 across the whole 1268 harvest.
+
+**Seven days rather than Monday to Friday.** Nothing in these rows says the
+booking is on a weekday, and "weekend classes are rare" is a fact about the
+archive, not about this row. Measured weekend share of day-expanded blocks:
+0.12% in 1268, 0.22% in 1262, 3.31% in 1264. Blocking the weekend costs Dreese
+280 two days it was probably free; not blocking it risks the one answer this
+project promises never to give.
+
+**Over-blocking is the acceptable error and under-blocking is not.** Blocking
+Monday costs a student a room that was free. Leaving Wednesday open walks them
+into a CSE lab. Only one of those is the failure the README is built on calling
+out in other apps.
+
+**The index says which blocks these are.** A room carrying them ships
+`unplaceable: [[start, end, session], ...]` beside its `busy` list. A screen that
+reads it can say "a class meets here at this time, the day is not published". A
+screen that ignores it still shows the room as busy, which is the safe fallback.
+Nothing about this needs an app change to stop being a lie.
+
+**Bounded.** `MAX_UNPLACEABLE = 20` in `build-index.mjs` refuses the build
+outright above twenty such bookings, because at that scale seven-day blocking
+would delete the index rather than protect it. Measured today: 0 in 1268, 4 in
+1264, 1 in 1262. `noWeekdayTimed` is now printed on the funnel line as the
+canary; a jump means the upstream shape moved and the day may have become
+recoverable, which is when #33 gets reopened.
+
+**Cost, measured.** Rebuilding 1268 changes nothing but the schema string: 871
+rooms, 12,168 busy blocks and 1,026,283 busy minutes, identical before and
+after. Rebuilding Summer 1264 from the archive turns DL0280 from 0 busy blocks
+into 28, four slots on seven days, and touches no other room.

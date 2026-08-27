@@ -83,11 +83,25 @@ export const LADDER_QUORUM = 3;
 // can sit down in with a laptop.
 export const PREFERRED_TYPES = ['1B', '1C', '1A', 'LCTR', 'SMNR'];
 
+// Rooms the note puts behind a toggle: computer labs and departmental seminar
+// rooms, real rooms with chairs and tables but access controlled or socially
+// awkward, and 5K holds at least one working dental clinic. MEASURED on the
+// committed index: 101 of 871 rooms (11.6%) carry one of these. The ladder may
+// offer them once the preferred ones run out, and it says so when it does.
+export const SECONDARY_TYPES = ['2P', '2Q', '5K', '6L', '2J', '5C'];
+
 // Within the preferred set, ordered by how likely the room is to be an ordinary
 // classroom rather than something held for an event. 1B is the confident
 // general classroom, 1C the lecture hall, 1A the seminar room.
 const TYPE_ORDER = { '1B': 0, LCTR: 1, '1C': 1, SMNR: 2, '1A': 2 };
 const PREFERRED = new Set(PREFERRED_TYPES);
+
+// Everything the ladder is allowed to reach, in any rung. The 250 rooms of the
+// committed index that are in neither list are wet labs, dissection labs, gyms,
+// studios, kitchens and the online pseudo-room, and an unrecognised code lands
+// here too: the type space is not closed, and the cost of guessing wrong is
+// sending someone into a cadaver lab. A caller that wants them has to say so.
+const OFFERABLE = new Set([...PREFERRED_TYPES, ...SECONDARY_TYPES]);
 
 const R = 6371008.8;
 const rad = (deg) => (deg * Math.PI) / 180;
@@ -665,7 +679,10 @@ export function query(rooms, opts) {
     }, started);
   }
 
-  const rung = (need, { mode, types, radius, lookahead = LOOKAHEAD, floor = 0, openNow } = {}) => {
+  // `types` defaults to everything the ladder may reach rather than to no
+  // filter at all. A rung that drops the preference has to land on the wider
+  // list of rooms you can sit in, not on the whole facility inventory.
+  const rung = (need, { mode, types = OFFERABLE, radius, lookahead = LOOKAHEAD, floor = 0, openNow } = {}) => {
     const out = [];
     for (const c of candidates) {
       if (radius !== undefined && c.walk > radius) continue;
@@ -692,7 +709,11 @@ export function query(rooms, opts) {
   const shorter = RELAX_LADDER.filter((n) => n < needed);
   const rungs = [
     ['asked', needed, false, () => rung(needed, { types: PREFERRED, radius: maxWalk, openNow: true })],
-    ['any-type', needed, false, () => rung(needed, { radius: maxWalk, openNow: true })],
+    // Dropping the room-type preference is a relaxation like any other. The
+    // rows it adds are computer labs, departmental seminar rooms and, in one
+    // building, a dental clinic, so an answer built from them is not the
+    // question the student asked and has to admit it.
+    ['any-type', needed, true, () => rung(needed, { radius: maxWalk, openNow: true })],
     ...shorter.map((n) => [
       `shorter:${n}`,
       n,

@@ -907,21 +907,56 @@ test('the ladder stops at the first rung with three rooms and does not keep walk
 });
 
 test('two rooms is not a quorum, so the ladder keeps looking and takes the better rung', () => {
-  // Two classrooms and a laboratory, all free. The type filter answers with
+  // Two classrooms and a computer lab, all free. The type filter answers with
   // two, which is under quorum, so the next rung offers the lab as well.
   const out = askFor(60, campus([
     ['A', 300, 2],
-    ['B', 300, 1, { type: '2A' }],
+    ['B', 300, 1, { type: '2P' }],
   ]));
   assert.equal(out.rung, 'any-type');
   assert.equal(out.rows.length, 3);
-  assert.equal(out.relaxed, false, 'a wet lab is a worse room, not a relaxed answer');
+  assert.equal(out.relaxed, true, 'a departmental room is not the room that was asked for');
 });
 
 test('the room-type filter comes off before the duration does', () => {
-  const out = askFor(60, campus([['B', 300, 4, { type: '2A' }]]));
+  const out = askFor(60, campus([['B', 300, 4, { type: '2P' }]]));
   assert.equal(out.rung, 'any-type');
   assert.equal(out.need, 60, 'still the duration that was asked for');
+  assert.equal(out.askedNeed, 60);
+});
+
+test('an answer made of departmental rooms is labelled relaxed on every rung that can reach one', () => {
+  // The whole payload contract: if the rows are not the question the student
+  // asked, `relaxed` says so. Only the first rung may answer with false.
+  const spec = campus([['B', 300, 4, { type: '5K' }]]);
+  for (const [needed, extra] of [[60, {}], [120, {}], [60, { maxWalk: 1 }]]) {
+    const out = askFor(needed, spec, extra);
+    if (!out.rows.length) continue;
+    assert.notEqual(out.rung, 'asked');
+    assert.equal(out.relaxed, true, `rung ${out.rung} handed back a clinic without saying so`);
+  }
+});
+
+test('a wet lab is never offered, however far down the ladder the answer comes from', () => {
+  // docs/research/facility-types.md excludes 2A outright: dissection labs,
+  // wet labs and the rooms where the cost of guessing wrong is somebody
+  // sitting down in one. The last rung is the one to check, because it has no
+  // radius, no duration and no preference left to drop.
+  const spec = campus([['B', 300, 6, { type: '2A' }]]);
+  for (const needed of [20, 60, 120]) {
+    const out = askFor(needed, spec);
+    assert.deepEqual(out.rows, [], `a 2A room reached the answer at need ${needed}`);
+  }
+  assert.equal(askFor(60, spec).rung, null);
+});
+
+test('an unrecognised facility type is excluded, not shown', () => {
+  // The type space is not closed. A code nobody has decoded is not evidence
+  // that the room is a room you can sit in.
+  const unknown = campus([['B', 300, 5, { type: 'ZZ9' }]]);
+  assert.deepEqual(askFor(60, unknown).rows, []);
+  const untyped = campus([['B', 300, 5, { type: null }]]);
+  assert.deepEqual(askFor(60, untyped).rows, []);
 });
 
 test('a shorter duration is a relaxed answer and says so', () => {

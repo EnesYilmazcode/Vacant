@@ -1,0 +1,16 @@
+{
+ "fetched": "2026-08-27",
+ "ics": {
+  "source": "https://mcmanning.github.io/ohio-state-ics/academic.ics",
+  "events": 489,
+  "bytes": 82545
+ },
+ "fiveYear": {
+  "source": "https://registrar.osu.edu/academic-calendar/academic-calendar-5-year-view-2023-2028/",
+  "slug": "academic-calendar-5-year-view"
+ },
+ "finals": {
+  "index": "https://registrar.osu.edu/staff-resources/class-catalog-and-space/final-exams-schedule/"
+ },
+ "note": "Vendored, never fetched at runtime. The ICS is a third-party regeneration of the Registrar calendar and is the cross-check, not the source. See DECISIONS.md."
+}

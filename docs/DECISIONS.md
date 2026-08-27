@@ -736,3 +736,514 @@ measured-or-guess comments in the config block and are not open in the same way:
 `PACKUP` is a policy backed by the 69.3% passing-period measurement, and the
 other two are labelled guesses that shift every row equally rather than
 reordering them.
+## 2026-08-27  The nine unplaceable bookings: refuse, do not recover ([#33](https://github.com/EnesYilmazcode/Vacant/issues/33))
+
+**Decided.** The weekday is not recoverable and we will not guess it. A booking
+that names a real room and a real clock window with no weekday now has that
+window blocked on **all seven days** of its session, and is listed separately in
+the index as `unplaceable` so a screen can say what it is. This reverses the
+"Known honesty gap" entry of 2026-08-26 above: Dreese Lab 280 no longer reads
+free during its own Summer labs.
+
+**Decided against three recovery paths, each killed by a measurement over all
+68,600 meetings in the three committed archives.**
+
+```
+standingMeetingPattern   non-null on 0 of the 47,490 no-weekday rows.
+                         Where it does exist it is not even a second opinion:
+                         it disagrees with the day flags on 135 of the 3,741
+                         rows carrying both. MTOF on a row flagged MTWRF,
+                         TR on a row flagged T.
+section.meetingDays      the empty string on all 40,452 sections in 1262 and
+                         1264, and absent from the 1268 harvest shape. One
+                         distinct value per term, and it is "".
+a sibling meeting        the strongest looking one, and the most wrong. The
+                         Denney 368 row has a sibling in the SAME section at
+                         the identical time and the identical dates carrying
+                         Friday, so the pair reads like one booking in two
+                         rooms. It is not. Of 161 same-section same-time
+                         same-dates multi-room groups in 1262, 60 put the two
+                         rooms on DIFFERENT days. Engineering 1182.01 is
+                         HI0308 on Monday and HI0224 on Thursday. Borrowing
+                         the sibling's day would be right about 63% of the
+                         time.
+```
+
+**Nine rows, four distinct bookings, two rooms.** Dreese Lab 280 carries four
+Summer 2026 CSE lab slots (9:10-10:05, 10:20-11:15, 11:30-12:25, 12:40-1:35),
+each appearing twice because CSE 2221/2231 are cross-listed with CSE 5022/5023.
+Denney 368 carries one Spring 2026 English 6768.01 seminar at 12:15-3:00. Autumn
+2026 has none: `noWeekdayTimed` is 0 across the whole 1268 harvest.
+
+**Seven days rather than Monday to Friday.** Nothing in these rows says the
+booking is on a weekday, and "weekend classes are rare" is a fact about the
+archive, not about this row. Measured weekend share of day-expanded blocks:
+0.12% in 1268, 0.22% in 1262, 3.31% in 1264. Blocking the weekend costs Dreese
+280 two days it was probably free; not blocking it risks the one answer this
+project promises never to give.
+
+**Over-blocking is the acceptable error and under-blocking is not.** Blocking
+Monday costs a student a room that was free. Leaving Wednesday open walks them
+into a CSE lab. Only one of those is the failure the README is built on calling
+out in other apps.
+
+**The index says which blocks these are.** A room carrying them ships
+`unplaceable: [[start, end, session], ...]` beside its `busy` list. A screen that
+reads it can say "a class meets here at this time, the day is not published". A
+screen that ignores it still shows the room as busy, which is the safe fallback.
+Nothing about this needs an app change to stop being a lie.
+
+**Bounded.** `MAX_UNPLACEABLE = 20` in `build-index.mjs` refuses the build
+outright above twenty such bookings, because at that scale seven-day blocking
+would delete the index rather than protect it. Measured today: 0 in 1268, 4 in
+1264, 1 in 1262. `noWeekdayTimed` is now printed on the funnel line as the
+canary; a jump means the upstream shape moved and the day may have become
+recoverable, which is when #33 gets reopened.
+
+**Cost, measured.** Rebuilding 1268 changes nothing but the schema string: 871
+rooms, 12,168 busy blocks and 1,026,283 busy minutes, identical before and
+after. Rebuilding Summer 1264 from the archive turns DL0280 from 0 busy blocks
+into 28, four slots on seven days, and touches no other room.
+
+---
+
+## 2026-08-27  The room safety filter, and what `ga: false` means ([#9](https://github.com/EnesYilmazcode/Vacant/issues/9))
+
+**Decided.** Two sources, one filter and one flag. The room's own `facilityType`
+decides whether the room ships at all, from an allow list in
+`scripts/lib/room-safety.mjs`. The Registrar's general assignment list decides
+nothing; it rides along as `ga: true|false` so the ranking can prefer a centrally
+scheduled room without hiding a departmental one.
+
+**Measured on the full Autumn 2026 harvest.** The research sampled 633 rooms; the
+harvest has 871, so every number below is larger than the issue's estimate and
+these are the real ones.
+
+```
+                   rooms  buildings  busy minutes
+before the filter    871         96     1,026,283
+shown                486         70       651,663
+secondary             95         45        57,185
+dropped by type      250         58       280,129   27.3% of the term's busy time
+dropped, restricted   40          8
+shipped              581         78       708,848
+```
+
+**The three Wooster rooms cost nothing to name and are named anyway.** `WSB300`,
+`WAB0130` and `SY0203` report campus Columbus and location CS-COLMBUS while
+sitting 126 km away. All three resolve to buildings 8002, 549 and 410, none of
+which is in `data/buildings.json`, so the funnel's building join already dropped
+them before the filter ran and `OFF_CAMPUS` catches zero rooms today. It stays,
+because the join that saves us is a side effect of a geocoding radius and this is
+the statement of intent.
+
+**The parked decision in BACKLOG.md is implemented as written.** A room that
+passes the type filter and is absent from the Registrar list ships, ranked below
+general assignment rooms, carrying `ga: false`. **255 of the 581 shipped rooms are
+in that state, 43.9%.** Hiding them would delete nearly half the inventory,
+including most of Enarson and Hamilton. They are also the rooms most likely to be
+departmentally controlled, which is what the flag is for. The app ranks on it; it
+never filters on it. Reversing this needs a ranking change, not a rebuild.
+
+**What the app does with the flag, so it is written down before the result screen
+renders it.** `ga: true` ranks above `ga: false` at equal walking distance and
+equal free time. `ga: false` gets a one-word label on the row, not a paragraph,
+and never a hedge like "usually open". Neither value is ever a reason to drop a
+room or to claim anything about the door.
+
+**All 327 general assignment rooms appear in the harvest.** The research's "69 of
+them never appeared in any sample" was an artifact of sampling 40 subjects. In
+the full harvest the number is 0. That kills one of the two arguments for the
+multi-term union in #30 before the spike starts.
+
+**The room type words ship in the index, and the app keeps no copy.** 486 rooms
+are `vis: "shown"` and 95 are `vis: "secondary"`. The app had its own five-entry
+type table covering exactly the shown codes, so all 95 secondary rooms rendered
+with no type word at all: a conference room, a computer lab and a lecture hall
+looked like the same row. The vocabulary now lives beside the allow list in
+`scripts/lib/room-safety.mjs` and ships as `types` in the index, so one file
+decides both what a room is and what it may be called.
+
+Ten of the eleven visible codes have a word. Everything past `SMNR` comes from
+Roomix's compiled bundle, which carries the Registrar's own decode table for 23
+of the 28 codes in the harvest; `docs/research/peer-check-ui.md` has the two
+greps that recovered it. `5C` is not in that table, nothing else decodes it, and
+its two rooms ship with no word rather than an invented one.
+
+**One room where the two sources point opposite ways.** `CM0100`, Campbell Hall
+100, is on the Registrar's Autumn 2026 general assignment list and reports
+`facilityType: 5L`, which the allow list hides. It stays hidden this term. Ranking
+GA membership over the type table would open the whole hidden set to any room the
+Registrar happens to list, and 5L's other room is Fisher Hall 700 at 9 seats. The
+build prints the conflict on every run so it cannot go quiet, and it is the
+concrete case in `docs/registrar-room-type-key-email.md`.
+
+**The allow list does not need a per-term refresh, and this was measured rather
+than assumed.** Diffing `facilityType`, `facilityCapacity`, `buildingCode` and
+`facilityGroup` across 1262, 1264 and 1268 for the 798 `facilityId` values present
+in two or more terms:
+
+```
+type changed across terms:  0
+cap changed across terms:   0
+buildingCode changed:       0
+facilityGroup changed:      0
+```
+
+Zero, on every field, over three terms and 16 months. The facility record is
+stable and a room re-typed after a renovation has not happened yet. Re-run the
+diff when a fourth term lands; do not schedule it.
+
+**One new code the research never saw.** `6E`, one room, Hagerty Hall 335. It is
+hidden, like everything undecoded, and it is listed in `KNOWN_HIDDEN` so the
+build's "new facilityType" line stays silent until something genuinely new turns
+up.
+
+**Dropping a room can strand a session.** Autumn 2026's 7W1 window 2026-08-24 to
+2026-10-09 belongs entirely to nine LAW sections in Drinko Hall, which is a
+restricted building, so after the filter no busy tuple pointed at it. Sessions
+with no tuple are now pruned and the rest renumbered: 10 sessions became 7. This
+matters because `instruction` is min and max over the session list, so a stranded
+session stretches the term the app thinks it is in.
+
+**The map keeps buildings the index no longer ships.** 15 of `campus.json`'s 86
+keyed footprints now host classes only in rooms the filter refuses: the Adventure
+Recreation Center's classes are all in a climbing wall, Ohio Stadium's in a
+meeting room, Drinko's in the law school. They stay drawn, because the map is
+context and re-anchoring its bounding box on 78 buildings instead of 96 would move
+every coordinate in a file the app already renders. `buildings.test.mjs` was
+changed to assert what actually matters: a keyed code is a real building, and a
+shipped room inside the map has a footprint to point at.
+
+**Decided against dropping a room for `facilityCapacity === 0`.** The field has no
+null: 0 means unknown and 998 means online. 32 real rooms report 0, seven of them
+ordinary Campbell Hall classrooms that would silently vanish.
+
+---
+
+## 2026-08-27  The vendored ICS is wrong outside Autumn, so the Registrar ships ([#11](https://github.com/EnesYilmazcode/Vacant/issues/11))
+
+**Decided against the plan in the issue.** #11 says vendor
+`mcmanning.github.io/ohio-state-ics/academic.ics`, match `SUMMARY` on `offices
+closed` and `offices open`, and cross-check against the Registrar's five-year
+view. The ICS is vendored and it is still the cross-check, but **the Registrar's
+five-year table is what ships**, because the ICS is wrong.
+
+**Measured 2026-08-27 by diffing both sources across three terms.**
+
+```
+term          in-window disagreements
+AUTUMN 2026            0     all seven closed days identical
+SPRING 2026            2     ICS puts MLK Day on Sun Jan 18; Registrar Mon Jan 19
+SUMMER 2026            6     every holiday wrong:
+                             Memorial Day    ICS Sun May 31   Registrar Mon May 25
+                             Juneteenth      ICS Thu Jun 18   Registrar Fri Jun 19
+                             Independence    ICS Sun Jul 5    Registrar Fri Jul 3
+```
+
+Look at the weekdays. The ICS lands Spring and Summer holidays on Sundays and
+Saturdays, year after year, back to 2021. A university does not close its offices
+for Memorial Day on a Sunday. The generator is mangling the Spring and Summer
+half of every academic year and getting Autumn right.
+
+**The worst one is the Summer exam window.** The ICS says finals run 2026-08-02
+to 2026-08-04. The Registrar says August 3 to 5. August 2 is a Sunday. Trusting
+the ICS would have marked the real last exam day, Wednesday August 5, as an
+ordinary teaching day, which is the precise failure #11 exists to prevent.
+
+The issue anticipated one disagreement, the missing Dec 28-31 block outside the
+term, and concluded the diff should refuse rather than merge. That conclusion was
+right for a much bigger reason than the one it was written for.
+
+**Corrected the same day. A veto held by a source measured wrong is not a check,
+it is a wall.** The first cut let the ICS refuse the whole build on any
+disagreement, which meant Spring and Summer exited 1 before writing anything.
+Two of the three seasons had no path to a shipped index, on the strength of a
+file this document had already called wrong.
+
+The measurement that fixes it, run against all fifteen columns of the five-year
+view rather than the three terms on disk:
+
+```
+season   columns  in-window disagreements  exam window
+AUTUMN   2023-27  0, every year            identical, every year
+SPRING   2024-28  2, every year            1 to 6 days off, every year
+SUMMER   2024-28  2, 4, 6, 6, 2            1 to 6 days off, every year
+```
+
+Every one of those 30 Spring and Summer lines is a **pair**. The ICS names the
+right holiday and dates it wrong, by one to six days: Memorial Day on Sunday May
+31, Juneteenth on Thursday June 18, MLK Day on Sunday January 18. Nothing is left
+over on any column.
+
+So a slid holiday is the known defect. It is printed, the Registrar's date ships,
+and the build carries on. A disagreement the slide does not explain still kills
+the build, in every season, and so does two sources putting the same day into two
+different states. Autumn's tolerance is 0 because it has never needed one. The
+table is `ICS_SHIFT_DAYS` in `build-index.mjs` and `calendar.test.mjs` walks all
+fifteen columns, so the day the ICS invents a holiday instead of moving one, the
+test says so before the build does.
+
+**Three sources for the exam window, and all three must agree.** The finals page
+ships because it is the only one carrying the time-of-day matrix. The five-year
+view and the ICS each get a veto. Autumn 2026: all three say 2026-12-11 to
+2026-12-17.
+
+**The teaching window is the Registrar's, not the harvest's.** `termWindow` reads
+"classes begin" and "Last day of regularly scheduled" out of the five-year table
+and gets 2026-08-25 to 2026-12-09. Taking the min and max of harvested meeting
+dates gives 2026-08-10 to 2026-12-11 instead, because Anatomy 6511 in the medical
+school runs August 10 to December 11 and Pharmacy 7110 to December 10. The
+professional colleges keep their own calendars. Using their dates would stretch
+Autumn 2026 straight through the exam window it is supposed to end before, and
+`exams.start > last day of instruction` would fail on a true statement.
+
+Those sessions still exist and the build prints a warning naming them, because
+their rooms really are busy during finals week while everyone else's are not.
+
+**Spring Break does not ship, and that is a refusal rather than an oversight.**
+The five-year view labels those five rows "Spring Break" and nothing else. No
+"no classes", no "offices". Every other break row says which. So Spring 2026
+parses to exactly ONE closed day, Martin Luther King Jr. Day, and March 16 to 20
+will read busy in a term where nothing meets.
+
+That is wrong in the safe direction: the app hides rooms that were free rather
+than offering rooms that were not. Calling an unlabelled row `no-classes` would
+free every room on campus for a week on the strength of two words in a table
+cell, which is the guess-dressed-as-a-fact this project refuses to make. Fixing
+it properly means a second source for Spring Break, not a looser matcher.
+`CLOSED_DAY_BOUNDS[2]` is `[1, 3]` because of this and will move when it is
+fixed.
+
+**Closed-day bounds, both sides, by season digit.** A parser that quietly returns
+nothing looks exactly like a term with no holidays, so the count is bounded above
+as well as below. Digit 8 is `[5, 9]` against a measured 7. Digit 4 is `[1, 5]`
+against a measured 3. Digit 2 is `[1, 3]` against a measured 1. An unknown digit
+refuses.
+
+**What ships in `rooms-1268.json`.**
+
+```json
+"teaching": ["2026-08-25", "2026-12-09"],
+"closed": {
+  "2026-09-07": {"state":"offices-closed","name":"Labor Day"},
+  "2026-10-15": {"state":"no-classes","name":"Autumn Break"},
+  "2026-10-16": {"state":"no-classes","name":"Autumn Break"},
+  "2026-11-11": {"state":"offices-closed","name":"Veterans Day observed"},
+  "2026-11-25": {"state":"no-classes","name":"Thanksgiving Break begins"},
+  "2026-11-26": {"state":"offices-closed","name":"Thanksgiving Day"},
+  "2026-11-27": {"state":"offices-closed","name":"Indigenous Peoples' Day/Columbus Day observed"}
+},
+"exams": {"start":"2026-12-11","end":"2026-12-17"},
+"lowConfidence": [{"start":"2026-10-13","end":"2026-10-14","reason":"session-1-finals"}]
+```
+
+`offices-closed` and `no-classes` are not shades of one thing and the app must
+not render them as one. October 15 is Autumn Break with the doors open: no
+classes, free rooms, the best day of the term for this app. September 7 is Labor
+Day: the same rooms behind locked doors.
+
+**`lowConfidence` is October 13 to 14, not the 13 to 16 the issue sketched.**
+October 15 and 16 are already in `closed` as `no-classes`, which says everything
+there is to say about them. Repeating them under a `session-1-finals` label would
+name them wrongly. The two days that need the flag are the ones where the grid
+UNDERSTATES: full-term classes meet normally on the 13th and 14th while the
+seven-week rooms hold exams that appear in no busy list.
+
+**Nothing fetches at runtime.** `scripts/fetch-calendar.mjs` vendors the ICS to
+`data/vendor/academic.ics` with `academic.meta.json` beside it, and caches the
+five-year view and the finals pages under `data/cache/registrar/`. The build
+reads files.
+
+**And it names no term.** The first cut hardcoded `AUTUMN 2026` and a two-name
+list of finals pages, in the one script whose header says to run it when a term
+rolls over. It would have refused a healthy five-year view the moment that column
+scrolled off the page, with a wrong reason. Both now come off the page: the
+column headers give all fifteen terms, and the finals index gives every page
+whose slug carries a season and a year.
+
+That fixed a live gap rather than a future one. `summer-2026-finals-schedule` was
+on the Registrar's index for the whole term and was never cached, so the Summer
+build fell back to the five-year view with no third source to check it. Fetching
+it needed one more thing: the Summer page writes its dates as "Monday, August 3"
+and "Monday August 3, 2026" where the Autumn page writes "Monday Dec 14" and
+"Monday 12/14", so it parsed to zero days, and a finals page that parses to
+nothing kills the build. `parseFinalsWindow` reads all four spellings now. All
+three Summer sources agree on 2026-08-03 to 2026-08-05.
+
+**`instruction` in `current.json` is the Registrar's teaching window.** This is
+the field `js/app.js` reads to decide whether it may answer at all, and it was
+the min and max of harvested meeting dates: 2026-08-10 to 2026-12-11. December 11
+is exactly `exams.start`. So on the morning of the first final the app passed its
+own staleness gate and offered Independence Hall 100, 727 seats, as free until
+10:50 pm. It now reads 2026-08-25 to 2026-12-09, the same pair as the index's
+`teaching`, and the build prints the harvested span beside it so the divergence
+stays visible.
+
+**`closed` ships keyed by date, and each day carries its name.** A list makes a
+reader that forgot it was a list return `undefined`, and `undefined` here renders
+as an ordinary day with rooms in it. A map cannot fail that way. The name is the
+publisher's own row label, so a refusal can say "Thanksgiving Day, campus is
+closed", which is a fact a student can check, rather than "campus is closed
+today", which is the app asking to be believed.
+
+---
+
+## 2026-08-27  Refuse on busy blocks and minutes, and delete the room-count floor ([#10](https://github.com/EnesYilmazcode/Vacant/issues/10))
+
+**Decided.** `scripts/guards.mjs` is Finder's file verbatim with two changes:
+`MAX_DROP` is 0.05 rather than 0.1, and a four-line provenance comment naming
+`EnesYilmazcode/Finder` (MIT) sits on top. Nothing else. Vacant's own thresholds
+live in `scripts/lib/index-guards.mjs` and are keyed on **busy blocks and busy
+minutes**.
+
+**The room-count floor is gone.** `MIN_ROOMS = 150` was deleted rather than
+retuned. It was the wrong metric and it fired first, which meant it pre-empted
+the guards that do work. Proved by damaging a real harvest: dropping every
+fourth roomed meeting from the Autumn 1268 harvest moves
+
+```
+busy blocks    9,561 -> 7,437     down 22.2%   REFUSED
+busy minutes 708,848 -> 551,903   down 22.1%   REFUSED
+rooms            581 -> 564       down  2.9%   would have shipped
+buildings         78 -> 77        down  1.3%   would have shipped
+```
+
+A 2.9% room drop clears Finder's 10% and clears the new 5% too. The grid it would
+have shipped invents 156,945 minutes of free time. That is the failure this
+project has and no room count catches it.
+
+**First full harvest, per term, measured 2026-08-27 on the committed archives,
+after the safety filter.**
+
+```
+term  season  rooms  buildings  blocks  busy minutes  weekday balance
+1262  Spring    607         75   9,342       718,466             0.67
+1264  Summer    142         39     668        93,025             0.82
+1268  Autumn    581         78   9,561       708,848             0.59
+```
+
+Floors are set to about 60% of those and are marked PROVISIONAL in the file.
+Autumn `{349, 47, 5700, 425000}`, Spring `{364, 45, 5600, 431000}`, Summer
+`{85, 23, 400, 55000}`. Summer needs its own row: it is a seventh of Autumn by
+busy time, so one floor for both is either useless in Autumn or impossible in
+Summer. Floors only bite on a term's first run; from run two the
+previous-committed comparison is far sharper.
+
+**The true campus room count is 871, and none of the six candidates was right.**
+The full 1268 harvest holds 877 distinct real `facilityId` values; 871 sit in a
+building `data/buildings.json` can place; 581 survive the safety filter and 486
+of those are ordinary classrooms. The research's candidates were 422, 486, 562,
+625, 633 and Roomix's 1,067. 486 matches the shown count by coincidence, not by
+agreement: it was an estimate of show-by-default rooms in a 633-room sample and
+lands on the same number for a different population. Roomix's 1,067 is roughly
+871 plus the 250 we deliberately refuse plus satellite rooms.
+
+**`weekdayBalance` is Monday to Friday over busy MINUTES.** Measured 0.59 for
+1268, 0.67 for 1262, 0.82 for 1264, all clear of the 0.30 refusal. Seven-day
+would divide by a near-zero weekend every week: Autumn 1268 has 1,800 Saturday
+minutes against 166,895 on Tuesday.
+
+**`timeResidue` is 0.002 against a measured 0.** Zero of 34,244 clock strings
+across the three archives fail `toMinutes`. The denominator counts only rows that
+carry a clock STRING; a meeting with no time is a meeting with no time, not a
+parse failure, and folding those in would have put Summer at 0.0075 and refused a
+healthy build. Rewriting 200 start times to `08h00` on a real harvest fires it at
+0.93% and stops the run.
+
+**The unresolved-building-code guard needs its allow list or it is noise.** Six
+codes are named the harvest names and `data/buildings.json` will never hold: 118
+Stone Laboratory on Lake Erie at 185 km, and 404, 405, 410, 414, 549 and 8002 at
+the OARDC Wooster campus 126 km out. Gerlaugh Hall and Williams Hall are real
+teaching buildings with real classrooms and they are correctly dropped on
+distance. Without the list this fires on every build, which trains you to ignore
+it. A code NOT in the list means the geo layer went stale and real Columbus rooms
+are vanishing, and that is fatal.
+
+**The PII guard runs on the serialized string and `FORCE_WRITE=1` cannot clear
+it.** Verified by putting `buckeye.1@osu.edu` into `meeting.room`, which really
+does ship as `room.n`: `FORCE_WRITE=1` exits 1 and writes nothing. The refusal
+names the character offset and never reprints the address.
+
+Worth recording that the first attempt at this proof failed in a good way. Adding
+`instructors` back onto a harvested meeting did NOT trip the guard, because
+`invert` builds each room record from named fields and never copies the array.
+The strip at the parse boundary is not the only thing standing between an address
+and the index; the inversion is a second wall.
+
+**NOT READY versus COLLAPSE, both demonstrated on real data.** A term with no
+committed file that falls short of its floors prints the reason, writes nothing
+and exits 0, so a workflow building several terms carries on. A term that IS
+committed and now falls short exits 1 and leaves the committed file byte for byte
+unchanged, which was checked by md5.
+
+**`FORCE_WRITE=1` over a collapsed harvest is unrecoverable and the refusal says
+so in full.** A term deleted from `searchableTermsV2` returns zero sections
+forever. 1258 already does. The committed file is the only copy of that term's
+grid that will ever exist, so the guard is the backup.
+
+**Not done here: the `workflow_dispatch` input description.** `.github/` does not
+exist on this branch; the workflow is #12 and belongs to whoever writes it. The
+wording it needs, so it does not have to be reinvented:
+
+> `force_write`: Ship a harvest the guards refused. Only clears the forceable
+> refusals, never a lost room and never the PII scan. A forced write over a
+> collapsed harvest is UNRECOVERABLE: a term that has left searchableTermsV2
+> returns zero sections forever, so the committed file is the only copy of that
+> grid anywhere. Read the refusal in full before you set this.
+
+---
+
+## 2026-08-27  Multi-term room union: DROP ([#30](https://github.com/EnesYilmazcode/Vacant/issues/30))
+
+**DROP.** One word, as the issue asked for.
+
+**Zero strong positives out of 95 carried-forward rooms.** Running the funnel over
+all three committed terms and diffing room identity:
+
+```
+1262  884 rooms through the funnel
+1264  206
+1268  871
+
+carried forward (in 1262 or 1264, absent from 1268)   95
+  strong  shown type AND on the GA list                0
+  weak    shown type, off the GA list                 49
+  noise   everything else                             46
+```
+
+Beside Roomix's 190 of 1,067 (17.8%), ours is 95 of 966 (9.8%) from two extra
+terms rather than a whole index. Their number reads as cross-term residue in
+their own file, which was the reading this spike existed to test.
+
+**The cheaper half answers outright: all 327 Registrar general assignment rooms
+appear in all three terms.** Not one is missing from 1268, let alone from all
+three. There is no such thing as an unscheduled general assignment room, so the
+union has nothing to reach that one term plus the Registrar list does not already
+have. The research's "69 never appeared in any sample" was a 40-subject sampling
+artifact.
+
+**The 49 weak positives are not study rooms.** 33 of them are Knowlton Hall
+studio bays, `KN0310A` through `KN0390C`, the architecture desk clusters, typed
+`1B` because they are rooms and absent from Autumn because studio sections are
+scheduled term by term. The other 16 are ones and twos across thirteen buildings,
+including Drinko Hall, which is already restricted.
+
+**No rooms were visited, because the spike's own gate is "walk to three strong
+positives" and there are none.** If this is ever reopened the visit list starts
+at Knowlton 310A.
+
+**`searchableTermsV2` on the day, 2026-08-27.** 1262 Spring 2026 endDate
+2026-08-31, 1264 Summer 2026 endDate 2027-01-01, 1268 Autumn 2026 endDate
+2027-01-31. Three terms searchable, and 1262 leaves in four days. The lookback
+ceiling is whatever is already archived, permanently.
+
+**Why the cost of a false positive is not symmetric.** A carried room ships with
+an empty busy list, reads free at every minute of every day forever, and wins
+every ranking tie-break, so it sits at the top of the list until somebody
+notices. A room can be missing from a term because it was renovated, repurposed
+or demolished, and nothing in the data separates that from a quiet classroom.
+
+Measurement in `docs/research/spike-unscheduled-rooms.md`, reproducible offline
+with `node scripts/spike-carried-rooms.mjs`. The union line is deleted from
+BACKLOG.md rather than left open.

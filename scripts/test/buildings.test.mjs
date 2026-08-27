@@ -234,12 +234,26 @@ test('the committed map keys its footprints by building code', () => {
     'buildingCode is not aligned with layers.building, so every code after a gap is wrong',
   );
 
-  const rooms = JSON.parse(readFileSync(roomsPath, 'utf8')).rooms;
-  const codes = new Set(Object.values(rooms).map((r) => r.b));
+  // A keyed code has to be a building we can name, in the padded form room.b
+  // uses. It does NOT have to appear in the room index: since the safety filter
+  // landed, 15 of the 86 keyed buildings host classes only in rooms the index
+  // refuses to ship. The Adventure Recreation Center's classes are all in a
+  // climbing wall, Ohio Stadium's are in a meeting room. Those buildings are
+  // still on the map as context, which is what the map is for.
+  const buildings = JSON.parse(readFileSync(new URL('../../data/buildings.json', import.meta.url), 'utf8')).buildings;
   const keyed = c.buildingCode.filter(Boolean);
   for (const code of keyed) {
-    assert.ok(codes.has(code), `${code} is keyed but hosts no class this term`);
+    assert.ok(buildings[code], `${code} is keyed but is not in buildings.json`);
     assert.match(code, /^\d{3,}$/, `${code} is not in the padded form room.b uses`);
+  }
+  // The direction that matters for the app: a room in the index that is on the
+  // map has a footprint to point at.
+  const rooms = JSON.parse(readFileSync(roomsPath, 'utf8')).rooms;
+  const onMap = new Set(keyed);
+  for (const [id, r] of Object.entries(rooms)) {
+    const km = buildings[r.b]?.km_from_oval;
+    if (km == null || km > 2) continue;
+    assert.ok(onMap.has(r.b), `${id} is in building ${r.b}, inside the map, with no footprint`);
   }
   assert.ok(keyed.length >= 80, `only ${keyed.length} class-hosting buildings resolve to a polygon`);
 });

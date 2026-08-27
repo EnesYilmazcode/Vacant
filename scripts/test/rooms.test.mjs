@@ -310,11 +310,21 @@ test('the index carries no own scaffolding', () => {
   assert.equal(JSON.stringify(d).match(/"own"/), null);
 });
 
-test('current.json starts no earlier than the first real booking', () => {
+test('current.json gates on the published term, and it ends before finals start', () => {
+  // The bug this guards. `instruction` is the field js/app.js reads to decide
+  // whether it may answer at all, and it used to be the min and max of
+  // harvested meeting dates. That runs to 2026-12-11, because Anatomy 6511 and
+  // Pharmacy 7110 keep the medical school's calendar, and 2026-12-11 is exactly
+  // exams.start. So on the morning of the first final the app passed its own
+  // staleness gate and offered Independence Hall 100, 727 seats, as free until
+  // 10:50 pm.
   const d = readIndex();
   const path = new URL('../../data/current.json', import.meta.url);
   if (!d || !existsSync(path)) return;
   const current = JSON.parse(readFileSync(path, 'utf8'));
-  const earliest = d.sessions.map(([s]) => s).sort()[0];
-  assert.equal(current.instruction[0], earliest);
+  assert.deepEqual(current.instruction, d.teaching);
+  assert.ok(
+    current.instruction[1] < d.exams.start,
+    `the gate runs to ${current.instruction[1]} and finals start ${d.exams.start}`,
+  );
 });

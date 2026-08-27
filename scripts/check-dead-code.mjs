@@ -16,6 +16,13 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SKIP = new Set(['node_modules', '.git', 'data', 'docs', 'scratch']);
 
+// Files copied verbatim from another repo, where an unused export is the point.
+// scripts/guards.mjs is EnesYilmazcode/Finder's file byte for byte except one
+// constant, so that the next port is a diff rather than a merge by hand.
+// termListRefusal and subjectResidueRefusal are Finder's and Vacant does not
+// call them; deleting them here would cost more than the two lines save.
+const VERBATIM = new Set(['scripts/guards.mjs']);
+
 function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
     if (SKIP.has(name)) continue;
@@ -56,6 +63,7 @@ const findings = [];
 
 for (const [file, src] of sources) {
   const rel = relative(ROOT, file).replace(/\\/g, '/');
+  if (VERBATIM.has(rel)) continue;
   const isTest = rel.includes('/test/');
 
   for (const m of src.matchAll(/import\s*\{([^}]*)\}\s*from/g)) {

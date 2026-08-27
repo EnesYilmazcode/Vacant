@@ -1,0 +1,19 @@
+{
+ "_meta": {
+  "pulled": "2026-08-27",
+  "reviewed": "2026-08-27",
+  "source": "hand-maintained, seeded from docs/research/facility-types.md",
+  "why": "facilityType describes the room, not the front door. These buildings hold ordinary classrooms that a random undergraduate should not be routed into, so the rooms are absent from the shipped index rather than ranked low. This is a judgement about access, not a measurement, which is why it ships as its own dated file the app can surface and a later term can revise without a rebuild.",
+  "measured": "40 rooms in the Autumn 2026 harvest pass the facilityType filter inside these buildings: 34 shown and 6 secondary. The three Wooster rooms named in room-safety.mjs OFF_CAMPUS are separate and are already dropped by the building join."
+ },
+ "buildings": {
+  "306": { "name": "Atwell Hall", "why": "health and rehabilitation sciences teaching space", "rooms": 10 },
+  "049": { "name": "Drinko Hall", "why": "Moritz College of Law, and DI0455 is a law clinic", "rooms": 15 },
+  "024": { "name": "Postle Hall", "why": "College of Dentistry, and PH3089A is the dental hygiene clinic", "rooms": 4 },
+  "275": { "name": "Newton Hall", "why": "College of Pharmacy", "rooms": 3 },
+  "281": { "name": "Meiling Hall", "why": "College of Medicine", "rooms": 2 },
+  "266": { "name": "Riffe Building", "why": "pharmacy and health sciences, badge controlled", "rooms": 2 },
+  "271": { "name": "Lincoln Tower", "why": "residence hall, not open teaching space", "rooms": 2 },
+  "222": { "name": "Heffner Wetland Research and Education", "why": "field research station 2.2 km out, open by arrangement", "rooms": 2 }
+ }
+}

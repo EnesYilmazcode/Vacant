@@ -609,6 +609,18 @@ export function query(rooms, opts) {
     ms: 0,
   };
 
+  // Wall-clock minutes since local midnight, and nothing else. A value outside
+  // that range is an epoch subtraction, which is a whole hour wrong for the rest
+  // of the day on the two Sundays a year Ohio changes its clocks. Computing an
+  // answer from it would be confidently wrong rather than usefully wrong.
+  if (!Number.isFinite(now) || now < 0 || now > 1440) {
+    return finish({
+      ...base,
+      refused: 'clock',
+      reason: 'Vacant could not read the time on this device, so it cannot say what is free.',
+    }, started);
+  }
+
   // Two calendar facts the class schedule cannot see, and they fail in opposite
   // directions. During the exam window the API's busy grid is empty for every
   // room while 200 people sit a final in it, and OSU publishes the exam room
@@ -641,6 +653,17 @@ export function query(rooms, opts) {
     ...opts, active, dayStart, dayEnd, classesSuspended: !!calendar?.noClasses,
   });
   base.counts = { rooms: rooms.length, considered: candidates.length, dropped };
+
+  // Not knowing where the student is standing is a different failure from there
+  // being nothing free, and it has a different fix. Collapsing the two would
+  // send someone home when the geolocation fix simply never resolved.
+  if (rooms.length && dropped.badOrigin === rooms.length) {
+    return finish({
+      ...base,
+      refused: 'location',
+      reason: 'Vacant does not know where you are, so it cannot say what is nearby.',
+    }, started);
+  }
 
   const rung = (need, { mode, types, radius, lookahead = LOOKAHEAD, floor = 0, openNow } = {}) => {
     const out = [];

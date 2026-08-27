@@ -1195,3 +1195,35 @@ test('the payload reports how long it took, without a Date to do it', () => {
   assert.equal(typeof out.ms, 'number');
   assert.ok(out.ms >= 0);
 });
+
+test('a clock reading outside a wall-clock day is refused, not computed from', () => {
+  // 1500 is what an epoch subtraction gives on the Sunday Ohio falls back, and
+  // it is an hour wrong for the rest of that day. Every busy interval in the
+  // index is wall clock, so there is nothing honest to do with it.
+  const spec = campus([['A', 300, 3]]);
+  for (const now of [1500, -1, NaN, undefined]) {
+    const out = query(spec.rooms, {
+      origin: ORIGIN, now, day: TUE, needed: 60, buildings: spec.buildings, hoursFor: OPEN_ALL_DAY,
+    });
+    assert.equal(out.refused, 'clock', String(now));
+    assert.deepEqual(out.rows, []);
+  }
+  assert.equal(askFor(60, spec).refused, null, 'a real clock is fine');
+});
+
+test('not knowing where you are is a different answer from nothing being free', () => {
+  const spec = campus([['A', 300, 3]]);
+  const lost = query(spec.rooms, {
+    origin: { lat: NaN, lon: NaN }, now: at(12), day: TUE, needed: 60,
+    buildings: spec.buildings, hoursFor: OPEN_ALL_DAY,
+  });
+  assert.equal(lost.refused, 'location');
+  assert.match(lost.reason, /where you are/);
+  assert.deepEqual(lost.rows, []);
+
+  // A campus that is genuinely booked solid says something else entirely.
+  const busy = campus([['A', 300, 3, { busy: [[TUE, DAY_START, DAY_END]] }]]);
+  const nothing = askFor(60, busy);
+  assert.equal(nothing.refused, null);
+  assert.notEqual(nothing.reason, lost.reason);
+});

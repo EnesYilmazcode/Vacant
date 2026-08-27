@@ -12,11 +12,14 @@
 //
 //   CHROME="/path/to/chrome" node scripts/shoot.mjs
 //
-// Two things make the frames the same every run, and both are load-bearing.
+// Three things make the frames the same every run, and all three are
+// load-bearing.
 //
-// The clock is pinned. Every row prints "till 3:00pm" off Date.now(), so an
-// unpinned capture differs on every run and the committed images turn into
-// diff noise. The page gets a frozen Date and a forced Eastern timezone.
+// The wall clock is pinned, because every row prints "till 3:00pm" off
+// Date.now(). The animation clock is pinned with it, because the flyover camera
+// runs off performance.now() and the frame timestamp, which Date does not
+// reach; scripts/lib/pinned-clock.mjs holds both and says what it cost to learn
+// that. The page also gets a forced Eastern timezone.
 //
 // The location is pinned too, to the Thompson Library steps in the middle of
 // the Oval, so the walk times and the ranking are the same on any machine.
@@ -32,6 +35,8 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { pinnedClockSource } from './lib/pinned-clock.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'docs', 'media');
@@ -67,6 +72,21 @@ const UA =
   '(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 
 const CHECK_ONLY = process.argv.includes('--check');
+
+// One defect the frames are allowed to carry out of the door.
+//
+// It lives in js/app.js, which this script photographs and does not own, and
+// refusing to write over it would stop the README being redrawn without moving
+// the bug an inch. So it is named here instead, printed on every run, and it
+// blocks nothing. Delete the entry with the fix, and the check underneath turns
+// back into a gate.
+const CARRIED = new Map([
+  [
+    'facts',
+    'the room screen joins its facts with no separator, so they render run ' +
+      'together: github.com/EnesYilmazcode/Vacant/issues/59',
+  ],
+]);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MIME = {
@@ -241,19 +261,6 @@ async function serve(root) {
 
 // --------------------------------------------------------------------- page
 
-const FREEZE = (ms) => `(() => {
-  const Real = Date;
-  function Frozen(...a) {
-    if (!new.target) return new Real(${ms}).toString();
-    return a.length ? new Real(...a) : new Real(${ms});
-  }
-  Frozen.prototype = Real.prototype;
-  Frozen.now = () => ${ms};
-  Frozen.parse = Real.parse;
-  Frozen.UTC = Real.UTC;
-  globalThis.Date = Frozen;
-})();`;
-
 class Phone {
   constructor(dt, sessionId, origin) {
     this.dt = dt;
@@ -340,6 +347,39 @@ class Phone {
     );
   }
 
+  // The map is a canvas, so whether it has drawn is a question about pixels
+  // rather than about the DOM. Asking the canvas answers it before the frame is
+  // taken; asking the screenshot only ever answers it afterwards.
+  async painted() {
+    await this.waitFor(
+      `(() => {
+        const c = document.getElementById('map');
+        if (!c || !c.width) return false;
+        const o = new OffscreenCanvas(48, 48);
+        const g = o.getContext('2d', { willReadFrequently: true });
+        g.drawImage(c, 0, 0, 48, 48);
+        const px = g.getImageData(0, 0, 48, 48).data;
+        const seen = new Set();
+        for (let i = 0; i < px.length; i += 4) seen.add((px[i] << 16) | (px[i + 1] << 8) | px[i + 2]);
+        return seen.size > 8;
+      })()`,
+      'the basemap to paint',
+    );
+  }
+
+  // A cold start, waited out rather than slept through. After `ready` the only
+  // thing left moving on the question screen is the "finding campus" line
+  // fading out, which is 300ms of CSS on one element.
+  async boot(url) {
+    await this.call('Page.navigate', { url });
+    await this.waitFor(`document.getElementById('ask').classList.contains('ready')`, 'the app to boot');
+    await this.painted();
+    await this.waitFor(
+      `getComputedStyle(document.querySelector('#ask .loading')).opacity === '0'`,
+      'the loading line to fade out',
+    );
+  }
+
   async capture() {
     const r = await this.call('Page.captureScreenshot', {
       format: 'webp',
@@ -376,6 +416,55 @@ async function inspect(lab, base64) {
     const n = px.length / 4;
     const mean = sum / n;
     return { w: img.width, h: img.height, colours: seen.size, spread: Math.sqrt(sumsq / n - mean * mean) };
+  })()`);
+}
+
+// --------------------------------------------------------------------- pick
+
+// The first clock time in a string, which is the only part of "till 2:35pm,
+// class" and "Free till 2:45pm" that has to match.
+const clockTime = (s) => (String(s).match(/\d{1,2}:\d{2}[ap]m/) || [null])[0];
+
+// How far down the ranked list the search for a room is allowed to go.
+const PROBE_ROWS = 20;
+
+// Which room the last two frames are of. Decided by opening rooms and reading
+// them back, not by guessing from the list row.
+//
+// Two things disqualify a room. A room with no class today has a timeline with
+// nothing in it but the door times, which is a thin picture of "its whole day".
+// And a room whose window ends at a class prints a headline ten minutes later
+// than its own list row, because the row has the packup buffer taken off and
+// the headline does not: github.com/EnesYilmazcode/Vacant/issues/77. Shooting
+// one of those would put two different answers for one room at one minute into
+// the README, side by side. Once #77 is fixed the second row of the list
+// qualifies again, and the picture goes back to being the nearest room.
+async function choose(page) {
+  await page.tapSelector('.opt[data-min="120"]');
+  await page.waitFor(`document.querySelectorAll('#list .row').length > 3`, 'the list to fill');
+  return page.evaluate(`(async () => {
+    const rows = [...document.querySelectorAll('#list .row')].slice(0, ${PROBE_ROWS});
+    const back = document.getElementById('back');
+    const time = (s) => (s.match(/\\d{1,2}:\\d{2}[ap]m/) || [null])[0];
+    const tried = [];
+    for (const row of rows) {
+      const i = Number(row.dataset.i);
+      const name = row.querySelector('.r-name').textContent.trim();
+      const win = row.querySelector('.r-win').textContent.replace(/\\s+/g, ' ').trim();
+      row.scrollIntoView({ block: 'center' });
+      row.click();
+      row.click();
+      await new Promise((r) => setTimeout(r, 250));
+      const claim = document.querySelector('#room .claim').textContent.replace(/\\s+/g, ' ').trim();
+      const busy = document.querySelectorAll('#room .tl li.busy').length;
+      back.click();
+      await new Promise((r) => setTimeout(r, 200));
+      const said = time(claim);
+      const agrees = said === null || said === time(win);
+      tried.push({ i, name, win, claim, busy, agrees });
+      if (busy > 0 && agrees) return { pick: { i, name, win, claim, busy }, tried };
+    }
+    return { pick: null, tried };
   })()`);
 }
 
@@ -440,19 +529,46 @@ async function run() {
     await page.call('Emulation.setTimezoneOverride', { timezoneId: TZ });
     await page.call('Emulation.setGeolocationOverride', WHERE);
     const fixed = new Date(WHEN).getTime();
-    await page.call('Page.addScriptToEvaluateOnNewDocument', { source: FREEZE(fixed) });
+    await page.call('Page.addScriptToEvaluateOnNewDocument', { source: pinnedClockSource(fixed) });
 
-    await page.call('Page.navigate', { url });
-    await page.waitFor(`document.getElementById('ask').classList.contains('ready')`, 'the app to boot');
+    await page.boot(url);
 
     const stamp = await page.evaluate(`new Date().toString()`);
     console.log(`clock  ${stamp}`);
     console.log(`origin ${WHERE.latitude}, ${WHERE.longitude}`);
 
+    const { pick, tried } = await choose(page);
+    for (const r of tried) {
+      const why = r.busy === 0 ? 'no class today' : r.agrees ? 'taken' : `disagrees with "${r.win}"`;
+      console.log(`probe  row ${String(r.i).padStart(2)}  ${r.name.padEnd(28)} ${r.claim.padEnd(38)} ${why}`);
+    }
+    // Falling back to the top row keeps the run finishing so the other four
+    // frames can still be looked at. Nothing is written either way: a problem
+    // on the list blocks the write on its own.
+    if (!pick) problems.push(`no room in the top ${PROBE_ROWS} both has a class today and agrees with its own row`);
+    const target = pick ?? { i: 0, name: 'the top row', win: '' };
+
+    // Start the answer again from the question. Choosing left a room selected,
+    // and the fourth frame is the tap that selects one.
+    await page.boot(url);
+
     const frames = [];
-    const shoot = async (name, note) => {
+    const shoot = async (name, note, of) => {
+      // A photograph of a screen that has not stopped moving is a different
+      // photograph every run, which is how the flyover got into docs/media in
+      // the first place. So every frame is taken twice, a quarter of a second
+      // apart, and has to come back the same. This catches the whole class of
+      // it, including the parts of the app nobody thought to pin.
       const data = await page.capture();
-      frames.push({ name, note, data });
+      await sleep(250);
+      const again = await page.capture();
+      if (data !== again) problems.push(`${name}: the screen was still moving when it was photographed`);
+      // What the screen says, kept beside the picture. A screenshot cannot be
+      // read by a test and its alt text can drift off it without anyone
+      // noticing, which is how the README came to print a time the app does
+      // not. scripts/test/readme.test.mjs checks the two against each other.
+      const text = await page.evaluate(`document.body.innerText.replace(/\\s+/g, ' ').trim()`);
+      frames.push({ name, note, data, text, of });
       const stats = await inspect(lab, data);
       const ok = stats.colours >= 64 && stats.spread >= 4;
       console.log(
@@ -462,8 +578,15 @@ async function run() {
       if (!ok) problems.push(`${name} looks blank: ${stats.colours} colours, spread ${stats.spread.toFixed(1)}`);
     };
 
+    // A defect the frames are allowed to carry prints and does not block. Every
+    // other one stops the write.
+    const note = (key, detail) => {
+      const carried = CARRIED.get(key);
+      if (carried) console.log(`carry  ${key.padEnd(10)} ${detail}\n       ${carried}`);
+      else problems.push(`${key}: ${detail}`);
+    };
+
     // 1. the question, over the flyover
-    await sleep(2600);
     const askCopy = await page.evaluate(`document.querySelector('#prov').textContent.trim()`);
     if (!askCopy) problems.push('ask: the provenance line is empty');
     await shoot('ask', askCopy);
@@ -490,30 +613,62 @@ async function run() {
     //    row selects, so this is one tap and the sheet drops back to peek.
     await page.dragSheet(0.34 * SCREEN.height);
     await page.settled();
-    // The interesting room is the highest ranked one whose window ends because
-    // a class walks in rather than because the door locks, since that is the
-    // room whose timeline has something in it.
-    const pick = await page.evaluate(`(() => {
-      const rows = [...document.querySelectorAll('#list .row')];
-      const i = rows.findIndex(r => /,\\s*class/.test(r.querySelector('.r-win').textContent));
-      return { i: i < 0 ? 0 : i, label: (rows[i < 0 ? 0 : i]).querySelector('.r-name').textContent };
+    // The chosen room is not always among the four the sheet shows at peek, so
+    // the list is scrolled to it first, which is the scroll a thumb does. It
+    // stops with the row above it flush against the top of the list rather than
+    // centred, because centring cuts the first row in half and a sliced heading
+    // photographs as a bug.
+    await page.evaluate(`(() => {
+      const list = document.getElementById('list');
+      const row = document.querySelector('#list .row[data-i="${target.i}"]');
+      const first = row.previousElementSibling ?? row;
+      list.scrollTop = Math.round(
+        list.scrollTop + first.getBoundingClientRect().top - list.getBoundingClientRect().top,
+      );
     })()`);
-    console.log(`room   row ${pick.i}, ${pick.label}`);
-    await page.tapSelector(`#list .row[data-i="${pick.i}"]`);
+    console.log(`room   row ${target.i}, ${target.name}`);
+    await page.tapSelector(`#list .row[data-i="${target.i}"]`);
     await page.waitFor(`document.querySelector('#list .row.on')`, 'the row to light up');
     await sleep(1400);
-    await shoot('room', `${pick.label} selected`);
+    await shoot('room', `${target.name} selected`, target.name);
 
     // 5. tap the same row again and the room screen opens
-    await page.tapSelector(`#list .row[data-i="${pick.i}"]`);
+    await page.tapSelector(`#list .row[data-i="${target.i}"]`);
     await page.waitFor(`!document.getElementById('room').hidden`, 'the room screen');
     await page.waitFor(`document.querySelectorAll('#room .tl li').length > 2`, "today's timeline");
+    // Opened at peek the timeline runs off the bottom of the phone, and the row
+    // that gets cut is the one saying when the building locks, which is the
+    // half of the answer nobody else has. So the sheet goes up.
+    await page.dragSheet(-0.34 * SCREEN.height);
+    await page.settled();
     await sleep(900);
-    const tl = await page.evaluate(
-      `[...document.querySelectorAll('#room .tl li')].map(l => l.textContent.replace(/\\s+/g, ' ').trim()).filter(Boolean)`,
-    );
-    console.log('timeline ' + tl.join('\n         '));
-    await shoot('timeline', `${tl.length} timeline rows`);
+    const room = await page.evaluate(`(() => {
+      const facts = document.querySelector('#room .facts');
+      return {
+        title: document.querySelector('#room h2').textContent.replace(/\\s+/g, ' ').trim(),
+        claim: document.querySelector('#room .claim').textContent.replace(/\\s+/g, ' ').trim(),
+        facts: facts.textContent.replace(/\\s+/g, ' ').trim(),
+        loose: [...facts.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()),
+        tl: [...document.querySelectorAll('#room .tl li')]
+          .map((l) => l.textContent.replace(/\\s+/g, ' ').trim())
+          .filter(Boolean),
+      };
+    })()`);
+    console.log(`claim  ${room.title}: ${room.claim}`);
+    console.log('timeline ' + room.tl.join('\n         '));
+    await shoot('timeline', `${room.tl.length} timeline rows`, target.name);
+
+    // The row and the room screen are two renderings of one answer, so they
+    // have to print one minute. They did not, and the README shipped both.
+    const said = clockTime(room.claim);
+    const shown = clockTime(target.win);
+    if (said && said !== shown) {
+      problems.push(`timeline: the room screen says "${room.claim}" where the row says "${target.win}"`);
+    }
+
+    // Each fact is meant to be its own flex item. A bare text node in there is
+    // two facts sharing one box with no gap between them.
+    if (room.loose) note('facts', `${room.title} reads "${room.facts}"`);
 
     if (page.errors.length) problems.push(`the page logged ${page.errors.length} error(s): ${page.errors.join(' | ')}`);
 
@@ -526,6 +681,21 @@ async function run() {
         total += bytes.length;
         console.log(`wrote  docs/media/${frame.name}.webp  ${(bytes.length / 1024).toFixed(0)} KB`);
       }
+      const manifest = {
+        note:
+          'What the committed screenshots in this folder say, in words. Written by ' +
+          'scripts/shoot.mjs, read by scripts/test/readme.test.mjs, so the README cannot ' +
+          'end up describing a picture that says something else.',
+        when: WHEN,
+        where: WHERE,
+        screen: SCREEN,
+        room: { name: target.name, row: target.win, claim: room.claim, facts: room.facts },
+        frames: Object.fromEntries(
+          frames.map((f) => [f.name, { note: f.note, ...(f.of ? { of: f.of } : {}), text: f.text }]),
+        ),
+      };
+      await fsp.writeFile(path.join(OUT, 'frames.json'), JSON.stringify(manifest, null, 2) + '\n');
+      console.log('wrote  docs/media/frames.json');
       console.log(`total  ${(total / 1024).toFixed(0)} KB`);
     }
   } finally {

@@ -842,10 +842,11 @@ GET /vacant/   (lowercase)        404            <- the case trap, still real
 
 The `/Vacant/` 404 recorded in the issue is gone: `index.html` has landed.
 
-**Why there is no backend, stated as design rather than as thrift.** The app
-answers with no signal, in a stairwell or a basement, and that is the one thing
-nothing else in this category does. It is only possible because every byte the
-app needs is a static file a service worker can hold. Measured on the shipped
+**Why there is no backend, stated as design rather than as thrift.** Every byte
+the app needs is a static file small enough for a service worker to hold, which
+is what makes answering with no signal reachable at all, and nothing else in this
+category could copy it without a rewrite. Reachable, not reached: there is no
+`sw.js` yet and the app needs the network on every open. Measured on the shipped
 files:
 
 ```

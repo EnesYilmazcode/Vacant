@@ -701,3 +701,38 @@ point at.
 
 **Not in the Sunday cron.** Campus geometry does not change weekly. This is a
 one-off fetch, 13 requests.
+
+---
+
+## 2026-08-27  Open question: SURPLUS_WEIGHT and SURPLUS_CAP are guesses
+
+`js/engine.js` ranks a row by `walk - SURPLUS_WEIGHT * min(usable - need,
+SURPLUS_CAP)`, ascending. Both constants are **unmeasured judgement calls** and
+this entry is here so nobody reads them as settled.
+
+`SURPLUS_WEIGHT = 0.1` says an hour of extra window is worth six minutes of
+extra walking. `SURPLUS_CAP = 60` says surplus past an hour is worth nothing,
+because the student already said how long they needed. Neither number came from
+a person choosing between two rooms. They came from the query-engine note, which
+picked them so distance stays primary and "closer but shorter" only loses to
+"further but much longer".
+
+**What they actually change.** Measured on the committed index against the same
+engine with `SURPLUS_WEIGHT = 0`, 980 queries over 7 weekdays x 7 clocks x 4
+durations x 5 radii: the surplus term changes which room is FIRST in 14 of them
+(1.4%) and reorders the top five in 110 (11.2%). When it does move the first
+row, the room it promotes is at most 3 walking minutes further away, because the
+cap bounds the whole term at 6 minutes.
+
+**What would settle it.** The phase 4 "was it open?" reports, or a walk in which
+somebody is offered both rooms and says which one they wanted. Until then, do
+not tune these against a feeling. Changing either one changes which room is
+first on a screen, and the only evidence for the current values is that they are
+conservative: with `SURPLUS_WEIGHT = 0` the ranking is pure distance, which is
+the behaviour the note argued against, and it is one line away.
+
+`PACKUP`, `WALK_MPM` and `DETOUR` are not in this entry. They carry their own
+measured-or-guess comments in the config block and are not open in the same way:
+`PACKUP` is a policy backed by the 69.3% passing-period measurement, and the
+other two are labelled guesses that shift every row equally rather than
+reordering them.

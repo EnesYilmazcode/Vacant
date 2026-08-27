@@ -1165,3 +1165,33 @@ test('a Saturday on the real index is honest about what it does not know', () =>
   }
   assert.ok(out.known + out.unknown === out.rows.length);
 });
+
+test('the engine marks the answer it produced, so a cold launch can be measured', () => {
+  // The three things a cold launch spends time on are the fetch, the parse and
+  // the first answer. The engine owns the last one and the session mask, and
+  // exports mark and measure so the loader can name the other two the same way.
+  performance.clearMeasures();
+  const spec = campus([['A', 300, 3]]);
+  query(spec.rooms, {
+    origin: ORIGIN, now: at(12), day: TUE, needed: 60, buildings: spec.buildings,
+    hoursFor: OPEN_ALL_DAY, sessions: [['2026-08-25', '2026-12-09']], date: '2026-09-15',
+  });
+  const named = performance.getEntriesByType('measure').map((m) => m.name);
+  assert.ok(named.includes('vacant:query'), named.join(','));
+  assert.ok(named.includes('vacant:answer'));
+  assert.ok(named.includes('vacant:index'));
+
+  performance.clearMeasures();
+  rank(spec.rooms, {
+    origin: ORIGIN, now: at(12), day: TUE, needed: 60, buildings: spec.buildings,
+    hoursFor: OPEN_ALL_DAY,
+  });
+  assert.ok(performance.getEntriesByType('measure').map((m) => m.name).includes('vacant:answer'));
+});
+
+test('the payload reports how long it took, without a Date to do it', () => {
+  const spec = campus([['A', 300, 3]]);
+  const out = askFor(60, spec);
+  assert.equal(typeof out.ms, 'number');
+  assert.ok(out.ms >= 0);
+});

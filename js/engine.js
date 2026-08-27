@@ -375,6 +375,32 @@ function compareRows(a, b) {
   );
 }
 
+// -------------------------------------------------------------------- marks
+//
+// The app fetches an index, parses it and answers once. Those three are the
+// whole cold launch, so they are the three things worth a mark. The engine can
+// only mark the two it owns; `mark` and `measure` are exported so the loader
+// can wrap the fetch and the parse with the same names.
+
+// `performance` is missing in a few embedded runtimes and the engine is not
+// worth crashing over a timer.
+const perf = typeof performance !== 'undefined' && performance.mark ? performance : null;
+
+export function mark(name) {
+  if (perf) perf.mark(name);
+}
+
+export function measure(name, start, end) {
+  if (!perf || !perf.measure) return null;
+  try {
+    return perf.measure(name, start, end).duration;
+  } catch {
+    return null; // a missing start mark is not worth an exception
+  }
+}
+
+const nowMs = () => (perf && perf.now ? perf.now() : 0);
+
 // ------------------------------------------------------------------ the sweep
 
 // One pass over the room table. Every room that survives geography and the
@@ -528,9 +554,14 @@ export function rank(rooms, opts) {
     now, needed = 0, packup = PACKUP, dst, sessions, date, active: given,
     lookahead = Infinity, mode,
   } = opts;
+  mark('vacant:answer:start');
   // The index's sessions array and today's ISO date. Without both, every block
   // counts regardless of whether its session is running.
+  mark('vacant:index:start');
   const active = given ?? (sessions && date ? activeMask(sessions, date) : undefined);
+  mark('vacant:index:end');
+  measure('vacant:index', 'vacant:index:start', 'vacant:index:end');
+
   const { candidates } = sweep(rooms, { ...opts, active });
   const out = [];
   for (const c of candidates) {
@@ -538,29 +569,10 @@ export function rank(rooms, opts) {
     if (row) out.push(row);
   }
   out.sort(compareRows);
+  mark('vacant:answer:end');
+  measure('vacant:answer', 'vacant:answer:start', 'vacant:answer:end');
   return out;
 }
-
-// -------------------------------------------------------------------- marks
-
-// `performance` is missing in a few embedded runtimes and the engine is not
-// worth crashing over a timer.
-const perf = typeof performance !== 'undefined' && performance.mark ? performance : null;
-
-export function mark(name) {
-  if (perf) perf.mark(name);
-}
-
-export function measure(name, start, end) {
-  if (!perf || !perf.measure) return null;
-  try {
-    return perf.measure(name, start, end).duration;
-  } catch {
-    return null; // a missing start mark is not worth an exception
-  }
-}
-
-const nowMs = () => (perf && perf.now ? perf.now() : 0);
 
 // ------------------------------------------------------------------- ladder
 
@@ -571,6 +583,7 @@ const nowMs = () => (perf && perf.now ? perf.now() : 0);
 // question the student did not ask has to admit that.
 export function query(rooms, opts) {
   mark('vacant:query:start');
+  mark('vacant:answer:start');
   const started = nowMs();
   const {
     now, needed = 0, packup = PACKUP, dst, sessions, date, active: given,
@@ -713,7 +726,9 @@ export function query(rooms, opts) {
 
 function finish(payload, started) {
   mark('vacant:query:end');
+  mark('vacant:answer:end');
   measure('vacant:query', 'vacant:query:start', 'vacant:query:end');
+  measure('vacant:answer', 'vacant:answer:start', 'vacant:answer:end');
   payload.ms = nowMs() - started;
   return payload;
 }

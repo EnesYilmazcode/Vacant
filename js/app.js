@@ -10,7 +10,16 @@
 
 import { decodeFeature, toGrid } from './campus.js';
 import { rank } from './engine.js';
-import { SETTLED_SPAN, buildBasemap, drawFrame, drawTarget, drawYou, makeView } from './map.js';
+import {
+  FLYOVER_SPAN,
+  SETTLED_SPAN,
+  buildBasemap,
+  drawFrame,
+  drawTarget,
+  drawYou,
+  makeView,
+  pixelsPerGridFor,
+} from './map.js';
 
 const BASE = new URL('.', import.meta.url).pathname.replace(/js\/$/, '');
 const KEY = 'vacant:duration';
@@ -29,6 +38,12 @@ const FIX_TIMEOUT_MS = 8000;
 // a timetable. Past this wait the app says nothing is open rather than filling
 // the list with tomorrow morning.
 const MAX_WAIT_MIN = 90;
+
+// Where campus actually is, as a fraction of the map's bounding box. Measured
+// from the shipped data: the room-weighted centroid of buildings holding ranked
+// classrooms is x 0.661, and the Oval, the geolocation fallback, is x 0.723.
+const CORE_X = 0.661;
+const CORE_Y = 0.5;
 
 const $ = (id) => document.getElementById(id);
 
@@ -108,13 +123,23 @@ function render(now) {
   if (!state.settled) {
     // Slow drift over campus. Nothing here is on the critical path: it is what
     // the unavoidable wait looks like.
+    // Close enough that you can see streets and buildings. It opened at 1.05,
+    // the whole 2.7 km box, where a building is a few pixels across and the
+    // vector map nobody else has is invisible on the one screen everybody sees.
+    //
+    // Centred on CORE_X, the room-weighted centroid of the buildings that
+    // actually hold the ranked classrooms, measured at 0.661 with a median of
+    // 0.663. The first attempt used 0.56 and put 51% of the ranked room stock
+    // off screen, along with the Oval at 0.723, which is also the fallback
+    // origin the map settles on. The reason given for abandoning 0.5 was wrong
+    // too: the Olentangy sits at x 0.387, so 0.5 was over Cannon Drive.
     const t = reduceMotion ? 0 : (now - flyoverStart) / 1000;
     const g = state.campus.grid;
     state.view = makeView({
-      cx: g * (0.5 + Math.sin(t * 0.08) * 0.1),
-      cy: g * (0.5 + Math.cos(t * 0.06) * 0.08),
-      span: 1.05 + Math.sin(t * 0.05) * 0.05,
-      rotation: reduceMotion ? 0 : Math.sin(t * 0.03) * 0.08,
+      cx: g * (CORE_X + Math.sin(t * 0.055) * 0.035),
+      cy: g * (CORE_Y + Math.cos(t * 0.043) * 0.035),
+      span: FLYOVER_SPAN + Math.sin(t * 0.05) * 0.02,
+      rotation: reduceMotion ? 0 : Math.sin(t * 0.028) * 0.05,
     });
   }
 
@@ -273,18 +298,22 @@ function paintList() {
   const shorter = state.results.filter((r) => r.hoursKnown && r.wait === 0).length;
   const waiting = state.results.filter((r) => r.hoursKnown && r.wait > 0).length;
 
+  // The term goes here rather than nowhere. Deleting the corner label removed
+  // the app's only on-screen provenance, and current.json is refreshed by hand,
+  // so a stale snapshot would otherwise serve the wrong term with no tell.
+  const term = state.current?.termName ? ` <span class="term">${state.current.termName}</span>` : '';
   if (meets) {
-    head.innerHTML = `Free for <b>${dur(state.needed)}</b>, nearest first`;
+    head.innerHTML = `Free for <b>${dur(state.needed)}</b>, nearest first${term}`;
   } else if (shorter) {
     // The headline must not promise a duration the rows do not deliver.
-    head.innerHTML = `Nothing free for <b>${dur(state.needed)}</b> &middot; closest anyway`;
+    head.innerHTML = `Nothing free for <b>${dur(state.needed)}</b> &middot; closest anyway${term}`;
   } else if (waiting) {
-    head.innerHTML = `Nothing free this second &middot; <b>${dur(state.needed)}</b>`;
+    head.innerHTML = `Nothing free this second &middot; <b>${dur(state.needed)}</b>${term}`;
   } else {
     // Every building whose hours we actually have is closed. What is left is
     // rooms nobody publishes hours for, and saying "free" about those would be
     // the exact dishonesty this app exists to avoid.
-    head.textContent = 'Every building we have hours for is closed';
+    head.innerHTML = `Every building we have hours for is closed${term}`;
     caveat = `<p class="empty">These have <b>no published hours</b>, so Vacant cannot tell
        you whether the door is open. They are not a promise.</p>`;
   }
@@ -375,8 +404,9 @@ async function boot() {
   const [campus, current] = await Promise.all([json('campus.json'), json('current.json')]);
   state.campus = campus;
   state.current = current;
-  state.basemap = buildBasemap(campus, 0.014);
-  $('term').textContent = current.termName;
+  const shorter = Math.min(window.innerWidth, window.innerHeight) || 390;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  state.basemap = buildBasemap(campus, pixelsPerGridFor(campus, shorter, dpr));
 
   const [rooms, buildings, hours, located] = await Promise.all([
     fetch(`${BASE}${current.rooms}`).then((r) => r.json()),

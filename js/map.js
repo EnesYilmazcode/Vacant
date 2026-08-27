@@ -11,11 +11,11 @@ import { aspect, decodeShape } from './campus.js';
 // is the surface of the app rather than a panel inside it.
 export const PALETTE = {
   bg: '#0b0d10',
-  landscape: '#111a15',
+  landscape: '#131e18',
   water: '#0c1f2b',
-  street: '#1a2028',
-  building: '#222932',
-  buildingEdge: '#2f3945',
+  street: '#1d2530',
+  building: '#28313d',
+  buildingEdge: '#3a4653',
   target: '#ff4d3d',
   targetGlow: 'rgba(255, 77, 61, 0.22)',
   you: '#4cc2ff',
@@ -24,22 +24,53 @@ export const PALETTE = {
   line: '#ff6a5a',
 };
 
-// How much of the basemap the settled view shows across its shorter axis.
-const SETTLED_SPAN = 0.42;
+// The tightest view the app ever shows, and the one the raster has to support.
+// It is SMALLER than the flyover span so that choosing a duration zooms IN.
+// With settled at 0.42 against a 0.30 flyover, tapping snapped the view 40%
+// wider, so the map fell away at the moment it should have closed in.
+export const SETTLED_SPAN = 0.28;
+export const FLYOVER_SPAN = 0.36;
+
+// Stroke widths in METRES, not in raster pixels.
+//
+// They were `3 * sy * 400` and `1.2 * sy * 400`, which is resolution
+// independent, so raising the raster resolution could never have fixed them:
+// streets came out 41 m wide and building outlines 16 m. On screen that is a
+// 24 px street on a 390 px phone, and an outline eating 30% of a median
+// building in each direction, with neighbouring streets merging into slabs.
+const STREET_M = 7;
+const EDGE_M = 1.5;
+
+// Cap on the offscreen raster. The ideal for a dpr-3 phone at the tightest span
+// is a 43 MB canvas, which is not worth it.
+const MAX_RASTER_PX = 6_000_000;
+
+// How much raster this device actually needs, so the blit is near 1:1 at the
+// tightest view rather than magnifying a fixed bitmap. At the old fixed 0.014
+// the raster was 1109x918, and span 0.30 blew it up 2.83x in device pixels on a
+// dpr-2 phone. The 7 px blur had been hiding that until the blur was cut.
+export function pixelsPerGridFor(campus, shorterCssPx, dpr, tightestSpan = SETTLED_SPAN) {
+  const ideal = (shorterCssPx * dpr) / (tightestSpan * campus.grid);
+  const cap = Math.sqrt(MAX_RASTER_PX / (campus.grid * campus.grid * aspect(campus)));
+  return Math.min(ideal, cap);
+}
 
 // One offscreen render of everything that never moves.
 //
 // The canvas is NOT square. Grid space is not square either: toGrid normalises
 // a non-square bounding box to 0..grid on both axes independently, so a square
 // canvas compressed campus by 17% east to west, made every building 21% too
-// tall for its width, and rotated the you-to-room bearing by up to 10 degrees
-// from the real direction. The x axis carries the aspect correction.
+// tall for its width, and rotated the you-to-room bearing by up to 10 degrees.
+// The x axis carries the aspect correction.
 export function buildBasemap(campus, pixelsPerGrid) {
   const ar = aspect(campus);
   const sx = pixelsPerGrid * ar;
   const sy = pixelsPerGrid;
   const w = Math.ceil(campus.grid * sx);
   const h = Math.ceil(campus.grid * sy);
+
+  // Metres per raster pixel, so a stroke width can mean something on the ground.
+  const metresPerPx = ((campus.bbox[2] - campus.bbox[0]) * 85000) / w;
 
   const c = document.createElement('canvas');
   c.width = w;
@@ -77,7 +108,7 @@ export function buildBasemap(campus, pixelsPerGrid) {
   }
 
   g.strokeStyle = PALETTE.street;
-  g.lineWidth = Math.max(1, 3 * sy * 400);
+  g.lineWidth = Math.max(1, STREET_M / metresPerPx);
   g.lineJoin = 'round';
   g.lineCap = 'round';
   for (const f of campus.layers.street ?? []) {
@@ -90,7 +121,7 @@ export function buildBasemap(campus, pixelsPerGrid) {
     }
   }
 
-  g.lineWidth = Math.max(0.5, 1.2 * sy * 400);
+  g.lineWidth = Math.max(0.5, EDGE_M / metresPerPx);
   for (const f of campus.layers.building ?? []) {
     trace(f);
     g.fillStyle = PALETTE.building;
@@ -99,7 +130,7 @@ export function buildBasemap(campus, pixelsPerGrid) {
     g.stroke();
   }
 
-  return { canvas: c, sx, sy, width: w, height: h, size: h };
+  return { canvas: c, sx, sy, width: w, height: h, size: h, metresPerPx };
 }
 
 // Where we are looking, and how hard we are zoomed. `span` is the fraction of
@@ -231,5 +262,3 @@ export function drawYou(ctx, { at, accuracyPx = 0, guess = false, dpr = 1, width
   ctx.stroke();
   ctx.restore();
 }
-
-export { SETTLED_SPAN };

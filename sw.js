@@ -2,17 +2,19 @@
 // locked building on one bar of LTE who needs an answer now.
 //
 // Two caches, because the shell and the schedule change on different clocks. The
-// shell is code and it changes when Enes deploys. The schedule is 27 KB gzipped
-// that changes weekly and changes its own filename at term rollover. One cache
-// would either re-download the room index on every deploy or pin an installed
-// icon to last month's app.js forever.
+// shell is code and it changes when Enes deploys. The schedule is 26.8 KB
+// gzipped, it changes weekly, and it changes its own filename at term rollover.
+// One cache would either re-download the room index on every deploy or pin an
+// installed icon to last month's app.js forever.
 //
-// Measured on the committed files, gzipped: shell 32 KB, term data 30 KB.
+// Measured with gzip -9 over the committed files: shell 44,657 bytes, data
+// 72,884. The first commit of this file guessed 32 and 30 KB without running
+// anything, and both numbers were wrong.
 
 // Stamped by scripts/stamp-sw.mjs before the commit lands. The authored
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that.
-const SHELL_CACHE = 'vacant-shell-3736861';
+const SHELL_CACHE = 'vacant-shell-d915246';
 const DATA_CACHE = 'vacant-data-v1';
 
 // A worker's scope cannot climb above its own URL, and GitHub Pages will not
@@ -42,7 +44,7 @@ const SHELL_ASSETS = [
 ];
 
 // Everything the first answer needs that is not code. These live in the data
-// cache rather than the shell because campus.json alone is 39 KB gzipped and
+// cache rather than the shell because campus.json alone is 38.1 KB gzipped and
 // re-downloading it on every deploy is the waste this split exists to avoid.
 const WARM_ALWAYS = ['data/campus.json', 'data/buildings-hours.json'];
 
@@ -175,8 +177,10 @@ async function staleWhileRevalidate(event, request) {
 
 // Only ever used to claim the file MOVED. A false alarm shows the user a refresh
 // bar for nothing, so a header missing on either side means "say nothing" rather
-// than "assume it changed". Pages sends ETag and Last-Modified; the local dev
-// server sends neither, which is why length is the last resort.
+// than "assume it changed", and a same-length rewrite is a miss rather than a
+// lie. Pages sends ETag and Last-Modified. The local dev server answers chunked
+// with none of the three, measured, so against it this correctly stays quiet and
+// the refresh bar had to be verified against a server that sends them.
 function changed(before, after) {
   for (const header of ['ETag', 'Last-Modified', 'Content-Length']) {
     const a = before.headers.get(header);

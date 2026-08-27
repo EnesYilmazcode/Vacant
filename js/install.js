@@ -133,6 +133,22 @@ function bar(doc, { glyph, html, action }) {
   return { el, close };
 }
 
+// A bar fixed to the bottom sits over the last row or two of the ranked list.
+// The list gets that height back as padding rather than losing it, measured off
+// the bar itself because the copy wraps differently at different text sizes.
+export function mountBar(doc, el) {
+  doc.body.append(el);
+  doc.body.style.setProperty('--bar-h', `${Math.ceil(el.getBoundingClientRect().height)}px`);
+  doc.body.classList.add('has-bar');
+}
+
+export function unmountBar(doc, el) {
+  el.remove();
+  if (doc.getElementById('hint') || doc.getElementById('refresh')) return;
+  doc.body.classList.remove('has-bar');
+  doc.body.style.removeProperty('--bar-h');
+}
+
 // Warms the shared HTTP cache, which is the one thing an installed icon on iOS
 // inherits. Every home-screen icon gets its own CacheStorage jar, isolated from
 // the Safari tab that cached all of this while the hint was on screen, so the
@@ -197,7 +213,8 @@ export function initInstallHint(options = {}) {
 
   win.addEventListener('appinstalled', () => {
     writeState(store, { ...readState(store), dismissed: true });
-    doc.getElementById('hint')?.remove();
+    const bar = doc.getElementById('hint');
+    if (bar) unmountBar(doc, bar);
   });
 
   function show() {
@@ -223,7 +240,7 @@ export function initInstallHint(options = {}) {
               run: async () => {
                 const prompt = deferred;
                 deferred = null;
-                doc.getElementById('hint')?.remove();
+                unmountBar(doc, built.el);
                 try {
                   await prompt.prompt();
                 } catch {
@@ -236,9 +253,9 @@ export function initInstallHint(options = {}) {
 
     built.close.onclick = () => {
       writeState(store, { ...readState(store), dismissed: true });
-      built.el.remove();
+      unmountBar(doc, built.el);
     };
-    doc.body.append(built.el);
+    mountBar(doc, built.el);
     writeState(store, { ...readState(store), lastShown: now() });
     prefetchTerm();
   }

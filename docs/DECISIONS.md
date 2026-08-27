@@ -701,3 +701,110 @@ point at.
 
 **Not in the Sunday cron.** Campus geometry does not change weekly. This is a
 one-off fetch, 13 requests.
+
+---
+
+## 2026-08-27  The installable shell: manifest, two caches, and the cold launch
+
+**Decided.** Every path in the PWA layer is absolute under `/Vacant/`, including
+the module script tag in `index.html`. GitHub Pages is case sensitive and the
+origin decision above settled on Pages with no custom domain, so a lowercase
+`start_url` is an icon that opens a 404 after install, and iOS gives no way to
+change an installed app's start URL. `scripts/test/manifest.test.mjs` fails if
+`start_url` or `scope` drifts from `/Vacant/`, and it fails on `/vacant/`
+specifically, checked by mutating the file and rerunning: 10 pass became 9 pass
+1 fail, and back again.
+
+The absolute script src is load-bearing beyond tidiness. The worker answers a
+failed navigation with the cached `index.html`, so the document can render at
+`/Vacant/anything`; a relative `js/app.js` would resolve against that path and
+404.
+
+**Manifest colours are `#0b0d10`, not the `#1a1a1a` the issue drafted.** That
+value predates the palette the app actually paints, and a manifest colour that
+disagrees with the `theme-color` meta tag flashes the wrong shade behind the
+status bar on launch.
+
+**The icons are generated, not drawn.** `scripts/make-icons.mjs` writes PNG and
+ICO bytes through `node:zlib` and `node:crypto`, so the repo keeps its zero
+dependencies, runtime and dev alike. The mark is the period in the wordmark: one
+`#ff4d3d` disc on the `#0b0d10` ground, 44% of the canvas for the plain icons and
+34% for the maskable pair, which clears Android's 80% safe zone even after a
+squircle crop. `apple-touch-icon.png` is 180x180 colour type 2 with no alpha, no
+padding and no rounding, because iOS masks the square itself and composites any
+alpha onto black. The test regenerates all six files in memory and fails if the
+committed bytes drift.
+
+**The `favicon.ico` 404 was not a missing file.** A page with no icon link asks
+the *origin* root, and `enesyilmazcode.github.io/favicon.ico` belongs to the
+portfolio repo, not this one. The fix is the `<link rel="icon">`; the file is
+only what it points at. Measured after: a cold headless load of `/Vacant/` logs
+zero non-200 responses, where before it logged one.
+
+**Two caches, split by how often the bytes change**, measured gzipped on the
+committed files:
+
+```
+shell   index.html 5.6  js/app.js 12.9  js/map.js 7.9  js/engine.js 4.4
+        js/campus.js 1.6  js/pwa.js 2.2  js/install.js 3.3  js/firstrun.js 2.8
+        manifest and the three icons 2.9              total 44,657 bytes
+data    rooms-1268.json 26.8  buildings-1268.json 2.5
+        buildings-hours.json 3.6  campus.json 38.1
+        current.json 0.2                              total 72,884 bytes
+```
+
+`SHELL_CACHE` carries the commit SHA and is therefore replaced on every deploy;
+`DATA_CACHE` is `vacant-data-v1` and is not. That is why `campus.json` and
+`buildings-hours.json` live in the data cache and not the shell, against the
+issue's draft list: `campus.json` alone is 38.1 KB gzipped and does not change when
+Enes deploys. The draft list also named `app.css`, which does not exist because
+the styles are inline, and `data/buildings.json`, which nothing fetches any more.
+
+**Found by running it, not by reading it.** Three defects that no amount of
+review had caught:
+
+1. `evictOldTerms` matched `buildings-(\w+)\.json`, which matches
+   `buildings-hours.json`, captured `"hours"`, compared that to `"1268"` and
+   deleted the Registrar's building hours on the very first `activate`. Offline
+   then booted from cache and never reached ready. The capture is `\d+` now and a
+   test runs the shipped pattern over eight filenames.
+2. The page decided whether to skip the waiting worker from a snapshot of
+   `navigator.serviceWorker.controller` taken at page load. On the visit where a
+   deploy actually arrives that snapshot is stale, so the second worker waited
+   forever and the old shell cache was never collected. Measured before: caches
+   were `vacant-shell-3736861 vacant-data-v1 vacant-shell-deadbee`. After:
+   `vacant-data-v1 vacant-shell-deadbee`.
+3. Messages from the worker never arrived. Delivery to `navigator.serviceWorker`
+   stays suspended until the page sets `onmessage` or calls `startMessages()`,
+   and this page uses `addEventListener`. The "schedule updated" bar had never
+   once appeared.
+
+**`navigator.onLine` decides which tier to start in and is never allowed to
+decide that the network works.** Measured on this box: with Chrome emulating an
+offline page, `navigator.onLine` stayed `true` while every request refused. It
+reports the same lie on a captive portal and on a cell with no backhaul. So the
+first-run tier is picked from CacheStorage alone, and when nothing is cached the
+only thing that settles it is a request that came back. The retry button runs
+that request rather than reading the flag, and says "Still no connection" when it
+refuses.
+
+**Decided against.** A KB figure in the cold-start copy. The honest number is the
+gzipped size of the committed rooms file, which changes weekly, so it would have
+to be stamped at build time into the shell. On the one path where that card
+actually renders, a first standalone launch on iOS with no signal, the shell is
+not in that jar either, so the stamp would be absent exactly when it was needed.
+A number that is never there is worse than no number, and an estimate would be a
+guess printed as a fact.
+
+Also decided against splash screens, for the reason the issue gives: iOS ignores
+manifest `background_color`, so owning the splash means roughly fifteen
+`apple-touch-startup-image` PNGs that go stale on every new iPhone screen. A
+comment in `index.html` records it so nobody adds them back.
+
+**What could not be verified here.** Chrome's page-level offline emulation does
+not reach the service worker target, so every offline claim in this entry was
+measured by killing the web server instead. And the shared HTTP cache that makes
+the iOS install-hint prefetch worthwhile is per browser context in Chrome, so the
+"installed icon inherits the Safari tab's HTTP cache" step is reasoned from the
+platform behaviour, not measured. A real iPhone is still owed one check: airplane
+mode on the first launch after install.

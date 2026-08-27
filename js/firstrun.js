@@ -52,13 +52,19 @@ function card(doc, retry) {
   const el = doc.createElement('div');
   el.id = 'cold';
   el.setAttribute('role', 'alertdialog');
+  // Nothing behind this card is usable or focusable while it is up: app.js
+  // leaves the duration buttons disabled until it can answer, and the map is a
+  // canvas. aria-modal keeps a screen reader inside the card anyway.
+  el.setAttribute('aria-modal', 'true');
   el.setAttribute('aria-labelledby', 'cold-h');
+  el.setAttribute('aria-describedby', 'cold-p');
 
   const head = doc.createElement('h2');
   head.id = 'cold-h';
   head.textContent = "Vacant needs this term's schedule once.";
 
   const body = doc.createElement('p');
+  body.id = 'cold-p';
   body.textContent =
     'This is the only thing Vacant needs the network for. Once it is on the phone, the app answers with no signal at all.';
 

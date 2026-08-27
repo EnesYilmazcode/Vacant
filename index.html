@@ -271,6 +271,9 @@
   }
   .bar-go { background: var(--accent); border: 1px solid var(--accent); color: #fff; font-weight: 650; padding: 0 1rem; }
   .bar-x { background: transparent; border: 1px solid var(--line); color: var(--dim); }
+  /* A fixed bar covers the last row or two of the list. js/install.js measures
+     the bar it just mounted and the list gets that height back. */
+  body.has-bar #list, body.has-bar #room { padding-bottom: calc(1rem + var(--bar-h, 0px)); }
 
   /* The cold card sits above everything, including the note pill, because when
      it is up there is nothing underneath it worth reading. */

@@ -4,16 +4,11 @@
 // Loaded before app.js so the offline card can be up before boot's first fetch
 // has had time to fail.
 
-import { initInstallHint } from './install.js';
+import { initInstallHint, mountBar, unmountBar } from './install.js';
 import { initFirstRun } from './firstrun.js';
 
 const SCOPE = '/Vacant/';
 const RELOAD_GUARD = 'vacant.swReload';
-
-// Nothing here waits on the app, and the app does not wait on any of it.
-initFirstRun();
-initInstallHint();
-register();
 
 // A tap, a key, or a scroll means the user is reading something. After that an
 // update is allowed to land but is never allowed to yank the page out from
@@ -23,15 +18,23 @@ for (const type of ['pointerdown', 'keydown', 'wheel']) {
   addEventListener(type, () => { touched = true; }, { once: true, passive: true });
 }
 
+// Nothing here waits on the app, and the app does not wait on any of it.
+initFirstRun();
+initInstallHint();
+register();
+
+// Returns whether it reloaded, so a caller that had something to say can say it
+// instead of silently doing nothing on the second call.
 function reloadOnce(win = window) {
   try {
-    if (sessionStorage.getItem(RELOAD_GUARD)) return;
+    if (sessionStorage.getItem(RELOAD_GUARD)) return false;
     sessionStorage.setItem(RELOAD_GUARD, '1');
   } catch {
     // No session storage. controllerchange fires once per worker anyway, so the
     // reload is still bounded without it.
   }
   win.location.reload();
+  return true;
 }
 
 async function register() {
@@ -61,7 +64,11 @@ async function register() {
     const next = reg.installing;
     if (!next) return;
     next.addEventListener('statechange', () => {
-      if (next.state !== 'installed' || !hadController) return;
+      // The live controller, not hadController. A worker installed while no
+      // worker controls the page is the first one and activates by itself;
+      // measured, using the page-load snapshot here left the second deploy
+      // waiting forever and the old shell cache never got collected.
+      if (next.state !== 'installed' || !navigator.serviceWorker.controller) return;
       // A waiting worker serves nobody. Told to skip, it activates now, so the
       // NEXT launch of the installed icon gets the new shell rather than the
       // launch after that.
@@ -76,12 +83,18 @@ async function register() {
 
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data?.type !== 'vacant:data-updated') return;
-    if (!touched) {
-      reloadOnce();
-      return;
-    }
+    // Nobody has touched anything, so nothing is lost by just taking the new
+    // schedule. If this session already spent its one reload, say it out loud
+    // rather than swallowing the news.
+    if (!touched && reloadOnce()) return;
     showRefresh();
   });
+
+  // Delivery to navigator.serviceWorker is suspended until the page either sets
+  // onmessage or asks for it. With addEventListener alone the worker's messages
+  // queue and never arrive; measured, the "schedule updated" bar never appeared
+  // once until this line existed.
+  navigator.serviceWorker.startMessages();
 
   // iOS freezes a backgrounded web app, so an installed icon can go days without
   // ever checking. Coming back to the foreground is when it checks.
@@ -112,8 +125,8 @@ function showRefresh() {
   close.className = 'bar-x';
   close.setAttribute('aria-label', 'Keep reading the schedule I have');
   close.innerHTML = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
-  close.onclick = () => el.remove();
+  close.onclick = () => unmountBar(document, el);
 
   el.append(go, close);
-  document.body.append(el);
+  mountBar(document, el);
 }

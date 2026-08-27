@@ -30,7 +30,7 @@ on:
   workflow_dispatch:
     inputs:
       term:
-        description: 'Term code to rebuild, e.g. 1268. Empty means whichever term data/current.json names.'
+        description: 'Term code to rebuild, e.g. 1268. Empty means whichever term data/current.json names. Only a term whose data/buildings-<term>.json is already committed can be built here, and the next step refuses the rest.'
         type: string
         default: ''
       force:
@@ -87,6 +87,17 @@ jobs:
           fi
           echo "term=$term" >> "$GITHUB_OUTPUT"
           echo "Rebuilding term $term."
+
+      # build-index.mjs names data/buildings-<term>.json in current.json for
+      # whatever term it is given, and nothing in this job produces that file:
+      # fetch-buildings.mjs reads the term back out of current.json and needs
+      # the room index to already exist, so a new term is two local runs in
+      # order. Committing a current.json that names a missing file does not
+      # degrade the site, it stops it. The app loads everything current.json
+      # names in one Promise.all, so the 404 rejects the boot and the three
+      # duration buttons never come alive.
+      - name: The term's buildings subset has to be committed
+        run: node scripts/check-term-assets.mjs "${{ steps.pick.outputs.term }}"
 
       - name: A force flag has to reach something
         if: ${{ inputs.force || inputs.dropTerms }}

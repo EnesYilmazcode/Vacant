@@ -130,9 +130,27 @@ node --test                                                    # zero requests, 
 ```
 
 `rooms.yml` also takes a `term` input if you need to rebuild something other than
-the term `current.json` names. It harvests one term a week on purpose: a whole
-term is about 680 requests against a university's API, and only the term in
-session can change an answer.
+the term `current.json` names. It only accepts a term whose
+`data/buildings-<term>.json` is already committed, and refuses the rest before
+it spends a request. That file is not something the workflow can produce:
+`fetch-buildings.mjs` reads the term back out of `current.json` and needs the
+room index to exist first, so adding a term is three local steps in order.
+
+```bash
+node scripts/fetch-rooms.mjs 1272 && node scripts/build-index.mjs 1272
+node scripts/fetch-buildings.mjs        # reads the term from current.json
+git add data/ && git commit
+```
+
+Skip the middle line and `current.json` names a file the site does not have.
+That is not a missing map, it is a dead app: everything `current.json` names is
+fetched in one `Promise.all`, so the 404 rejects the boot. Measured 2026-08-27 at
+393x852 against a `current.json` naming `data/buildings-1272.json`, `#ask` never
+reached `.ready` inside 15 seconds and all three duration buttons stayed
+disabled.
+
+It harvests one term a week on purpose: a whole term is about 680 requests
+against a university's API, and only the term in session can change an answer.
 
 ## What has not been exercised
 

@@ -23,13 +23,23 @@ const RETRY_STATUS = new Set([408, 425, 429]);
 const MAX_RETRY_AFTER_MS = 30000;
 
 // A runaway loop against a university's API is the failure that gets the whole
-// project blocked. A full two-pass term harvest is 272 requests, so 3000 is an
-// order of magnitude of headroom and still nowhere near abusive.
-const MAX_REQUESTS = 3000;
+// project blocked.
+//
+// The ceiling has to sit above the harvester's own worst case or it fires
+// mid-run and throws away a fifteen minute walk. That worst case is 8 buckets x
+// MAX_PAGES 50 x MAX_PASSES 8 = 3,200 requests, which the old 3,000 sat UNDER.
+// The realistic ceiling is 8 buckets x 17 pages x 8 passes + 1 = 1,089, and the
+// measured 7-pass run of term 1268 took 953.
+const MAX_REQUESTS = 4000;
 
+// The volume here is a promise to the people running the server, so it states
+// the CEILING rather than the typical run. A measured 7-pass harvest of term
+// 1268 took 953 requests, and the harvester's own MAX_PASSES allows 8 passes
+// over 8 buckets of 17 pages, which is 1,089. Quoting the typical number is how
+// the first two drafts of this string ended up understating it: 280, then 700.
 const USER_AGENT =
   'Vacant/0.1 (+https://github.com/EnesYilmazcode/Vacant; ' +
-  'contact via repo issues) weekly classroom-schedule index, ~280 requests/week';
+  'contact via repo issues) weekly classroom-schedule index, <=1100 requests/week';
 
 let requestCount = 0;
 

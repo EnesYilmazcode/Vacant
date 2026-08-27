@@ -3,3 +3,10 @@ scratch/
 *.log
 .DS_Store
 Thumbs.db
+
+# A live term's harvest is regenerable, so it is not committed: it is 0.5 MB
+# that changes every week. data/raw/1262 and data/raw/1264 ARE committed and
+# must stay, because those terms have left the API and cannot be refetched at
+# any price. The manifest beside the harvest is committed for provenance.
+data/harvest-*.json.gz
+*.tmp

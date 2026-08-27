@@ -19,14 +19,18 @@ script that touches the network imports it. Nothing else calls `fetch` directly.
 
 Finder runs `CONCURRENCY 5` at `DELAY_MS 120` against a box that answers in
 128 ms p50, which sustains about 15.6 req/s. That is the request shape that
-looks like an attack in a log. Vacant needs roughly 280 requests a week, so it
-runs at `CONCURRENCY 2` / `DELAY_MS 500`, about 2.9 req/s, and the timeout goes
-from Finder's 30 s to 60 s.
+looks like an attack in a log. Vacant sends at most about 1,100 requests a week
+(see the 2026-08-26 harvest entry below; this line originally said 280, which
+was the two-pass estimate before the drift was measured), so it runs at
+`CONCURRENCY 2` / `DELAY_MS 500`, about 2.9 req/s, and the timeout goes from
+Finder's 30 s to 60 s.
 
-`MAX_REQUESTS = 3000` is a module-level cap that throws rather than fetches. A
-full two-pass term harvest is 272 requests, so that is an order of magnitude of
-headroom and still nowhere near abusive. A runaway loop against a university API
-is the failure that gets the whole project blocked, and it is worth a hard stop.
+`MAX_REQUESTS` is a module-level cap that throws rather than fetches. It was
+3000 on a two-pass estimate of 272 requests; the walk-until-stable harvester's
+worst case is 8 buckets x 50 pages x 8 passes = **3,200**, so the old cap sat
+UNDER its own worst case and would have fired mid-run. It is now 4000. A runaway
+loop against a university API is the failure that gets the whole project
+blocked, and it is worth a hard stop that cannot be tripped by normal operation.
 
 Tests are `node --test` with a stub `fetchImpl` injected per call. `npm test`
 makes zero network requests, which is checked by every test passing with the
@@ -347,3 +351,100 @@ The day is not recoverable from anything in the payload, so the funnel drops
 them. **Dreese 280 will therefore read free during those lab hours.** That is a
 real wrong answer, it is small, and it is written down here rather than hidden
 in a counter. If the day ever becomes derivable, this is the first thing to fix.
+
+---
+
+## 2026-08-26  The harvest walks until stable, because two passes are not enough
+
+**Decided.** `scripts/fetch-rooms.mjs` repeats the bucket walk until two
+consecutive passes add no new meeting **in a real room**.
+
+**The research's drift budget is wrong by about seven times.** It says sorted
+paging is "about 98% deterministic" and specifies a fixed two-pass union with a
+0.5% gate. Measured over the whole of term 1268:
+
+```
+pass 1 read 26,298 section rows but only 25,270 DISTINCT classNumbers.
+1,028 rows were the same section served twice on different pages while
+others were dropped. pass 2 then found 937 sections pass 1 never saw at
+all, 3.6%, and pass 1 in turn caught 612 that pass 2 missed.
+```
+
+Neither pass is a superset of the other, so a fixed two-pass union is still
+incomplete. Walking until stable took **7 passes and 953 requests**:
+
+```
+pass   meetings seen   new   new IN A ROOM   union
+  1          26707   26707           11443   26707
+  2          26530     294               7   27001
+  3          26089      35               4   27036
+  4          26413      27               0   27063
+  5          26338      11               0   27074
+  6          26408       0               0   27074
+  7          26302       0               0   27074
+```
+
+A single pass would have missed 367 meetings, 1.36%, **11 of them in a real
+room**. Eleven rooms that would have read free with a class in them.
+
+**Convergence is on rooms, not on meetings, and "a room" is not
+`facilityId != null`.** ONLINE and OFFCAMPUS carry a facilityId of their own, so
+a null check calls them rooms. On term 1268 they are **2,975 of the 11,454 rows
+that pass that check, 26%**, and the genuine figure is 8,479. Counting them let
+one drifted ONLINE row reset stability and buy two more passes, 272 requests,
+for a meeting `build-index.mjs` discards before it reaches the grid. The
+criterion now uses the funnel's own `hasRealRoom`.
+
+Re-measured with the corrected test, the walk converges in **4 passes and 545
+requests** rather than 7 and 953:
+
+```
+pass   meetings seen   new   new IN A ROOM   union
+  1          26465   26465            8466   26465
+  2          26248     471              13   26936
+  3          26158      61               0   26997   [1 of 2 clean]
+  4          26220      77               0   27074   [2 of 2 clean]
+```
+
+The union is identical at 27,074, so nothing was lost by stopping earlier. A
+single pass would have missed 609 meetings, 2.25%, **13 of them in a real
+room**: thirteen rooms that would have read free with a class in them. A
+`MIN_PASSES` floor of 3 stops a lucky first pass from claiming stability, since
+pass 2 is where those 13 appear.
+
+**The User-Agent has to advertise the CEILING, not the typical run.** It said
+`~280 requests/week`, the two-pass estimate. Corrected to `~700` on the measured
+7-pass cost, which was still wrong: `MAX_PASSES` allows 8 passes over 8 buckets
+of 17 pages, which is 1,089. It now says `<=1100`, and the test asserts against
+`MAX_PASSES x buckets` rather than a hand-entered number. The previous test
+asserted `>= 680` and would have passed on exactly the 953-request run it was
+written to catch. That string is a promise to the people running the server.
+
+**`MAX_REQUESTS` sat under its own worst case.** 8 buckets x `MAX_PAGES` 50 x
+`MAX_PASSES` 8 is 3,200 against a cap of 3,000, so the guard meant to prevent a
+runaway would instead have fired mid-run and discarded a fifteen minute walk.
+Raised to 4,000.
+
+**A transient `totalItems: 0` no longer kills the run.** Nothing is written
+until the end, so one blip in a late pass discarded every request and restarted
+from zero. Since the entire premise of this script is that the API is
+nondeterministic under paging, treating a single zero as fatal was the brittle
+reading of its own evidence. It asks twice.
+
+**Output.** `data/harvest-<term>.json.gz`, the union, 0.50 MB gzipped for 27,074
+meetings. Writing any single pass's pages would reintroduce exactly the gaps the
+extra passes exist to close. It is **not committed**: unlike `data/raw/1262` and
+`data/raw/1264`, a live term can always be refetched, and 0.5 MB rewritten
+weekly is repository bloat. The manifest beside it is committed for provenance.
+
+That claim was false when first written. The blob had already been committed to
+`main` through a careless `git add -A`, and `.gitignore` never applies to a
+tracked path, so both the rule and this entry asserted something untrue. Removed
+with `git rm --cached`. `*.tmp` is ignored too, since `writeAtomic` leaves one
+behind on a crash and the harvest pattern did not match it.
+
+**Coverage, measured on the full term rather than a sample.** 871 distinct rooms
+across 96 buildings for Autumn 2026. **72% of those rooms sit in a building with
+published hours**, not the 88.8% the research estimated from 12 subjects, and 46
+of the 96 buildings are in the classroom pool. So the unknown-hours path is
+larger than the research suggests and matters more than it looks.

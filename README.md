@@ -168,7 +168,7 @@ room on campus, and a single term harvest cannot see it, because a room with no
 meetings never appears in that term's class API. Harvesting three terms and
 unioning the room identities finds them.
 
-The harvest itself costs **136 requests** and under a minute, by paging the
+One pass of the harvest costs **136 requests**, by paging the
 `catalog-number` facet in 8 buckets rather than walking 243 subjects the way
 Finder does. See `docs/research/harvest-feasibility.md`.
 

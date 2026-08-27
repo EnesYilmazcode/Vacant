@@ -468,7 +468,9 @@ function answer() {
     state.listScroll = 0;
     paintList();
     settle();
-    say(state.refusal.reason);
+    // The strip and the live region carry the same two sentences, because the
+    // reason on its own is a fact with no verdict attached to it.
+    say(`Vacant is not answering. ${state.refusal.reason}`);
     return;
   }
 
@@ -566,7 +568,7 @@ function paintList() {
 
   if (state.refusal) {
     list.innerHTML =
-      '<p class="strip">Vacant is not answering today.</p>' +
+      '<p class="strip">Vacant is not answering.</p>' +
       `<p class="empty">${esc(state.refusal.reason)}</p>`;
     syncPaneTouch();
     return;

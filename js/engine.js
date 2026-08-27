@@ -713,7 +713,7 @@ export function refusalFor({ now, rooms = [], sessions, date, active: given, cal
   if (coverage.share !== null && coverage.share < SILENT_SHARE) {
     return {
       refused: 'no-schedule',
-      reason: 'The class schedule has nothing for today, in any room on campus. That is what a break or finals week looks like from here, not an empty campus, so Vacant is not answering.',
+      reason: 'The class schedule has nothing for today, in any room on campus. That is what a break or finals week looks like from here, not an empty campus.',
       coverage,
     };
   }

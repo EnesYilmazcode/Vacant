@@ -1,0 +1,46 @@
+{
+  "_doc": "Hand-supplied replacements for day cells the Registrar publishes malformed. Keyed by term slug, then building abbreviation, then lowercase day name. Every entry MUST carry a `why` that cites evidence on the page itself, never a plausible guess. A record fixed from here is emitted with hoursSource \"override\" so it can be told apart from a scraped one. When the Registrar corrects a cell, delete the entry rather than leaving it to shadow the real value.",
+  "_reported": "The malformed cells belong to the Room and Class Scheduling Office. This file exists so one Registrar typo does not block a whole term rebuild, not as a substitute for reporting them.",
+  "overrides": {
+    "autumn-2026-classroom-pool-building-schedule": {
+      "CL": {
+        "monday": {
+          "value": "7am-10pm",
+          "why": "Published as \"7am-10\" with no am/pm. The same panel publishes Friday as \"7am-9pm\" and Sunday as \"12pm-10pm\", so a 10pm close is the building's own evening pattern and 10am would be before its Friday close. The identical bare-number malformation appears on the Summer 2026 page as \"7am-5\" against a Friday of \"7am-5pm\", which shows the missing token is the pm suffix rather than a different hour."
+        },
+        "tuesday": {
+          "value": "7am-10pm",
+          "why": "Same cell, same reasoning as monday."
+        },
+        "wednesday": {
+          "value": "7am-10pm",
+          "why": "Same cell, same reasoning as monday."
+        },
+        "thursday": {
+          "value": "7am-10pm",
+          "why": "Same cell, same reasoning as monday."
+        }
+      }
+    },
+    "summer-2026-classroom-pool-building-schedule": {
+      "CL": {
+        "monday": {
+          "value": "7am-5pm",
+          "why": "Published as \"7am-5\" with no am/pm. Friday in the same panel is \"7am-5pm\", which resolves it directly."
+        },
+        "tuesday": {
+          "value": "7am-5pm",
+          "why": "Same cell, same reasoning as monday."
+        },
+        "wednesday": {
+          "value": "7am-5pm",
+          "why": "Same cell, same reasoning as monday."
+        },
+        "thursday": {
+          "value": "7am-5pm",
+          "why": "Same cell, same reasoning as monday."
+        }
+      }
+    }
+  }
+}

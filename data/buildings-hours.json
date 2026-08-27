@@ -1,0 +1,3354 @@
+{
+ "generated": "2026-08-26",
+ "source": "https://registrar.osu.edu/staff-resources/class-catalog-and-space/classroom-pool-building-schedule/",
+ "attribution": "Ohio State University Office of the University Registrar",
+ "dayIndex": "0 = Sunday through 6 = Saturday. [openMinute, closeMinute] or null for closed.",
+ "note": "A building absent from every term below has NO published hours. It must be shown as unknown, never as assumed or usually open.",
+ "terms": {
+  "summer-2026-classroom-pool-building-schedule": {
+   "slug": "summer-2026-classroom-pool-building-schedule",
+   "source": "https://registrar.osu.edu/staff-resources/class-catalog-and-space/classroom-pool-building-schedule/summer-2026-classroom-pool-building-schedule/",
+   "fetchedFrom": "live",
+   "buildingCount": 46,
+   "overriddenCells": 4,
+   "buildings": {
+    "106": {
+     "abbr": "SU",
+     "name": "Sullivant Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       750,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       750,
+       1020
+      ]
+     ]
+    },
+    "144": {
+     "abbr": "PS",
+     "name": "Psychology Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      null
+     ]
+    },
+    "146": {
+     "abbr": "BO",
+     "name": "Bolz Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "148": {
+     "abbr": "SO",
+     "name": "Scott Laboratory",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "149": {
+     "abbr": "HC",
+     "name": "Hopkins Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "150": {
+     "abbr": "EL",
+     "name": "Evans Laboratory",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "156": {
+     "abbr": "AS",
+     "name": "Animal Science Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "245": {
+     "abbr": "PE",
+     "name": "Physical Activity and Education Services - PAES",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       600,
+       1350
+      ],
+      [
+       300,
+       1350
+      ],
+      [
+       300,
+       1350
+      ],
+      [
+       300,
+       1350
+      ],
+      [
+       300,
+       1350
+      ],
+      [
+       300,
+       1230
+      ],
+      null
+     ]
+    },
+    "248": {
+     "abbr": "CB",
+     "name": "CBEC",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "251": {
+     "abbr": "SB",
+     "name": "Schoenbaum Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "274": {
+     "abbr": "HI",
+     "name": "Hitchcock Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "276": {
+     "abbr": "BI",
+     "name": "Biological Sciences Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "279": {
+     "abbr": "DL",
+     "name": "Dreese Laboratories",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "280": {
+     "abbr": "BE",
+     "name": "Baker Systems Engineering",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "293": {
+     "abbr": "CZ",
+     "name": "Cunz Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       390,
+       1080
+      ],
+      [
+       390,
+       1080
+      ],
+      [
+       390,
+       1080
+      ],
+      [
+       390,
+       1080
+      ],
+      [
+       390,
+       1080
+      ],
+      null
+     ]
+    },
+    "298": {
+     "abbr": "AE",
+     "name": "Agricultural Engineering Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "337": {
+     "abbr": "DU",
+     "name": "Dulles Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "338": {
+     "abbr": "IH",
+     "name": "Independence Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "339": {
+     "abbr": "UH",
+     "name": "University Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "340": {
+     "abbr": "KH",
+     "name": "Kottman Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "1018": {
+     "abbr": "FL",
+     "name": "Fontana Laboratories",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "1025": {
+     "abbr": "TFM",
+     "name": "Theatre, Film and Media Arts Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "003": {
+     "abbr": "AA",
+     "name": "Agricultural Administration",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "011": {
+     "abbr": "AP",
+     "name": "Arps Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "001": {
+     "abbr": "BK",
+     "name": "Bricker Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      null
+     ]
+    },
+    "026": {
+     "abbr": "CL",
+     "name": "Caldwell Laboratory",
+     "hoursSource": "override",
+     "hours": [
+      [
+       720,
+       1320
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "063": {
+     "abbr": "CH",
+     "name": "Cockins Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "030": {
+     "abbr": "DE",
+     "name": "Denney Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      null
+     ]
+    },
+    "025": {
+     "abbr": "DB",
+     "name": "Derby Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      null
+     ]
+    },
+    "004": {
+     "abbr": "EA",
+     "name": "Eighteenth Ave, 209 W",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "072": {
+     "abbr": "EC",
+     "name": "Enarson Classroom Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1290
+      ],
+      [
+       420,
+       1290
+      ],
+      [
+       420,
+       1290
+      ],
+      [
+       420,
+       1290
+      ],
+      [
+       420,
+       1200
+      ],
+      null
+     ]
+    },
+    "037": {
+     "abbr": "HH",
+     "name": "Hagerty Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1080
+      ],
+      null
+     ]
+    },
+    "039": {
+     "abbr": "HA",
+     "name": "Hayes Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       390,
+       1080
+      ],
+      [
+       390,
+       1080
+      ],
+      [
+       390,
+       1080
+      ],
+      [
+       390,
+       1080
+      ],
+      [
+       390,
+       1080
+      ],
+      null
+     ]
+    },
+    "014": {
+     "abbr": "JE",
+     "name": "Jennings Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "046": {
+     "abbr": "JR",
+     "name": "Journalism Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1440
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1440
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "017": {
+     "abbr": "KN",
+     "name": "Knowlton Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "041": {
+     "abbr": "LZ",
+     "name": "Lazenby Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "053": {
+     "abbr": "MP",
+     "name": "McPherson Chemical Laboratory",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      null
+     ]
+    },
+    "054": {
+     "abbr": "ML",
+     "name": "Mendenhall Laboratory",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "060": {
+     "abbr": "OR",
+     "name": "Orton Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "061": {
+     "abbr": "PA",
+     "name": "Page Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "067": {
+     "abbr": "PO",
+     "name": "Pomerene Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "090": {
+     "abbr": "RA",
+     "name": "Ramseyer Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "065": {
+     "abbr": "SM",
+     "name": "Smith Laboratory",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "084": {
+     "abbr": "SH",
+     "name": "Stillman Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       840,
+       1200
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "087": {
+     "abbr": "TO",
+     "name": "Townshend Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    }
+   }
+  },
+  "autumn-2026-classroom-pool-building-schedule": {
+   "slug": "autumn-2026-classroom-pool-building-schedule",
+   "source": "https://registrar.osu.edu/staff-resources/class-catalog-and-space/classroom-pool-building-schedule/autumn-2026-classroom-pool-building-schedule/",
+   "fetchedFrom": "live",
+   "buildingCount": 47,
+   "overriddenCells": 4,
+   "buildings": {
+    "106": {
+     "abbr": "SU",
+     "name": "Sullivant Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       750,
+       1020
+      ],
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       750,
+       1020
+      ]
+     ]
+    },
+    "144": {
+     "abbr": "PS",
+     "name": "Psychology Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      null
+     ]
+    },
+    "146": {
+     "abbr": "BO",
+     "name": "Bolz Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "148": {
+     "abbr": "SO",
+     "name": "Scott Laboratory",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1230
+      ],
+      null
+     ]
+    },
+    "149": {
+     "abbr": "HC",
+     "name": "Hopkins Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "150": {
+     "abbr": "EL",
+     "name": "Evans Laboratory",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      null
+     ]
+    },
+    "156": {
+     "abbr": "AS",
+     "name": "Animal Science Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "245": {
+     "abbr": "PE",
+     "name": "Physical Activity and Education Services - PAES",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       600,
+       1350
+      ],
+      [
+       300,
+       1350
+      ],
+      [
+       300,
+       1350
+      ],
+      [
+       300,
+       1350
+      ],
+      [
+       300,
+       1350
+      ],
+      [
+       300,
+       1230
+      ],
+      null
+     ]
+    },
+    "248": {
+     "abbr": "CB",
+     "name": "CBEC",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       420,
+       1170
+      ],
+      null
+     ]
+    },
+    "251": {
+     "abbr": "SB",
+     "name": "Schoenbaum Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1260
+      ],
+      null
+     ]
+    },
+    "274": {
+     "abbr": "HI",
+     "name": "Hitchcock Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ]
+     ]
+    },
+    "276": {
+     "abbr": "BI",
+     "name": "Biological Sciences Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1110
+      ],
+      null
+     ]
+    },
+    "279": {
+     "abbr": "DL",
+     "name": "Dreese Laboratories",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1170
+      ],
+      null
+     ]
+    },
+    "280": {
+     "abbr": "BE",
+     "name": "Baker Systems Engineering",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "293": {
+     "abbr": "CZ",
+     "name": "Cunz Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       390,
+       1200
+      ],
+      [
+       390,
+       1080
+      ],
+      [
+       390,
+       1140
+      ],
+      [
+       390,
+       1170
+      ],
+      [
+       390,
+       1140
+      ],
+      null
+     ]
+    },
+    "298": {
+     "abbr": "AE",
+     "name": "Agricultural Engineering Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "337": {
+     "abbr": "DU",
+     "name": "Dulles Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       390,
+       1050
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "338": {
+     "abbr": "IH",
+     "name": "Independence Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       390,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ]
+     ]
+    },
+    "339": {
+     "abbr": "UH",
+     "name": "University Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "340": {
+     "abbr": "KH",
+     "name": "Kottman Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1320
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "1018": {
+     "abbr": "FL",
+     "name": "Fontana Laboratories",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1080
+      ],
+      null
+     ]
+    },
+    "1025": {
+     "abbr": "TFM",
+     "name": "Theatre, Film and Media Arts Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1110
+      ],
+      null
+     ]
+    },
+    "003": {
+     "abbr": "AA",
+     "name": "Agricultural Administration",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "011": {
+     "abbr": "AP",
+     "name": "Arps Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1290
+      ],
+      [
+       420,
+       1290
+      ],
+      [
+       420,
+       1290
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1020
+      ],
+      [
+       510,
+       960
+      ]
+     ]
+    },
+    "001": {
+     "abbr": "BK",
+     "name": "Bricker Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1080
+      ],
+      null
+     ]
+    },
+    "026": {
+     "abbr": "CL",
+     "name": "Caldwell Laboratory",
+     "hoursSource": "override",
+     "hours": [
+      [
+       720,
+       1320
+      ],
+      [
+       420,
+       1320
+      ],
+      [
+       420,
+       1320
+      ],
+      [
+       420,
+       1320
+      ],
+      [
+       420,
+       1320
+      ],
+      [
+       420,
+       1260
+      ],
+      null
+     ]
+    },
+    "018": {
+     "abbr": "CM",
+     "name": "Campbell Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "063": {
+     "abbr": "CH",
+     "name": "Cockins Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       750,
+       990
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "030": {
+     "abbr": "DE",
+     "name": "Denney Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "025": {
+     "abbr": "DB",
+     "name": "Derby Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "004": {
+     "abbr": "EA",
+     "name": "Eighteenth Ave, 209 W",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "072": {
+     "abbr": "EC",
+     "name": "Enarson Classroom Building",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ]
+     ]
+    },
+    "037": {
+     "abbr": "HH",
+     "name": "Hagerty Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       1080,
+       1230
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1080
+      ],
+      null
+     ]
+    },
+    "039": {
+     "abbr": "HA",
+     "name": "Hayes Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       360,
+       1080
+      ],
+      [
+       360,
+       1140
+      ],
+      [
+       360,
+       1140
+      ],
+      [
+       360,
+       1140
+      ],
+      [
+       360,
+       1140
+      ],
+      null
+     ]
+    },
+    "014": {
+     "abbr": "JE",
+     "name": "Jennings Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1350
+      ],
+      [
+       420,
+       1290
+      ],
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1290
+      ],
+      null
+     ]
+    },
+    "046": {
+     "abbr": "JR",
+     "name": "Journalism Building",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1440
+      ],
+      [
+       420,
+       1440
+      ],
+      [
+       420,
+       1440
+      ],
+      [
+       420,
+       1440
+      ],
+      [
+       420,
+       1140
+      ],
+      null
+     ]
+    },
+    "017": {
+     "abbr": "KN",
+     "name": "Knowlton Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1170
+      ],
+      [
+       330,
+       1170
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1080
+      ],
+      null
+     ]
+    },
+    "041": {
+     "abbr": "LZ",
+     "name": "Lazenby Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      [
+       420,
+       1380
+      ],
+      null
+     ]
+    },
+    "053": {
+     "abbr": "MP",
+     "name": "McPherson Chemical Laboratory",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1260
+      ],
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1140
+      ],
+      null
+     ]
+    },
+    "054": {
+     "abbr": "ML",
+     "name": "Mendenhall Laboratory",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "060": {
+     "abbr": "OR",
+     "name": "Orton Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       840,
+       1080
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "061": {
+     "abbr": "PA",
+     "name": "Page Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1110
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1050
+      ],
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "067": {
+     "abbr": "PO",
+     "name": "Pomerene Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       960,
+       1290
+      ],
+      [
+       420,
+       1290
+      ],
+      [
+       420,
+       1290
+      ],
+      [
+       420,
+       1290
+      ],
+      [
+       420,
+       1290
+      ],
+      [
+       420,
+       1290
+      ],
+      null
+     ]
+    },
+    "090": {
+     "abbr": "RA",
+     "name": "Ramseyer Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1320
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    },
+    "065": {
+     "abbr": "SM",
+     "name": "Smith Laboratory",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1320
+      ],
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1320
+      ],
+      [
+       420,
+       1170
+      ],
+      [
+       420,
+       1170
+      ],
+      null
+     ]
+    },
+    "084": {
+     "abbr": "SH",
+     "name": "Stillman Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      [
+       840,
+       1200
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1230
+      ],
+      [
+       420,
+       1050
+      ],
+      null
+     ]
+    },
+    "087": {
+     "abbr": "TO",
+     "name": "Townshend Hall",
+     "hoursSource": "registrar",
+     "hours": [
+      null,
+      [
+       420,
+       1200
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1140
+      ],
+      [
+       420,
+       1080
+      ],
+      [
+       420,
+       1020
+      ],
+      null
+     ]
+    }
+   }
+  }
+ },
+ "unknownHours": [
+  "100",
+  "102",
+  "103",
+  "105",
+  "108",
+  "112",
+  "113",
+  "127",
+  "128",
+  "129",
+  "130",
+  "131",
+  "132",
+  "133",
+  "134",
+  "135",
+  "136",
+  "138",
+  "142",
+  "143",
+  "147",
+  "153",
+  "154",
+  "155",
+  "157",
+  "158",
+  "159",
+  "160",
+  "161",
+  "162",
+  "163",
+  "164",
+  "165",
+  "166",
+  "167",
+  "168",
+  "169",
+  "170",
+  "171",
+  "174",
+  "175",
+  "176",
+  "178",
+  "179",
+  "180",
+  "182",
+  "184",
+  "185",
+  "186",
+  "187",
+  "189",
+  "190",
+  "191",
+  "193",
+  "194",
+  "195",
+  "196",
+  "197",
+  "198",
+  "199",
+  "200",
+  "206",
+  "210",
+  "211",
+  "212",
+  "213",
+  "214",
+  "215",
+  "217",
+  "218",
+  "222",
+  "226",
+  "227",
+  "228",
+  "229",
+  "230",
+  "231",
+  "232",
+  "233",
+  "234",
+  "235",
+  "236",
+  "237",
+  "238",
+  "239",
+  "241",
+  "242",
+  "246",
+  "247",
+  "249",
+  "250",
+  "252",
+  "253",
+  "254",
+  "256",
+  "257",
+  "258",
+  "260",
+  "261",
+  "263",
+  "264",
+  "265",
+  "266",
+  "267",
+  "268",
+  "270",
+  "271",
+  "272",
+  "273",
+  "275",
+  "277",
+  "278",
+  "281",
+  "282",
+  "283",
+  "284",
+  "287",
+  "288",
+  "290",
+  "291",
+  "292",
+  "294",
+  "295",
+  "297",
+  "299",
+  "302",
+  "303",
+  "304",
+  "305",
+  "306",
+  "307",
+  "308",
+  "309",
+  "310",
+  "311",
+  "312",
+  "315",
+  "321",
+  "323",
+  "325",
+  "326",
+  "327",
+  "328",
+  "329",
+  "330",
+  "333",
+  "334",
+  "335",
+  "336",
+  "341",
+  "342",
+  "344",
+  "347",
+  "348",
+  "350",
+  "352",
+  "353",
+  "354",
+  "355",
+  "356",
+  "357",
+  "358",
+  "359",
+  "360",
+  "361",
+  "362",
+  "363",
+  "370",
+  "371",
+  "372",
+  "373",
+  "374",
+  "375",
+  "376",
+  "377",
+  "378",
+  "379",
+  "380",
+  "381",
+  "382",
+  "384",
+  "385",
+  "386",
+  "387",
+  "388",
+  "390",
+  "394",
+  "395",
+  "397",
+  "398",
+  "399",
+  "800",
+  "833",
+  "836",
+  "837",
+  "840",
+  "841",
+  "846",
+  "847",
+  "848",
+  "849",
+  "850",
+  "851",
+  "852",
+  "860",
+  "862",
+  "863",
+  "864",
+  "865",
+  "866",
+  "867",
+  "868",
+  "869",
+  "870",
+  "874",
+  "875",
+  "877",
+  "878",
+  "880",
+  "881",
+  "882",
+  "889",
+  "890",
+  "891",
+  "892",
+  "894",
+  "897",
+  "900",
+  "901",
+  "902",
+  "904",
+  "918",
+  "921",
+  "927",
+  "931",
+  "932",
+  "933",
+  "935",
+  "937",
+  "943",
+  "944",
+  "949",
+  "950",
+  "951",
+  "957",
+  "958",
+  "959",
+  "961",
+  "963",
+  "964",
+  "965",
+  "967",
+  "973",
+  "974",
+  "977",
+  "978",
+  "982",
+  "983",
+  "984",
+  "985",
+  "986",
+  "987",
+  "991",
+  "992",
+  "995",
+  "1000",
+  "1001",
+  "1002",
+  "1003",
+  "1004",
+  "1005",
+  "1006",
+  "1009",
+  "1010",
+  "1011",
+  "1012",
+  "1013",
+  "1014",
+  "1015",
+  "1016",
+  "1017",
+  "1019",
+  "1021",
+  "1022",
+  "1023",
+  "1024",
+  "1026",
+  "1027",
+  "1028",
+  "1029",
+  "1030",
+  "1031",
+  "1032",
+  "1033",
+  "1036",
+  "1037",
+  "1039",
+  "1040",
+  "1041",
+  "1042",
+  "1043",
+  "1044",
+  "1045",
+  "1047",
+  "1048",
+  "1049",
+  "1050",
+  "1051",
+  "1052",
+  "1053",
+  "1054",
+  "1055",
+  "1056",
+  "1057",
+  "1058",
+  "1059",
+  "1060",
+  "1061",
+  "1062",
+  "1063",
+  "1064",
+  "1065",
+  "1066",
+  "1067",
+  "1068",
+  "1069",
+  "1070",
+  "1073",
+  "1074",
+  "1075",
+  "1076",
+  "1077",
+  "1078",
+  "1079",
+  "1101",
+  "1102",
+  "1103",
+  "1104",
+  "1105",
+  "1106",
+  "1107",
+  "1108",
+  "1109",
+  "1110",
+  "1120",
+  "1124",
+  "1127",
+  "1128",
+  "1129",
+  "1130",
+  "1131",
+  "1132",
+  "1134",
+  "1135",
+  "1138",
+  "1139",
+  "1140",
+  "1141",
+  "1144",
+  "1145",
+  "1201",
+  "1202",
+  "1203",
+  "1204",
+  "1205",
+  "1206",
+  "1207",
+  "1208",
+  "1209",
+  "1210",
+  "1211",
+  "1212",
+  "1213",
+  "1214",
+  "1215",
+  "1216",
+  "1217",
+  "1218",
+  "1220",
+  "1221",
+  "1222",
+  "1224",
+  "1227",
+  "1228",
+  "1229",
+  "1230",
+  "1231",
+  "1235",
+  "1237",
+  "1240",
+  "1241",
+  "1242",
+  "1243",
+  "1244",
+  "1245",
+  "1246",
+  "1247",
+  "1248",
+  "1249",
+  "1250",
+  "1252",
+  "1253",
+  "1254",
+  "1255",
+  "1260",
+  "1264",
+  "1265",
+  "1266",
+  "1267",
+  "1268",
+  "1269",
+  "1304",
+  "1308",
+  "1310",
+  "1311",
+  "1312",
+  "1316",
+  "1317",
+  "1318",
+  "1319",
+  "1320",
+  "1321",
+  "1322",
+  "1323",
+  "1325",
+  "1326",
+  "1583",
+  "1701",
+  "1702",
+  "1703",
+  "1901",
+  "1912",
+  "1921",
+  "1922",
+  "1923",
+  "1924",
+  "1925",
+  "1926",
+  "1951",
+  "2001",
+  "2002",
+  "2003",
+  "2006",
+  "2007",
+  "2008",
+  "2301",
+  "2302",
+  "2308",
+  "2311",
+  "2313",
+  "2314",
+  "2315",
+  "2316",
+  "2317",
+  "2318",
+  "2432",
+  "2433",
+  "2434",
+  "2435",
+  "2436",
+  "2437",
+  "2441",
+  "2442",
+  "2501",
+  "2506",
+  "2511",
+  "2514",
+  "2520",
+  "2522",
+  "2523",
+  "2527",
+  "2531",
+  "2535",
+  "2536",
+  "2543",
+  "2544",
+  "2555",
+  "2556",
+  "2557",
+  "2565",
+  "2567",
+  "2569",
+  "2570",
+  "2571",
+  "2572",
+  "2575",
+  "2577",
+  "2580",
+  "2593",
+  "2594",
+  "2597",
+  "2603",
+  "2606",
+  "2607",
+  "2610",
+  "2615",
+  "2620",
+  "2621",
+  "2622",
+  "2623",
+  "2624",
+  "2625",
+  "2629",
+  "2630",
+  "2631",
+  "2632",
+  "2633",
+  "2634",
+  "2635",
+  "2859",
+  "7034",
+  "9001",
+  "9002",
+  "9003",
+  "9004",
+  "9005",
+  "9998",
+  "005",
+  "007",
+  "009",
+  "010",
+  "012",
+  "022",
+  "024",
+  "028",
+  "029",
+  "033",
+  "034",
+  "035",
+  "038",
+  "040",
+  "042",
+  "047",
+  "048",
+  "049",
+  "050",
+  "052",
+  "055",
+  "056",
+  "057",
+  "059",
+  "064",
+  "066",
+  "069",
+  "070",
+  "073",
+  "076",
+  "077",
+  "078",
+  "079",
+  "080",
+  "081",
+  "082",
+  "083",
+  "085",
+  "086",
+  "088",
+  "089",
+  "091",
+  "092",
+  "094",
+  "095",
+  "097",
+  "098",
+  "099"
+ ]
+}

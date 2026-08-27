@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>launch spike, Vacant #29</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font: 16px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #fff; color: #000;
+    padding: max(10px, env(safe-area-inset-top)) 12px max(14px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  h1 { font-size: 15px; margin: 0; letter-spacing: .02em; text-transform: uppercase; }
+  h1 a { color: #444; }
+  h2 { font-size: 12px; margin: 6px 0 0; text-transform: uppercase; letter-spacing: .04em; color: #555; }
+  button {
+    font: inherit; min-height: 44px; border: 2px solid #000; background: #fff;
+    color: #000; border-radius: 8px; padding: 8px 12px; cursor: pointer;
+  }
+  button:disabled { opacity: .45; cursor: default; }
+  #go { font-size: 19px; font-weight: 700; min-height: 60px; background: #000; color: #fff; }
+  select { font: inherit; min-height: 44px; border: 2px solid #000; border-radius: 8px; padding: 0 8px; background: #fff; }
+  .bar { display: flex; gap: 6px; flex-wrap: wrap; }
+  .bar > * { flex: 1; }
+  .bar button { font-size: 14px; padding: 6px 8px; }
+  .card { border: 2px solid #000; border-radius: 8px; padding: 8px 10px; }
+  .big { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+  .big div { border-right: 1px solid #ccc; }
+  .big div:last-child { border-right: 0; }
+  .big b { display: block; font-size: 30px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .big span { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: .03em; }
+  .grid { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-size: 13px; }
+  .grid b { font-variant-numeric: tabular-nums; text-align: right; }
+  .warn { color: #a11111; font-weight: 600; }
+  .ok { color: #06621f; font-weight: 600; }
+  .note { font-size: 12px; color: #555; margin: 4px 0 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { border-bottom: 1px solid #ddd; padding: 3px 4px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  .sheet { position: fixed; inset: 0; background: #fff; padding: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 2; }
+  .sheet[hidden] { display: none; }
+  textarea { flex: 1; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; border: 2px solid #000; border-radius: 8px; padding: 8px; width: 100%; }
+  @media (prefers-reduced-motion: no-preference) { #go:active { transform: scale(.98); } }
+</style>
+</head>
+<body>
+
+<h1>launch spike <a href="https://github.com/EnesYilmazcode/Vacant/issues/29">#29</a></h1>
+
+<div class="card" id="facts">Loading nothing yet. Press the button.</div>
+
+<button id="go" aria-label="Fetch, parse and answer once, and time each step">Run once</button>
+
+<div class="bar">
+  <select id="state" aria-label="Which launch state this run is">
+    <option value="warm">warm, from the app switcher</option>
+    <option value="cold process">cold process, force quit then relaunch</option>
+    <option value="cold everything">cold everything, first launch after install</option>
+  </select>
+  <button id="record" disabled>Record run</button>
+</div>
+
+<div class="bar">
+  <button id="baseline" disabled>Save as desktop baseline</button>
+  <button id="report">Report <span id="n">(0)</span></button>
+</div>
+
+<div class="card" id="ratio"></div>
+<div id="runs"></div>
+
+<section class="sheet" id="sheet" hidden aria-label="Markdown report">
+  <textarea id="md" readonly spellcheck="false"></textarea>
+  <div class="bar">
+    <button id="copy">Copy</button>
+    <button id="wipe">Erase runs</button>
+    <button id="close">Close</button>
+  </div>
+</section>
+
+<script type="module">
+import { rank } from './engine.vendor.js';
+import { pickHoursTerm, makeHoursFor } from './hours.vendor.js';
+import { termGate, fmtDay, isoDate } from './term.vendor.js';
+import { verdict, median, STATES, COLD_STATES } from './verdict.js';
+
+const $ = (id) => document.getElementById(id);
+const RUNS_KEY = 'vacant.spike.launch.runs.v1';
+const BASE_KEY = 'vacant.spike.launch.baseline.v1';
+
+// The index #29 is arguing about. The other two files are fetched because the
+// first answer needs them, and they are timed separately so the packed binary
+// question, which is only about this one file, gets its own number.
+const INDEX = '../data/rooms-1268.json';
+const BUILDINGS = '../data/buildings-1268.json';
+const HOURS = '../data/buildings-hours.json';
+const CURRENT = '../data/current.json';
+
+// A single parse on a phone is noise, so each run parses the same string this
+// many times and reports the median. The first parse is kept separately,
+// because it is the only one that pays the cold JIT the app actually pays.
+const PARSES = 7;
+
+// The Oval, the app's own fallback origin. The first answer has to start
+// somewhere and geolocation is not part of what #29 is timing.
+const OVAL = { lat: 39.9995, lon: -83.013 };
+const NEEDED = 30;
+
+// Local, never UTC. These get pasted into a log of when somebody was standing
+// somewhere, and a stamp four hours off is worse than no stamp.
+const pad2 = (n) => String(n).padStart(2, '0');
+const localDate = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const shown = (iso) => { const d = new Date(iso); return localDate(d) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
+const shownTime = (iso) => { const d = new Date(iso); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()); };
+
+const round = (n) => Math.round(n * 10) / 10;
+const kb = (b) => (b == null ? '-' : (b / 1024).toFixed(1) + ' KB');
+const load = (k, fallback) => { try { const v = localStorage.getItem(k); return v == null ? fallback : JSON.parse(v); } catch { return fallback; } };
+const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode, the run still reports */ } };
+
+let runs = load(RUNS_KEY, []);
+let baseline = load(BASE_KEY, null);
+let last = null;
+
+// Only the first run in a page context pays the cold JIT that #29 is asking
+// about. Run the button twice without reloading and the second parse is warm,
+// which is a smaller number describing a launch that never happens.
+let contextRuns = 0;
+
+function device() {
+  const c = navigator.connection;
+  return {
+    ua: navigator.userAgent,
+    cores: navigator.hardwareConcurrency ?? null,
+    memoryGB: navigator.deviceMemory ?? null,
+    dpr: window.devicePixelRatio ?? null,
+    screen: screen.width + 'x' + screen.height,
+    standalone: ('standalone' in navigator ? navigator.standalone === true : null),
+    displayMode: window.matchMedia ? window.matchMedia('(display-mode: standalone)').matches : null,
+    connection: c ? (c.effectiveType || '?') + (c.downlink ? ', ' + c.downlink + ' Mbit/s down' : '') : null,
+  };
+}
+
+// What the browser really moved over the wire. transferSize 0 with a real body
+// means the HTTP cache served it, which makes the network figure meaningless
+// and has to be said rather than averaged in.
+function transfer(url) {
+  const abs = new URL(url, location.href).href;
+  const e = performance.getEntriesByType('resource').filter((r) => r.name === abs).pop();
+  if (!e) return null;
+  return {
+    transferSize: e.transferSize,
+    encoded: e.encodedBodySize,
+    decoded: e.decodedBodySize,
+    fromCache: e.transferSize === 0 && e.decodedBodySize > 0,
+    compressed: e.encodedBodySize > 0 && e.encodedBodySize < e.decodedBodySize,
+  };
+}
+
+async function once() {
+  performance.clearResourceTimings();
+  contextRuns++;
+  const t0 = performance.now();
+
+  // Parallel, the way js/app.js fetches them, with each one timed on its own.
+  const timed = async (url, as) => {
+    const s = performance.now();
+    const r = await fetch(url, { cache: 'default' });
+    const body = as === 'text' ? await r.text() : await r.json();
+    return { body, ms: performance.now() - s };
+  };
+  const [idxRaw, bld, hrs, cur] = await Promise.all([
+    timed(INDEX, 'text'),
+    timed(BUILDINGS, 'json'),
+    timed(HOURS, 'json'),
+    timed(CURRENT, 'json'),
+  ]);
+  const netWall = performance.now() - t0;
+
+  const text = idxRaw.body;
+  const parses = [];
+  let index = null;
+  for (let i = 0; i < PARSES; i++) {
+    const s = performance.now();
+    index = JSON.parse(text);
+    parses.push(performance.now() - s);
+  }
+
+  const term = pickHoursTerm(hrs.body, cur.body);
+  const hoursFor = makeHoursFor(term);
+  const now = new Date();
+  // Fetch and parse cost the same on any date, so they are still worth timing
+  // out of term. The ANSWER is not: js/app.js returns from boot() before
+  // state.ready when the term is over, so it ranks nothing and shows nothing.
+  // The rank() below is then a cost measurement and not a list of free rooms,
+  // and the page has to say which it is.
+  const gate = termGate(cur.body, isoDate(now));
+  const a0 = performance.now();
+  const rows = rank(
+    Object.entries(index.rooms).map(([id, r]) => ({ id, ...r })),
+    {
+      origin: OVAL,
+      now: now.getHours() * 60 + now.getMinutes(),
+      day: now.getDay(),
+      needed: NEEDED,
+      buildings: bld.body.buildings,
+      hoursFor,
+      sessions: index.sessions,
+      date: localDate(now),
+    },
+  );
+  const answerMs = performance.now() - a0;
+
+  let tuples = 0;
+  const roomIds = Object.keys(index.rooms);
+  for (const id of roomIds) tuples += index.rooms[id].busy.length;
+
+  const net = transfer(INDEX);
+  const parseFirst = parses[0];
+  const parseMedian = median(parses);
+
+  return {
+    at: new Date().toISOString(),
+    // The state is stamped on at Record time, not here, so a run is not wasted
+    // by forgetting to set the selector before pressing the button.
+    state: null,
+    firstInContext: contextRuns === 1,
+    netIndex: idxRaw.ms,
+    netWall,
+    netOthers: Math.max(bld.ms, hrs.ms, cur.ms),
+    parses: parses.map(round),
+    parseFirst,
+    parseMedian,
+    answerMs,
+    // The number the decision turns on. Composed, not raw wall clock, because
+    // the raw pass carries one noisy parse sample and this carries the median.
+    total: idxRaw.ms + parseMedian + answerMs,
+    // The same pass with the single cold parse the app really pays, printed
+    // beside it so the choice of parse statistic is visible rather than buried.
+    totalFirstParse: idxRaw.ms + parseFirst + answerMs,
+    rooms: roomIds.length,
+    buildingsInIndex: new Set(roomIds.map((id) => index.rooms[id].b)).size,
+    tuples,
+    sessions: index.sessions.length,
+    answered: rows.length,
+    gate: { open: gate.open, headline: gate.headline ?? null, from: gate.from, to: gate.to, term: gate.term },
+    hoursTerm: term ? term.slug : null,
+    bytes: net,
+    device: device(),
+  };
+}
+
+function paintFacts(r) {
+  if (!r) return;
+  const n = r.bytes;
+  const cacheLine = !n
+    ? '<span class="warn">no Resource Timing entry</span>'
+    : n.fromCache
+      ? '<span class="warn">served from the HTTP cache, the network figure above is not a download</span>'
+      : n.compressed
+        ? '<span class="ok">' + kb(n.encoded) + ' over the wire, ' + kb(n.decoded) + ' decoded</span>'
+        : '<span class="warn">' + kb(n.decoded) + ' uncompressed, this server sent no gzip</span>';
+
+  // #29 asks for an index of at least 900 rooms, because a small sample
+  // understates the parse. Whether the shipped one clears that bar is a fact
+  // about the measurement, so it is on the screen and not in a footnote.
+  const bar = r.rooms >= 900
+    ? '<span class="ok">' + r.rooms + ' rooms, clears the 900 #29 asks for</span>'
+    : '<span class="warn">' + r.rooms + ' rooms, under the 900 #29 asks for. Full campus is 1,067, so a full index would parse roughly ' +
+      (1067 / r.rooms).toFixed(2) + 'x this. That multiplier is arithmetic, not a measurement.</span>';
+
+  $('facts').innerHTML =
+    '<div class="big">' +
+    '<div><b>' + round(r.netIndex) + '</b><span>network ms</span></div>' +
+    '<div><b>' + round(r.parseMedian) + '</b><span>parse ms, median of ' + PARSES + '</span></div>' +
+    '<div><b>' + round(r.total) + '</b><span>total ms</span></div>' +
+    '</div>' +
+    '<div class="grid" style="margin-top:8px">' +
+    '<span>first parse, cold JIT</span><b>' + round(r.parseFirst) + ' ms</b>' +
+    '<span>parse spread</span><b>' + round(Math.min(...r.parses)) + ' to ' + round(Math.max(...r.parses)) + ' ms</b>' +
+    '<span>first answer, rank()</span><b>' + round(r.answerMs) + ' ms</b>' +
+    '<span>total with the cold parse</span><b>' + round(r.totalFirstParse) + ' ms</b>' +
+    '<span>all four files, wall clock</span><b>' + round(r.netWall) + ' ms</b>' +
+    '<span>rooms answered</span><b>' + (r.gate.open ? r.answered : 'none, the app refuses today') + '</b>' +
+    '<span>index</span><b>' + r.rooms + ' rooms, ' + r.buildingsInIndex + ' buildings, ' + r.tuples.toLocaleString() + ' busy tuples, ' + r.sessions + ' sessions</b>' +
+    '</div>' +
+    '<p class="note">' + cacheLine + '</p>' +
+    '<p class="note">' + bar + '</p>' +
+    (r.gate.open
+      ? ''
+      : '<p class="note warn">' + r.gate.headline + '. The app answers only between ' +
+        fmtDay(r.gate.from) + ' and ' + fmtDay(r.gate.to) + ', so it would have ranked nothing today. ' +
+        'Network and parse above are still real costs. The ' + r.answered + ' rows rank() returned are a timing sample, not rooms this page is calling free.</p>') +
+    (r.firstInContext
+      ? ''
+      : '<p class="note warn">This is run ' + contextRuns + ' in this window, so the JIT is already warm and the parse above is not a cold one. Reload before the next recorded run.</p>') +
+    (r.device.connection ? '<p class="note">Connection: ' + r.device.connection + '. The network figure is about the link you are on, not about the file. #29 turns on the parse.</p>' : '');
+}
+
+function paintRatio() {
+  if (!baseline) {
+    $('ratio').innerHTML = '<p class="note">No desktop baseline saved. Open this page on the laptop, run it once, press <b>Save as desktop baseline</b>, then run it here. Until then the 4x to 8x multiplier in #29 stays a guess.</p>';
+    return;
+  }
+  const here = last;
+  const rows = [
+    ['desktop baseline taken', shown(baseline.at)],
+    ['desktop network / parse / total', round(baseline.netIndex) + ' / ' + round(baseline.parseMedian) + ' / ' + round(baseline.total) + ' ms'],
+  ];
+  if (here) {
+    rows.push(['this device network / parse / total', round(here.netIndex) + ' / ' + round(here.parseMedian) + ' / ' + round(here.total) + ' ms']);
+    rows.push(['parse ratio, this device over desktop', '<b>' + (here.parseMedian / baseline.parseMedian).toFixed(2) + 'x</b>']);
+    rows.push(['total ratio', (here.total / baseline.total).toFixed(2) + 'x']);
+  }
+  $('ratio').innerHTML =
+    '<h2>measured multiplier</h2>' +
+    '<div class="grid">' + rows.map(([k, v]) => '<span>' + k + '</span><b>' + v + '</b>').join('') + '</div>' +
+    (here && here.device.ua === baseline.device.ua
+      ? '<p class="note warn">The baseline was taken on this same user agent, so this ratio compares a device with itself.</p>'
+      : '');
+}
+
+function paintRuns() {
+  $('n').textContent = '(' + runs.length + ')';
+  if (!runs.length) { $('runs').innerHTML = ''; return; }
+  const head = '<tr><th>state</th><th>net</th><th>parse</th><th>answer</th><th>total</th><th>JIT</th><th>cache</th></tr>';
+  const body = runs.map((r, i) =>
+    '<tr><td>' + r.state + ' ' + (runs.slice(0, i + 1).filter((x) => x.state === r.state).length) + '</td>' +
+    '<td>' + round(r.netIndex) + '</td><td>' + round(r.parseMedian) + '</td>' +
+    '<td>' + round(r.answerMs) + '</td><td>' + round(r.total) + '</td>' +
+    '<td>' + (r.firstInContext ? 'cold' : 'warm') + '</td>' +
+    '<td>' + (r.bytes && r.bytes.fromCache ? 'hit' : 'miss') + '</td></tr>').join('');
+  $('runs').innerHTML = '<h2>recorded runs, ms</h2><table>' + head + body + '</table>' +
+    '<p class="note">One recorded run per launch. A second run in the same window has a warm JIT and is marked so.</p>';
+}
+
+function markdown() {
+  if (!runs.length) return 'No runs recorded yet. Press Run once, then Record run.';
+  const v = verdict(runs);
+  const d = runs[runs.length - 1].device;
+  const idx = runs[runs.length - 1];
+  const outsideTerm = runs.filter((r) => r.gate && !r.gate.open);
+  const table = runs.map((r, i) =>
+    '| ' + r.state + ' ' + runs.slice(0, i + 1).filter((x) => x.state === r.state).length +
+    ' | ' + shownTime(r.at) +
+    ' | ' + round(r.netIndex) +
+    ' | ' + round(r.parseMedian) +
+    ' | ' + round(r.parseFirst) +
+    ' | ' + round(r.answerMs) +
+    ' | ' + round(r.total) +
+    ' | ' + (r.firstInContext ? 'cold' : 'warm') +
+    ' | ' + (r.bytes && r.bytes.fromCache ? 'cache hit' : 'network') +
+    ' |').join('\n');
+
+  const counts = STATES.map((s) => s + ': ' + runs.filter((r) => r.state === s).length + ' of 5').join(', ');
+  const b = idx.bytes;
+
+  return '## ' + new Date().toISOString().slice(0, 10) + '  cold launch on a real phone\n' +
+'\n' +
+'Measured with `spikes/launch.html`. Network and parse are timed separately with\n' +
+'`performance.now()`; each run parses the same string ' + PARSES + ' times and reports the\n' +
+'median, because one parse sample on a phone is noise.\n' +
+'\n' +
+'```\n' +
+'Device:            ' + d.ua + '\n' +
+'Cores / memory:    ' + (d.cores ?? 'not reported') + ' / ' + (d.memoryGB ? d.memoryGB + ' GB' : 'not reported') + '\n' +
+'Screen / DPR:      ' + d.screen + ' / ' + d.dpr + '\n' +
+'Standalone:        navigator.standalone ' + d.standalone + ', display-mode ' + d.displayMode + '\n' +
+'Connection:        ' + (d.connection || 'not reported by this browser') + '\n' +
+'Low Power Mode:    ____  (not readable from the page, fill this in)\n' +
+'Index measured:    ' + idx.rooms + ' rooms, ' + idx.buildingsInIndex + ' buildings, ' + idx.tuples + ' busy tuples, ' + idx.sessions + ' sessions\n' +
+'Transfer:          ' + (b ? kb(b.encoded) + ' encoded, ' + kb(b.decoded) + ' decoded' + (b.compressed ? ', compressed' : ', not compressed') : 'no Resource Timing entry') + '\n' +
+'Runs recorded:     ' + counts + '\n' +
+'```\n' +
+'\n' +
+(idx.rooms < 900
+  ? '**The index measured is ' + idx.rooms + ' rooms, under the 900 #29 asks for.** Full campus is\n' +
+    '1,067 rooms, so a complete index would parse roughly ' + (1067 / idx.rooms).toFixed(2) + 'x this. That factor is\n' +
+    'arithmetic on the room counts, not a measurement.\n\n'
+  : '') +
+'| run | at | net ms | parse ms (median of ' + PARSES + ') | first parse ms | answer ms | total ms | JIT | source |\n' +
+'|---|---|---|---|---|---|---|---|---|\n' +
+table + '\n' +
+'\n' +
+'`total` is network + median parse + first answer. It does not include app boot,\n' +
+'module evaluation or geolocation, so it is the fetch-to-answer cost and not the\n' +
+'whole cold start.\n' +
+'\n' +
+'`JIT` is `cold` when the run was the first in its page context and `warm` when the\n' +
+'window had already parsed the index once. Only the cold ones describe a launch\n' +
+'that actually happens.\n' +
+'\n' +
+'**VERDICT: ' + v.line + '**\n' +
+'Median cold total: ' + (v.median == null ? '____' : round(v.median) + ' ms over ' + v.n + ' run' + (v.n === 1 ? '' : 's')) +
+  (v.first == null ? '' : '. Using the single cold parse instead of the median it is ' + round(v.first) + ' ms') + '.\n' +
+'Cold means either state with no warm process behind it, ' + COLD_STATES.join(' or ') + ', pooled.\n' +
+'They are printed apart here so the pooling can be checked:\n' +
+v.byState.map((b) => '- `' + b.state + '`: ' + b.n + ' run' + (b.n === 1 ? '' : 's') +
+  (b.median == null ? ', no median' : ', median ' + round(b.median) + ' ms')).join('\n') + '\n' +
+(v.warm ? '\n**Every cold run was recorded in a window that had already parsed the index, so all of them have a warm JIT and this verdict is optimistic.** Reload between runs and record again.\n' : '') +
+(outsideTerm.length
+  ? '\n**' + outsideTerm.length + ' of these runs ' + (outsideTerm.length === 1 ? 'was' : 'were') + ' recorded outside the term the app answers in (' +
+    fmtDay(outsideTerm[0].gate.from) + ' to ' + fmtDay(outsideTerm[0].gate.to) + ').** Fetch and parse cost the same on any date, but the answer step timed work the app would not have done that day.\n'
+  : '') +
+'\n' +
+(baseline
+  ? 'Desktop baseline, taken ' + shown(baseline.at) + ' on `' + baseline.device.ua + '`:\n' +
+    'network ' + round(baseline.netIndex) + ' ms, parse ' + round(baseline.parseMedian) + ' ms, total ' + round(baseline.total) + ' ms.\n' +
+    'Measured phone-over-desktop parse ratio: **' + (median(runs.map((r) => r.parseMedian)) / baseline.parseMedian).toFixed(2) + 'x**' +
+    ', against the 4x to 8x #29 assumed.\n'
+  : 'No desktop baseline was saved, so the 4x to 8x multiplier in #29 is still untested.\n');
+}
+
+$('go').addEventListener('click', async () => {
+  $('go').disabled = true;
+  $('facts').textContent = 'running';
+  try {
+    last = await once();
+    paintFacts(last);
+    paintRatio();
+    $('record').disabled = false;
+    $('baseline').disabled = false;
+  } catch (e) {
+    $('facts').innerHTML = '<p class="warn">' + String(e) + '</p>';
+  }
+  $('go').disabled = false;
+});
+
+$('record').addEventListener('click', () => {
+  if (!last) return;
+  last.state = $('state').value;
+  runs.push(last);
+  store(RUNS_KEY, runs);
+  $('record').disabled = true;
+  paintRuns();
+});
+
+$('baseline').addEventListener('click', () => {
+  if (!last) return;
+  baseline = last;
+  store(BASE_KEY, baseline);
+  paintRatio();
+});
+
+$('report').addEventListener('click', () => { $('md').value = markdown(); $('sheet').hidden = false; });
+$('close').addEventListener('click', () => { $('sheet').hidden = true; });
+$('copy').addEventListener('click', async () => {
+  $('md').select();
+  try { await navigator.clipboard.writeText($('md').value); $('copy').textContent = 'Copied'; }
+  catch { $('copy').textContent = 'Select all and copy'; }
+  setTimeout(() => { $('copy').textContent = 'Copy'; }, 1500);
+});
+$('wipe').addEventListener('click', () => {
+  if (!confirm('Erase all ' + runs.length + ' recorded runs? The desktop baseline is kept.')) return;
+  runs = [];
+  store(RUNS_KEY, runs);
+  paintRuns();
+  $('md').value = markdown();
+});
+
+paintRuns();
+paintRatio();
+</script>
+</body>
+</html>

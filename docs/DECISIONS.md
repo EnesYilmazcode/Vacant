@@ -979,3 +979,108 @@ seven-week rooms hold exams that appear in no busy list.
 `data/vendor/academic.ics` with `academic.meta.json` beside it, and caches the
 five-year view and the finals pages under `data/cache/registrar/`. Three
 requests, run when a term rolls over. The build reads files.
+
+---
+
+## 2026-08-27  Refuse on busy blocks and minutes, and delete the room-count floor ([#10](https://github.com/EnesYilmazcode/Vacant/issues/10))
+
+**Decided.** `scripts/guards.mjs` is Finder's file verbatim with two changes:
+`MAX_DROP` is 0.05 rather than 0.1, and a four-line provenance comment naming
+`EnesYilmazcode/Finder` (MIT) sits on top. Nothing else. Vacant's own thresholds
+live in `scripts/lib/index-guards.mjs` and are keyed on **busy blocks and busy
+minutes**.
+
+**The room-count floor is gone.** `MIN_ROOMS = 150` was deleted rather than
+retuned. It was the wrong metric and it fired first, which meant it pre-empted
+the guards that do work. Proved by damaging a real harvest: dropping every
+fourth roomed meeting from the Autumn 1268 harvest moves
+
+```
+busy blocks    9,561 -> 7,437     down 22.2%   REFUSED
+busy minutes 708,848 -> 551,903   down 22.1%   REFUSED
+rooms            581 -> 564       down  2.9%   would have shipped
+buildings         78 -> 77        down  1.3%   would have shipped
+```
+
+A 2.9% room drop clears Finder's 10% and clears the new 5% too. The grid it would
+have shipped invents 156,945 minutes of free time. That is the failure this
+project has and no room count catches it.
+
+**First full harvest, per term, measured 2026-08-27 on the committed archives,
+after the safety filter.**
+
+```
+term  season  rooms  buildings  blocks  busy minutes  weekday balance
+1262  Spring    607         75   9,342       718,466             0.67
+1264  Summer    142         39     668        93,025             0.82
+1268  Autumn    581         78   9,561       708,848             0.59
+```
+
+Floors are set to about 60% of those and are marked PROVISIONAL in the file.
+Autumn `{349, 47, 5700, 425000}`, Spring `{364, 45, 5600, 431000}`, Summer
+`{85, 23, 400, 55000}`. Summer needs its own row: it is a seventh of Autumn by
+busy time, so one floor for both is either useless in Autumn or impossible in
+Summer. Floors only bite on a term's first run; from run two the
+previous-committed comparison is far sharper.
+
+**The true campus room count is 871, and none of the six candidates was right.**
+The full 1268 harvest holds 877 distinct real `facilityId` values; 871 sit in a
+building `data/buildings.json` can place; 581 survive the safety filter and 486
+of those are ordinary classrooms. The research's candidates were 422, 486, 562,
+625, 633 and Roomix's 1,067. 486 matches the shown count by coincidence, not by
+agreement: it was an estimate of show-by-default rooms in a 633-room sample and
+lands on the same number for a different population. Roomix's 1,067 is roughly
+871 plus the 250 we deliberately refuse plus satellite rooms.
+
+**`weekdayBalance` is Monday to Friday over busy MINUTES.** Measured 0.59 for
+1268, 0.67 for 1262, 0.82 for 1264, all clear of the 0.30 refusal. Seven-day
+would divide by a near-zero weekend every week: Autumn 1268 has 1,800 Saturday
+minutes against 166,895 on Tuesday.
+
+**`timeResidue` is 0.002 against a measured 0.** Zero of 34,244 clock strings
+across the three archives fail `toMinutes`. The denominator counts only rows that
+carry a clock STRING; a meeting with no time is a meeting with no time, not a
+parse failure, and folding those in would have put Summer at 0.0075 and refused a
+healthy build. Rewriting 200 start times to `08h00` on a real harvest fires it at
+0.93% and stops the run.
+
+**The unresolved-building-code guard needs its allow list or it is noise.** Six
+codes are named the harvest names and `data/buildings.json` will never hold: 118
+Stone Laboratory on Lake Erie at 185 km, and 404, 405, 410, 414, 549 and 8002 at
+the OARDC Wooster campus 126 km out. Gerlaugh Hall and Williams Hall are real
+teaching buildings with real classrooms and they are correctly dropped on
+distance. Without the list this fires on every build, which trains you to ignore
+it. A code NOT in the list means the geo layer went stale and real Columbus rooms
+are vanishing, and that is fatal.
+
+**The PII guard runs on the serialized string and `FORCE_WRITE=1` cannot clear
+it.** Verified by putting `buckeye.1@osu.edu` into `meeting.room`, which really
+does ship as `room.n`: `FORCE_WRITE=1` exits 1 and writes nothing. The refusal
+names the character offset and never reprints the address.
+
+Worth recording that the first attempt at this proof failed in a good way. Adding
+`instructors` back onto a harvested meeting did NOT trip the guard, because
+`invert` builds each room record from named fields and never copies the array.
+The strip at the parse boundary is not the only thing standing between an address
+and the index; the inversion is a second wall.
+
+**NOT READY versus COLLAPSE, both demonstrated on real data.** A term with no
+committed file that falls short of its floors prints the reason, writes nothing
+and exits 0, so a workflow building several terms carries on. A term that IS
+committed and now falls short exits 1 and leaves the committed file byte for byte
+unchanged, which was checked by md5.
+
+**`FORCE_WRITE=1` over a collapsed harvest is unrecoverable and the refusal says
+so in full.** A term deleted from `searchableTermsV2` returns zero sections
+forever. 1258 already does. The committed file is the only copy of that term's
+grid that will ever exist, so the guard is the backup.
+
+**Not done here: the `workflow_dispatch` input description.** `.github/` does not
+exist on this branch; the workflow is #12 and belongs to whoever writes it. The
+wording it needs, so it does not have to be reinvented:
+
+> `force_write`: Ship a harvest the guards refused. Only clears the forceable
+> refusals, never a lost room and never the PII scan. A forced write over a
+> collapsed harvest is UNRECOVERABLE: a term that has left searchableTermsV2
+> returns zero sections forever, so the committed file is the only copy of that
+> grid anywhere. Read the refusal in full before you set this.

@@ -17,9 +17,18 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { isRealRoom, isUnplaceable, newCounter, formatFunnel, toMinutes } from './lib/funnel.mjs';
+import {
+  formatFunnel,
+  isPseudoRoom,
+  isRealRoom,
+  isUnplaceable,
+  newCounter,
+  toMinutes,
+} from './lib/funnel.mjs';
 import { buildSessions, expandMeeting, mergeIntervals, propagateGroups } from './lib/rooms.mjs';
 import { classify, OFF_CAMPUS, TYPE_VISIBILITY } from './lib/room-safety.mjs';
+import { indexRefusals, measure, notReady } from './lib/index-guards.mjs';
+import { refusalMessage } from './guards.mjs';
 import {
   closedDays,
   diffCalendars,
@@ -32,10 +41,6 @@ import {
 } from './lib/calendar.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-// A term that comes back with fewer rooms than this did not build, it collapsed.
-// Measured: 871 rooms for 1268, 884 for 1262, 206 for the much smaller 1264.
-const MIN_ROOMS = 150;
 
 // Bookings with no recoverable weekday get their clock window blocked on all
 // seven days, so a handful of them is honest and a flood of them would delete
@@ -127,19 +132,30 @@ export function calendarFor(term, name, { ics, fiveYear, finals }) {
     }
   }
 
-  const exams = parseFinalsWindow(finals, year);
-  if (!exams) die(`the ${name} finals page parsed to zero exam days.`);
+  // Three sources for one week, and every one of them that exists must agree. A
+  // silent disagreement here sends someone into a final.
+  //
+  // The finals page is preferred because it is the only one carrying the
+  // time-of-day matrix, but it is the Registrar's LIVE page and it disappears
+  // when the term does, so an expired term falls back to the five-year view.
+  // That is the same publisher, and the matrix is deliberately unused: it is
+  // useless without the exam ROOM, which lives in a Final Assignment List the
+  // Registrar still marks coming soon.
+  let exams = finals ? parseFinalsWindow(finals, year) : null;
+  if (finals && !exams) die(`the ${name} finals page parsed to zero exam days.`);
+  if (!exams) console.warn(`  warn  no ${name} finals page, using the five-year view for the exam window`);
 
-  // Three sources for one week. The finals page is what ships because it is the
-  // only one that also carries the time-of-day matrix; the other two get to
-  // veto. A silent disagreement here sends someone into a final.
   for (const [label, events] of [['five-year view', registrar], ['vendored ICS', icsEvents]]) {
     const other = examWindow(events, window.last);
     if (!other) die(`the ${label} gave no ${name} exam window.`);
+    if (!exams) {
+      exams = other;
+      continue;
+    }
     if (other.start !== exams.start || other.end !== exams.end) {
       die(
-        `${name} exam window disagrees. finals page=${exams.start}..${exams.end}, ` +
-          `${label}=${other.start}..${other.end}`,
+        `${name} exam window disagrees. ${finals ? 'finals page' : 'five-year view'}=` +
+          `${exams.start}..${exams.end}, ${label}=${other.start}..${other.end}`,
       );
     }
   }
@@ -479,7 +495,6 @@ async function main() {
     console.log(`  on the GA list but hidden by type: ${line}`);
   }
 
-  if (roomCount < MIN_ROOMS) die(`only ${roomCount} rooms, under the ${MIN_ROOMS} floor.`);
   if (stats.unplaceableBookings > MAX_UNPLACEABLE) {
     die(
       `${stats.unplaceableBookings} bookings have no recoverable weekday, over the ` +
@@ -505,13 +520,10 @@ async function main() {
     'registrar',
     `${name.toLowerCase().replace(/\s+/g, '-')}-finals-schedule.html`,
   );
-  if (!existsSync(finalsPath)) {
-    die(`no finals page cached for ${name}. Run fetch-calendar.mjs, then check its warnings.`);
-  }
   const calendar = calendarFor(term, name, {
     ics: readFileSync(icsPath, 'utf8'),
     fiveYear: readFileSync(fivePath, 'utf8'),
-    finals: readFileSync(finalsPath, 'utf8'),
+    finals: existsSync(finalsPath) ? readFileSync(finalsPath, 'utf8') : null,
   });
 
   console.log(
@@ -574,9 +586,71 @@ async function main() {
   }
 
   if (/"generated"/.test(json)) die('generated must not appear inside the room index.');
-  if (/@osu\.edu/i.test(json)) die('an address reached the room index.');
   if (/"lat"|"lon"|"name"/.test(json)) die('geography belongs in buildings.json, not here.');
   if (/\d{1,2}:\d{2}\s*[ap]m/i.test(json)) die('a raw clock string reached the room index.');
+
+  // The refusals. Everything above this point is a shape check; this is the one
+  // that decides whether a harvest that PARSED is a harvest worth shipping.
+  const indexPath = join(ROOT, 'data', `rooms-${term}.json`);
+  const committed = existsSync(indexPath) ? JSON.parse(readFileSync(indexPath, 'utf8')) : null;
+  const now = measure(sorted);
+  const before = committed ? measure(committed.rooms) : null;
+
+  const clockStrings = { parsed: 0, failed: 0 };
+  const unresolved = new Set();
+  for (const record of harvest.meetings) {
+    const m = record.m;
+    if (m?.facilityId == null || isPseudoRoom(m)) continue;
+    for (const field of ['startTime', 'endTime']) {
+      const value = m[field];
+      if (typeof value !== 'string' || !value.trim()) continue;
+      if (toMinutes(value) == null) clockStrings.failed++;
+      else clockStrings.parsed++;
+    }
+    if (!isKnownBuilding(m.buildingCode)) unresolved.add(m.buildingCode);
+  }
+  const noCoordRooms = [...new Set(Object.values(sorted).map((r) => r.b))].filter(
+    (code) => buildings[code]?.lat == null || buildings[code]?.lon == null,
+  ).length;
+
+  const refusals = indexRefusals({
+    term,
+    now,
+    before,
+    clockStrings,
+    unresolvedCodes: [...unresolved],
+    noCoordRooms,
+    serialized: json,
+  });
+
+  console.log(
+    `\nguards: ${now.blocks} busy blocks, ${now.minutes} busy minutes, ${now.rooms} rooms, ` +
+      `${now.buildings} buildings, weekday balance ${now.weekdayBalance.toFixed(2)}` +
+      (before ? `  (committed: ${before.blocks} blocks, ${before.minutes} minutes)` : '  (no committed file)'),
+  );
+  console.log(
+    `  ${clockStrings.parsed} clock strings parsed, ${clockStrings.failed} failed; ` +
+      `${unresolved.size} unresolved building code(s); ${noCoordRooms} room building(s) with no lat/lon`,
+  );
+
+  const problem = refusalMessage(refusals);
+  if (problem) {
+    // A term nothing has ever built is NOT READY. Say why, write nothing, and
+    // exit 0 so a workflow building several terms carries on to the next one.
+    if (notReady(refusals, Boolean(committed))) {
+      console.warn(`\nNOT READY  ${term} has no committed index and does not clear its floors yet:`);
+      console.warn(problem.split('\n').map((l) => `           ${l}`).join('\n'));
+      return;
+    }
+    console.error(`\nREFUSED  ${term} would ship less than data/rooms-${term}.json already holds.`);
+    console.error(problem.split('\n').map((l) => `         ${l}`).join('\n'));
+    console.error(
+      '\n         The committed file is untouched. FORCE_WRITE=1 over a collapsed harvest is\n' +
+        '         unrecoverable: a term deleted from searchableTermsV2 returns zero sections\n' +
+        '         forever, so that file is the only copy of the grid that will ever exist.',
+    );
+    process.exit(1);
+  }
 
   const current = {
     term,

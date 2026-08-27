@@ -6,8 +6,9 @@
 //
 // Needs Chrome or Chromium on the machine and nothing else. It finds the
 // browser itself, serves the repo over a local port, drives the real app and
-// exits non-zero if a frame came out blank, a screen came out empty, or the
-// page logged an error. Point CHROME at the binary if the search misses:
+// refuses to write if a frame came out blank, a screen came out empty, or the
+// page logged a console error or threw. Point CHROME at the binary if the
+// search misses:
 //
 //   CHROME="/path/to/chrome" node scripts/shoot.mjs
 //

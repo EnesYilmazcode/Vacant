@@ -1163,7 +1163,7 @@ test('a query against the committed index answers, and answers the same way twic
   const first = query(rooms, opts);
   const second = query(rooms, opts);
 
-  assert.ok(rooms.length > 800, `${rooms.length} rooms in the index`);
+  assert.ok(rooms.length > 500, `${rooms.length} rooms in the index`);
   assert.ok(first.rows.length > 0);
   assert.equal(first.rung, 'asked');
   assert.equal(
@@ -1406,23 +1406,30 @@ test('a closed campus says which holiday it is when the build knows', () => {
 });
 
 test('the day bounds still cover the committed index, including the late rooms', () => {
-  // DAY_END is 23:00 because the harvest says so, and the research note's 22:00
-  // would clip real classes. This pins both halves of that: the latest end in
-  // the index, and exactly which rooms run past 22:00, so a rebuild that pushes
-  // a class later cannot quietly lose it. Day 0 is Sunday, so 1 to 5 is Monday
-  // to Friday.
+  // DAY_END is a clamp on what the engine will offer, not a reading of the
+  // index, so it has to sit at or above the latest class the index still
+  // carries. It used to sit exactly on it: before the room safety filter the
+  // latest end was 23:00 in two Theatre, Film and Media Arts rooms. Both are
+  // facilityType PERF, rehearsal studios rather than classrooms, so the filter
+  // hides them and the latest end a student can be sent to is now 21:55.
+  //
+  // The clamp did not move with it. Dropping DAY_END to 21:55 would clip a real
+  // class the moment one of those buildings opens a late section again, and the
+  // cost of a clamp that is too generous is nothing: it only ever bounds a
+  // window the schedule already closed.
   const term = readData('current.json').term;
   const index = readData(`rooms-${term}.json`);
   const blocks = Object.entries(index.rooms).flatMap(([id, r]) => (r.busy ?? []).map((b) => [id, ...b]));
 
-  assert.equal(Math.max(...blocks.map((b) => b[3])), DAY_END, 'the latest class end');
-  assert.equal(Math.min(...blocks.map((b) => b[2])), 330, 'the earliest class start, 05:30');
+  const latest = Math.max(...blocks.map((b) => b[3]));
+  assert.ok(latest <= DAY_END, `the clamp has to cover the index: ${latest} > ${DAY_END}`);
+  assert.equal(latest, 1315, 'the latest class end, 21:55');
+  assert.equal(Math.min(...blocks.map((b) => b[2])), 345, 'the earliest class start, 05:45');
 
-  const late = blocks.filter((b) => b[3] > 1320);
-  assert.equal(late.length, 18, 'intervals a 22:00 bound would have clipped');
-  const nights = (id) => late.filter((b) => b[0] === id).map((b) => b[1]).sort();
-  assert.deepEqual(nights('TFM0350'), [1, 2, 3, 4, 5], 'five nights, not four');
-  assert.deepEqual(nights('TFM0360'), [1, 2, 3, 4, 5], 'and it is two rooms, not one');
-  assert.deepEqual(nights('TFM0120A'), [0, 1, 2, 3, 4, 5, 6]);
-  assert.deepEqual(nights('JE0274'), [2]);
+  // A 21:00 bound would clip these, which is why the clamp is not tightened to
+  // the observed maximum. Fourteen rooms across seven buildings run an evening
+  // section, so this is ordinary scheduling rather than two outliers.
+  const late = blocks.filter((b) => b[3] > 1260);
+  assert.equal(late.length, 26, 'intervals a 21:00 bound would have clipped');
+  assert.equal(new Set(late.map((b) => b[0])).size, 14, 'rooms running past 21:00');
 });

@@ -13,7 +13,7 @@
 
 import { gunzipSync } from 'node:zlib';
 import { rename, writeFile } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,6 +25,7 @@ import {
   newCounter,
   toMinutes,
 } from './lib/funnel.mjs';
+import { collectMeetings, projectMeeting } from './fetch-rooms.mjs';
 import { buildSessions, expandMeeting, mergeIntervals, propagateGroups } from './lib/rooms.mjs';
 import { classify, OFF_CAMPUS, TYPE_VISIBILITY, TYPE_WORDS } from './lib/room-safety.mjs';
 import { indexRefusals, measure, notReady } from './lib/index-guards.mjs';
@@ -451,6 +452,35 @@ export function applySafety(rooms, { gaRooms, restricted } = {}) {
   return { kept, dropped, unknown, nonGa, gaButHidden };
 }
 
+// Rebuild a harvest from the committed page archive.
+//
+// data/harvest-<term>.json.gz is gitignored: it is regenerable from the API and
+// changes every week. data/raw/<term>/ is committed, because 1262 and 1264 have
+// left the API and cannot be refetched at any price. So on a fresh clone the
+// only two terms that can never be re-fetched were also the only two that could
+// not be built, which is backwards. The archive is the same pages the harvest
+// was folded from, so folding them again reproduces it without a request.
+//
+// This is the union of every pass, exactly as fetch-rooms.mjs takes it: the
+// pages already on disk are the passes, and meetingKey dedupes across them.
+function harvestFromRaw(term) {
+  const dir = join(ROOT, 'data', 'raw', term);
+  if (!existsSync(dir)) return null;
+  const pages = readdirSync(dir).filter((f) => f.endsWith('.json.gz')).sort();
+  if (!pages.length) return null;
+
+  const union = new Map();
+  for (const f of pages) {
+    collectMeetings(JSON.parse(gunzipSync(readFileSync(join(dir, f)))), union);
+  }
+  return {
+    term,
+    generated: null,
+    source: `data/raw/${term}/, ${pages.length} archived pages`,
+    meetings: [...union.values()].map(projectMeeting),
+  };
+}
+
 async function main() {
   const term = process.argv[2];
   const dryRun = process.argv.includes('--dry-run');
@@ -463,8 +493,12 @@ async function main() {
   }
 
   const harvestPath = join(ROOT, 'data', `harvest-${term}.json.gz`);
-  if (!existsSync(harvestPath)) {
-    die(`no harvest at data/harvest-${term}.json.gz. Run fetch-rooms.mjs ${term} first.`);
+  const fromRaw = existsSync(harvestPath) ? null : harvestFromRaw(term);
+  if (!existsSync(harvestPath) && !fromRaw) {
+    die(
+      `no harvest at data/harvest-${term}.json.gz and no page archive at ` +
+        `data/raw/${term}/. Run fetch-rooms.mjs ${term} first.`,
+    );
   }
   const buildingsPath = join(ROOT, 'data', 'buildings.json');
   if (!existsSync(buildingsPath)) die('data/buildings.json is missing.');
@@ -485,7 +519,10 @@ async function main() {
     if (!existsSync(p)) die(`${p.slice(ROOT.length + 1)} is missing. Run fetch-calendar.mjs first.`);
   }
 
-  const harvest = JSON.parse(gunzipSync(readFileSync(harvestPath)));
+  const harvest = fromRaw ?? JSON.parse(gunzipSync(readFileSync(harvestPath)));
+  if (fromRaw) {
+    console.error(`no harvest on disk, folded ${harvest.meetings.length} meetings from ${harvest.source}`);
+  }
   const buildings = JSON.parse(readFileSync(buildingsPath, 'utf8')).buildings;
   const isKnownBuilding = (code) => Object.prototype.hasOwnProperty.call(buildings, code);
 

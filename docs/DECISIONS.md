@@ -872,3 +872,110 @@ shipped room inside the map has a footprint to point at.
 **Decided against dropping a room for `facilityCapacity === 0`.** The field has no
 null: 0 means unknown and 998 means online. 32 real rooms report 0, seven of them
 ordinary Campbell Hall classrooms that would silently vanish.
+
+---
+
+## 2026-08-27  The vendored ICS is wrong outside Autumn, so the Registrar ships ([#11](https://github.com/EnesYilmazcode/Vacant/issues/11))
+
+**Decided against the plan in the issue.** #11 says vendor
+`mcmanning.github.io/ohio-state-ics/academic.ics`, match `SUMMARY` on `offices
+closed` and `offices open`, and cross-check against the Registrar's five-year
+view. The ICS is vendored and it is still the cross-check, but **the Registrar's
+five-year table is what ships**, because the ICS is wrong.
+
+**Measured 2026-08-27 by diffing both sources across three terms.**
+
+```
+term          in-window disagreements
+AUTUMN 2026            0     all seven closed days identical
+SPRING 2026            2     ICS puts MLK Day on Sun Jan 18; Registrar Mon Jan 19
+SUMMER 2026            6     every holiday wrong:
+                             Memorial Day    ICS Sun May 31   Registrar Mon May 25
+                             Juneteenth      ICS Thu Jun 18   Registrar Fri Jun 19
+                             Independence    ICS Sun Jul 5    Registrar Fri Jul 3
+```
+
+Look at the weekdays. The ICS lands Spring and Summer holidays on Sundays and
+Saturdays, year after year, back to 2021. A university does not close its offices
+for Memorial Day on a Sunday. The generator is mangling the Spring and Summer
+half of every academic year and getting Autumn right.
+
+**The worst one is the Summer exam window.** The ICS says finals run 2026-08-02
+to 2026-08-04. The Registrar says August 3 to 5. August 2 is a Sunday. Trusting
+the ICS would have marked the real last exam day, Wednesday August 5, as an
+ordinary teaching day, which is the precise failure #11 exists to prevent.
+
+The issue anticipated one disagreement, the missing Dec 28-31 block outside the
+term, and concluded the diff should refuse rather than merge. That conclusion was
+right for a much bigger reason than the one it was written for.
+
+**Three sources for the exam window, and all three must agree.** The finals page
+ships because it is the only one carrying the time-of-day matrix. The five-year
+view and the ICS each get a veto. Autumn 2026: all three say 2026-12-11 to
+2026-12-17.
+
+**The teaching window is the Registrar's, not the harvest's.** `termWindow` reads
+"classes begin" and "Last day of regularly scheduled" out of the five-year table
+and gets 2026-08-25 to 2026-12-09. Taking the min and max of harvested meeting
+dates gives 2026-08-10 to 2026-12-11 instead, because Anatomy 6511 in the medical
+school runs August 10 to December 11 and Pharmacy 7110 to December 10. The
+professional colleges keep their own calendars. Using their dates would stretch
+Autumn 2026 straight through the exam window it is supposed to end before, and
+`exams.start > last day of instruction` would fail on a true statement.
+
+Those sessions still exist and the build prints a warning naming them, because
+their rooms really are busy during finals week while everyone else's are not.
+
+**Spring Break does not ship, and that is a refusal rather than an oversight.**
+The five-year view labels those five rows "Spring Break" and nothing else. No
+"no classes", no "offices". Every other break row says which. So Spring 2026
+parses to exactly ONE closed day, Martin Luther King Jr. Day, and March 16 to 20
+will read busy in a term where nothing meets.
+
+That is wrong in the safe direction: the app hides rooms that were free rather
+than offering rooms that were not. Calling an unlabelled row `no-classes` would
+free every room on campus for a week on the strength of two words in a table
+cell, which is the guess-dressed-as-a-fact this project refuses to make. Fixing
+it properly means a second source for Spring Break, not a looser matcher.
+`CLOSED_DAY_BOUNDS[2]` is `[1, 3]` because of this and will move when it is
+fixed.
+
+**Closed-day bounds, both sides, by season digit.** A parser that quietly returns
+nothing looks exactly like a term with no holidays, so the count is bounded above
+as well as below. Digit 8 is `[5, 9]` against a measured 7. Digit 4 is `[1, 5]`
+against a measured 3. Digit 2 is `[1, 3]` against a measured 1. An unknown digit
+refuses.
+
+**What ships in `rooms-1268.json`.**
+
+```json
+"teaching": ["2026-08-25", "2026-12-09"],
+"closed": [
+  {"date":"2026-09-07","state":"offices-closed"},
+  {"date":"2026-10-15","state":"no-classes"},
+  {"date":"2026-10-16","state":"no-classes"},
+  {"date":"2026-11-11","state":"offices-closed"},
+  {"date":"2026-11-25","state":"no-classes"},
+  {"date":"2026-11-26","state":"offices-closed"},
+  {"date":"2026-11-27","state":"offices-closed"}
+],
+"exams": {"start":"2026-12-11","end":"2026-12-17"},
+"lowConfidence": [{"start":"2026-10-13","end":"2026-10-14","reason":"session-1-finals"}]
+```
+
+`offices-closed` and `no-classes` are not shades of one thing and the app must
+not render them as one. October 15 is Autumn Break with the doors open: no
+classes, free rooms, the best day of the term for this app. September 7 is Labor
+Day: the same rooms behind locked doors.
+
+**`lowConfidence` is October 13 to 14, not the 13 to 16 the issue sketched.**
+October 15 and 16 are already in `closed` as `no-classes`, which says everything
+there is to say about them. Repeating them under a `session-1-finals` label would
+name them wrongly. The two days that need the flag are the ones where the grid
+UNDERSTATES: full-term classes meet normally on the 13th and 14th while the
+seven-week rooms hold exams that appear in no busy list.
+
+**Nothing fetches at runtime.** `scripts/fetch-calendar.mjs` vendors the ICS to
+`data/vendor/academic.ics` with `academic.meta.json` beside it, and caches the
+five-year view and the finals pages under `data/cache/registrar/`. Three
+requests, run when a term rolls over. The build reads files.

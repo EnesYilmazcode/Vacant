@@ -20,6 +20,16 @@ import { fileURLToPath } from 'node:url';
 import { isRealRoom, isUnplaceable, newCounter, formatFunnel, toMinutes } from './lib/funnel.mjs';
 import { buildSessions, expandMeeting, mergeIntervals, propagateGroups } from './lib/rooms.mjs';
 import { classify, OFF_CAMPUS, TYPE_VISIBILITY } from './lib/room-safety.mjs';
+import {
+  closedDays,
+  diffCalendars,
+  lowConfidence,
+  parseFinalsWindow,
+  parseFiveYear,
+  examWindow,
+  parseIcs,
+  termWindow,
+} from './lib/calendar.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -34,6 +44,25 @@ const MIN_ROOMS = 150;
 const MAX_UNPLACEABLE = 20;
 
 const TERM_NAMES = { 2: 'Spring', 4: 'Summer', 8: 'Autumn' };
+
+// How many days a term is allowed to close, by the last digit of the term code.
+//
+// A parser that quietly returns nothing looks exactly like a term with no
+// holidays, so the count is bounded on both sides rather than floored. Each
+// bound is a real parse of the Registrar's five-year view plus or minus two,
+// and an unknown digit refuses instead of defaulting to something generous.
+//
+// digit 2 measures LOW on purpose. Spring 2026 parses as one closed day,
+// Martin Luther King Jr. Day, because the five rows of Spring Break are labelled
+// "Spring Break" and nothing else. Those five days really are class-free and
+// Vacant will call them busy, which is wrong in the safe direction. Extending
+// the phrase list is what moves this bound, not a bigger number here. See
+// DECISIONS.md.
+const CLOSED_DAY_BOUNDS = {
+  2: [1, 3], // Spring. Measured 1 on 1262, and see the note above.
+  4: [1, 5], // Summer. Measured 3 on 1264: Memorial Day, Juneteenth, July 3.
+  8: [5, 9], // Autumn. Measured 7 on 1268.
+};
 
 function die(message) {
   console.error(`\nFATAL  ${message}`);
@@ -52,6 +81,84 @@ async function writeAtomic(path, text) {
   const tmp = `${path}.tmp`;
   await writeFile(tmp, text);
   await rename(tmp, path);
+}
+
+// Read the vendored calendar and work out what the class API will not say: the
+// days nothing meets, and the week of finals after the last day of instruction.
+//
+// Every refusal in here is a build failure rather than a warning, because the
+// alternative is shipping a grid that is confidently wrong on 12 of the term's
+// 83 weekdays.
+export function calendarFor(term, name, { ics, fiveYear, finals }) {
+  const year = Number(name.split(' ')[1]);
+  const column = name.toUpperCase();
+
+  const icsEvents = parseIcs(ics);
+  if (!icsEvents.length) die('data/vendor/academic.ics parsed to zero events.');
+  const registrar = parseFiveYear(fiveYear, column);
+  if (!registrar.length) die(`the five-year view has no ${column} column, or its tables moved.`);
+
+  const window = termWindow(registrar);
+  if (!window) die(`the five-year view gave no ${column} teaching window.`);
+
+  // The publisher of record ships. The ICS is a third-party regeneration and
+  // gets to veto, not to decide.
+  const closed = closedDays(registrar, [window.first, window.last]);
+  const disagreements = diffCalendars(registrar, icsEvents, [window.first, window.last]);
+  if (disagreements.length) {
+    die(
+      `the Registrar and the vendored ICS disagree on ${disagreements.length} date(s) inside ` +
+        `${name}. Neither is picked automatically:\n` +
+        disagreements.map((d) => `         ${d}`).join('\n'),
+    );
+  }
+
+  const bounds = CLOSED_DAY_BOUNDS[Number(term.slice(3))];
+  if (!bounds) die(`term ${term} has an unknown season digit, so there is no closed-day bound.`);
+  if (closed.length < bounds[0] || closed.length > bounds[1]) {
+    die(
+      `${closed.length} closed day(s) for ${name}, outside the ${bounds[0]} to ${bounds[1]} ` +
+        'bound for this season. Either the calendar moved or the parser did.',
+    );
+  }
+  for (const day of closed) {
+    if (day.date < window.first || day.date > window.last) {
+      die(`closed day ${day.date} is outside ${window.first} to ${window.last}.`);
+    }
+  }
+
+  const exams = parseFinalsWindow(finals, year);
+  if (!exams) die(`the ${name} finals page parsed to zero exam days.`);
+
+  // Three sources for one week. The finals page is what ships because it is the
+  // only one that also carries the time-of-day matrix; the other two get to
+  // veto. A silent disagreement here sends someone into a final.
+  for (const [label, events] of [['five-year view', registrar], ['vendored ICS', icsEvents]]) {
+    const other = examWindow(events, window.last);
+    if (!other) die(`the ${label} gave no ${name} exam window.`);
+    if (other.start !== exams.start || other.end !== exams.end) {
+      die(
+        `${name} exam window disagrees. finals page=${exams.start}..${exams.end}, ` +
+          `${label}=${other.start}..${other.end}`,
+      );
+    }
+  }
+
+  // The exam window has to start after the last day of instruction, or an exam
+  // block and a class block are the same thing and neither state means anything.
+  if (exams.start <= window.last) {
+    die(
+      `${name} finals start ${exams.start}, on or before the last day of instruction ` +
+        `${window.last}.`,
+    );
+  }
+
+  return {
+    closed,
+    exams: { start: exams.start, end: exams.end },
+    lowConfidence: lowConfidence(registrar, [window.first, window.last]),
+    instruction: [window.first, window.last],
+  };
 }
 
 // Invert harvested meeting records into room -> when it is busy.
@@ -305,6 +412,12 @@ async function main() {
   const restrictedPath = join(ROOT, 'data', 'restricted-buildings.json');
   if (!existsSync(restrictedPath)) die('data/restricted-buildings.json is missing.');
 
+  const icsPath = join(ROOT, 'data', 'vendor', 'academic.ics');
+  const fivePath = join(ROOT, 'data', 'cache', 'registrar', 'academic-calendar-5-year-view.html');
+  for (const p of [icsPath, fivePath]) {
+    if (!existsSync(p)) die(`${p.slice(ROOT.length + 1)} is missing. Run fetch-calendar.mjs first.`);
+  }
+
   const harvest = JSON.parse(gunzipSync(readFileSync(harvestPath)));
   const buildings = JSON.parse(readFileSync(buildingsPath, 'utf8')).buildings;
   const isKnownBuilding = (code) => Object.prototype.hasOwnProperty.call(buildings, code);
@@ -385,6 +498,41 @@ async function main() {
   const name = termName(term);
   if (!name) die(`cannot name term ${term}. Refusing to guess rather than shipping a wrong label.`);
 
+  const finalsPath = join(
+    ROOT,
+    'data',
+    'cache',
+    'registrar',
+    `${name.toLowerCase().replace(/\s+/g, '-')}-finals-schedule.html`,
+  );
+  if (!existsSync(finalsPath)) {
+    die(`no finals page cached for ${name}. Run fetch-calendar.mjs, then check its warnings.`);
+  }
+  const calendar = calendarFor(term, name, {
+    ics: readFileSync(icsPath, 'utf8'),
+    fiveYear: readFileSync(fivePath, 'utf8'),
+    finals: readFileSync(finalsPath, 'utf8'),
+  });
+
+  console.log(
+    `\n${name} teaching ${calendar.instruction[0]} to ${calendar.instruction[1]}, ` +
+      `${calendar.closed.length} closed day(s), finals ${calendar.exams.start} to ${calendar.exams.end}`,
+  );
+  for (const d of calendar.closed) console.log(`  ${d.date}  ${d.state}`);
+  for (const w of calendar.lowConfidence) console.log(`  ${w.start} to ${w.end}  ${w.reason}`);
+
+  // Not a refusal. The professional colleges keep their own calendars: Anatomy
+  // 6511 runs to 2026-12-11 and Pharmacy 7110 to 2026-12-10, both inside the
+  // exam window. Their rooms are genuinely busy then. Every other room in those
+  // buildings is not, which is what the exam-week refusal is for.
+  const past = sessions.filter(([, end]) => end >= calendar.exams.start);
+  if (past.length) {
+    console.warn(
+      `  warn  ${past.length} session(s) run into the exam window: ` +
+        past.map((s) => s.join('..')).join(' '),
+    );
+  }
+
   // Room keys sorted, for the diff rather than the bytes. Non-deterministic key
   // order turns every weekly rebuild into a full-file rewrite, so nothing can
   // tell you whether the data actually moved.
@@ -404,6 +552,12 @@ async function main() {
       'the room as general assignment, which ranks it lower and never hides it',
     gaPulled: gaFile._meta?.pulled ?? null,
     restrictedPulled: restrictedFile._meta?.pulled ?? null,
+    // The Registrar's own teaching window, not the min and max of harvested
+    // meeting dates. Every closed day below is inside it.
+    teaching: calendar.instruction,
+    closed: calendar.closed,
+    exams: calendar.exams,
+    lowConfidence: calendar.lowConfidence,
     sessions,
     rooms: sorted,
   };

@@ -18,6 +18,7 @@
     --you: #4cc2ff;
     --warn: #ffb02e;
     --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
   }
   /* Author-origin `display` beats the UA sheet's `[hidden] { display: none }`
      regardless of specificity, so `#ask { display: flex }` made the hidden
@@ -43,11 +44,27 @@
     #map { transition: none; }
   }
 
+  /* Geometry lives in the sprite, paint comes from the use site. Putting fill
+     and stroke on the sprite root does not reach a <use> clone, which renders
+     the legs as filled black wedges. */
+  .ico {
+    width: 1.15em; height: 1.15em; flex: none;
+    fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  [dir="rtl"] .ico-mirror { transform: scaleX(-1); }
+
+  .sr {
+    position: absolute; width: 1px; height: 1px; margin: -1px;
+    padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  }
+
   /* --- the question --- */
   #ask {
     position: fixed; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 1.6rem; padding: 1.5rem;
+    align-items: center; justify-content: center; gap: 1.05rem; padding: 1.5rem;
     background: radial-gradient(90% 55% at 50% 46%, rgba(11,13,16,.78), rgba(11,13,16,.55) 62%, rgba(11,13,16,.9));
+    overflow-y: auto;
   }
   #ask h1 {
     margin: 0; font-size: clamp(2.4rem, 13vw, 3.4rem); font-weight: 800;
@@ -55,6 +72,7 @@
     text-shadow: 0 2px 22px rgba(0,0,0,.75);
   }
   #ask h1 span { color: var(--accent); }
+  #ask .q { margin: 0; font-weight: 650; }
   /* width:100% is here to make the three buttons equal width, nothing more.
      An earlier comment claimed it fixed a max-content overflow that clipped
      "2 hours" at 390px. It did not: measured, the old row was 312px inside a
@@ -84,48 +102,116 @@
   #ask:not(.ready) .opts, #ask:not(.ready) .until { opacity: .45; }
   #ask:not(.ready) .loading { opacity: 1; }
   .loading { color: var(--dim); font-size: .82rem; opacity: 0; transition: opacity .3s; }
+  /* The term and the read date used to sit in the corner of the result list,
+     where nothing was ever decided by them. They are read here instead, before
+     the answer exists. */
+  .prov { color: var(--dim); font-size: .8rem; text-align: center; margin: 0; max-width: 26rem; }
+  .prov b { color: var(--fg); font-weight: 600; }
+  #gate {
+    max-width: 26rem; text-align: center; border: 1px solid var(--warn);
+    border-radius: 14px; padding: .9rem 1rem;
+  }
+  #gate h2 { margin: 0 0 .4rem; font-size: 1rem; color: var(--warn); }
+  #gate p { margin: 0; color: var(--dim); font-size: .88rem; }
+
+  /* --- the back arrow, over the map, never on the root --- */
+  #back {
+    position: fixed; top: calc(var(--safe-t) + .6rem); left: .6rem; z-index: 3;
+    appearance: none; border: 1px solid var(--line); background: rgba(11,13,16,.72);
+    color: var(--fg); font: inherit; min-width: 44px; min-height: 44px;
+    padding: .4em; border-radius: 999px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
 
   /* --- the answer --- */
   #sheet {
-    position: fixed; left: 0; right: 0; bottom: 0; max-height: 62%;
-    display: flex; flex-direction: column;
+    position: fixed; left: 0; right: 0; bottom: 0; height: 38%;
+    display: flex; flex-direction: column; z-index: 2;
     background: linear-gradient(180deg, rgba(11,13,16,.82), var(--bg) 22%);
     border-top: 1px solid var(--line); border-radius: 18px 18px 0 0;
     padding-bottom: var(--safe-b);
   }
-  #sheet header {
-    display: flex; align-items: center; gap: .75rem;
-    padding: .85rem 1.1rem .7rem; border-bottom: 1px solid var(--line);
+  #sheet.snap { transition: height .22s ease; }
+  @media (prefers-reduced-motion: reduce) {
+    #sheet.snap { transition: none; }
   }
-  #sheet header .grip {
-    position: absolute; top: .4rem; left: 50%; transform: translateX(-50%);
-    width: 34px; height: 4px; border-radius: 2px; background: var(--line);
+  /* The grip was decorative for a whole release. It is the drag handle now, so
+     it gets a 26px band around it rather than four pixels of hairline. */
+  #sheet .handle {
+    display: flex; align-items: center; justify-content: center;
+    height: 26px; flex: none; cursor: grab; touch-action: none;
   }
-  #sheet h2 { margin: 0; font-size: .95rem; font-weight: 700; flex: 1; }
-  #sheet h2 b { color: var(--accent); }
-  #sheet h2 .term { color: var(--dim); font-weight: 500; font-size: .82em; }
-  #again {
-    appearance: none; border: 1px solid var(--line); background: transparent; color: var(--dim);
-    font: inherit; font-size: .82rem; padding: .5rem .8rem; border-radius: 999px;
-    min-height: 44px; cursor: pointer;
+  #sheet .grip { width: 34px; height: 4px; border-radius: 2px; background: var(--line); }
+  /* min-height:0 is load-bearing: without it a flex item will not shrink below
+     its content, so the pane grows past the sheet instead of scrolling. */
+  #list, #room {
+    flex: 1 1 auto; min-height: 0;
+    overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    touch-action: pan-y; padding: 0 0 1rem;
   }
-  #list { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: .3rem 0 1rem; }
+
+  .strip {
+    margin: 0; padding: .6rem 1.1rem .7rem; color: var(--warn);
+    font-size: .88rem; border-bottom: 1px solid var(--line);
+  }
   .row {
     appearance: none; width: 100%; text-align: left; background: transparent; color: inherit;
     font: inherit; border: 0; border-left: 3px solid transparent;
-    padding: .72rem 1.1rem; min-height: 56px; cursor: pointer; display: block;
+    padding: .7rem 1.1rem; min-height: 56px; cursor: pointer;
+    display: grid; gap: .12rem 1rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "name walk" "win chev";
   }
+  .row + .row { border-top: 1px solid var(--line); }
   .row.on { border-left-color: var(--accent); background: rgba(255,77,61,.07); }
-  .row .name { display: block; font-weight: 700; letter-spacing: -.01em; }
-  .row .name em { font-style: normal; color: var(--dim); font-weight: 500; margin-left: .5rem; font-size: .88rem; }
-  .row .meta { display: block; color: var(--dim); font-size: .84rem; margin-top: .1rem; }
-  .row .meta b { color: var(--fg); font-weight: 650; }
+  .r-name { grid-area: name; font-weight: 700; letter-spacing: -.01em; min-width: 0; }
+  .r-walk { grid-area: walk; display: flex; align-items: center; gap: .3rem; white-space: nowrap; }
+  .r-win { grid-area: win; color: var(--dim); font-size: .84rem; min-width: 0; }
+  .r-win b { color: var(--fg); font-weight: 650; }
+  .r-chev { grid-area: chev; color: var(--dim); display: flex; align-items: center; justify-content: flex-end; }
+  /* rem inside a media query resolves against 16px forever, so the large-text
+     reflow has to be a container query in em or it never fires. */
+  #list { container-type: inline-size; container-name: list; }
+  @container list (max-width: 18em) {
+    .row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "walk" "win" "chev"; }
+    .row .r-walk, .row .r-chev { justify-self: start; }
+  }
   .warn { color: var(--warn); }
   .empty { color: var(--dim); padding: 1.4rem 1.1rem; margin: 0; }
+  .foot { color: var(--dim); font-size: .8rem; padding: 1rem 1.1rem 0; margin: 0; border-top: 1px solid var(--line); }
+  .foot b { color: var(--fg); font-weight: 600; }
+
+  /* --- the room screen, a second pane in the same sheet --- */
+  #room h2 { margin: 0; padding: .1rem 1.1rem .45rem; font-size: 1.05rem; letter-spacing: -.01em; }
+  .claim { margin: 0; padding: 0 1.1rem .35rem; font-weight: 650; }
+  .claim .sub { display: block; font-weight: 400; color: var(--dim); font-size: .86rem; }
+  .facts {
+    display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .9rem;
+    padding: 0 1.1rem .7rem; color: var(--dim); font-size: .86rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .facts .w { display: flex; align-items: center; gap: .3rem; color: var(--fg); white-space: nowrap; }
+  /* The gap is what the reader came for, so free blocks get the weight and the
+     left margin and the classes are indented out of the way. */
+  .tl { list-style: none; margin: 0; padding: .4rem 0 0; }
+  .tl li { display: flex; gap: .8rem; padding: .38rem 1.1rem; }
+  .tl .free {
+    border-left: 3px solid var(--accent); font-weight: 650;
+    padding-left: calc(1.1rem - 3px);
+  }
+  .tl .free .len { margin-left: auto; color: var(--dim); font-weight: 500; }
+  .tl .free.now .what { text-transform: uppercase; letter-spacing: .04em; }
+  .tl .busy, .tl .edge { color: var(--dim); font-size: .85rem; padding-left: 4.6rem; }
+  .tl .seam { height: 2px; padding: 0; margin: .12rem 0 .12rem 4.6rem; background: var(--line); }
+  .tl .t { min-width: 4.2rem; }
+  .unknown {
+    margin: .5rem 1.1rem 0; padding: .6rem .8rem; border: 1px solid var(--warn);
+    border-radius: 10px; color: var(--dim); font-size: .84rem;
+  }
 
   #note {
-    position: fixed; top: calc(env(safe-area-inset-top, 0px) + .7rem); left: 50%;
-    transform: translateX(-50%); max-width: 92vw;
+    position: fixed; top: calc(var(--safe-t) + .7rem); left: 50%;
+    transform: translateX(-50%); max-width: 92vw; z-index: 3;
     background: var(--card); border: 1px solid var(--line); color: var(--dim);
     font-size: .8rem; padding: .5rem .85rem; border-radius: 999px; text-align: center;
   }
@@ -133,11 +219,25 @@
 </head>
 <body>
 
+<svg width="0" height="0" aria-hidden="true" style="position:absolute">
+  <symbol id="i-walk" viewBox="0 0 24 24">
+    <circle cx="12.5" cy="3.5" r="1"/>
+    <path d="M12 6 10.5 12.5 14 15.5 15 21M10.5 12.5 8.5 16.5 6.5 21M11.5 9 15 12"/>
+  </symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 4 7 12 15 20"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 4 17 12 9 20"/></symbol>
+</svg>
+
 <canvas id="map"></canvas>
 <p id="note" hidden></p>
+<button id="back" hidden aria-label="Back to the question">
+  <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg>
+</button>
+<p id="say" class="sr" aria-live="polite"></p>
 
 <section id="ask">
   <h1>Vacant<span>.</span></h1>
+  <p class="q">How long do you need?</p>
   <div class="opts" role="group" aria-label="How long do you need a room for?">
     <button class="opt primary" data-min="30" disabled>30 min</button>
     <button class="opt" data-min="60" disabled>1 hour</button>
@@ -145,15 +245,18 @@
   </div>
   <label class="until">until <input id="until" type="time" aria-label="I need a room until" disabled></label>
   <p class="loading">finding campus&hellip;</p>
+  <p class="prov" id="prov" hidden></p>
+  <p class="prov">Class schedule only. Doors may be locked, and clubs book rooms too.</p>
+  <div id="gate" hidden>
+    <h2 id="gate-h"></h2>
+    <p id="gate-p"></p>
+  </div>
 </section>
 
 <section id="sheet" hidden>
-  <header>
-    <span class="grip"></span>
-    <h2 id="head">Free for <b id="need">30 min</b>, nearest first</h2>
-    <button id="again">change</button>
-  </header>
+  <div class="handle" id="handle"><span class="grip"></span></div>
   <div id="list"></div>
+  <section id="room" hidden></section>
 </section>
 
 <script type="module" src="js/app.js"></script>

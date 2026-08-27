@@ -13,6 +13,7 @@
 //
 // One HTTP request pulls the whole layer.
 
+import { gzipSync } from 'node:zlib';
 import { writeFile } from 'node:fs/promises';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -40,6 +41,27 @@ const OUT_FIELDS = [
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_PATH = join(ROOT, 'data', 'buildings.json');
+
+// Two files, not one. The full index is 612 buildings with ten fields each and
+// 22,964 bytes gzipped, 18.5% of everything the app downloads, and the app
+// reads three of those fields on 96 of those buildings: js/engine.js takes
+// lat, lon and name, and nothing anywhere reads address, city, campus, status,
+// floors, short or km_from_oval.
+//
+// So the launch file carries the codes the term's room index actually
+// references, with name, lat and lon, and measures 2,359 bytes gzipped. The
+// full file keeps its name and every field, and the building picker loads it
+// when that screen opens instead of before the first answer.
+const SMALL_FIELDS = ['name', 'lat', 'lon'];
+
+// The small file is derived from a term, so it is named for one the way
+// data/rooms-1268.json is. data/current.json says which term is live.
+const smallPath = (term) => join(ROOT, 'data', `buildings-${term}.json`);
+
+// A term whose room index resolves fewer buildings than this did not load, and
+// shipping the small file anyway would delete pins from the map. Measured: 96
+// of 96 codes in term 1268 are present in the full index.
+const MIN_CLASS_BUILDINGS = 90;
 
 // The cap exists to keep satellite campuses out of a walking app. It is a
 // CHOSEN bound, not a natural boundary, and the research calling 10 km "stable
@@ -76,6 +98,8 @@ const localDate = () => {
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
+
+const gz = (text) => gzipSync(Buffer.from(text), { level: 9 }).length;
 
 function die(message) {
   console.error(`\nFATAL  ${message}`);
@@ -174,6 +198,23 @@ export function buildIndex(features) {
   return { byCode, funnel, conflicts };
 }
 
+// The launch subset: every code the term's room index points at, three fields
+// each. A code with no record in the full index is reported rather than
+// dropped, because it means a room in the grid has nothing to put on the map.
+export function smallIndex(buildings, roomCodes) {
+  const small = {};
+  const missing = [];
+  for (const code of [...roomCodes].sort()) {
+    const b = buildings[code];
+    if (!b) {
+      missing.push(code);
+      continue;
+    }
+    small[code] = Object.fromEntries(SMALL_FIELDS.map((f) => [f, b[f]]));
+  }
+  return { small, missing };
+}
+
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
 
@@ -250,8 +291,59 @@ async function main() {
     funnel,
     buildings,
   };
-  await writeFile(OUT_PATH, `${JSON.stringify(out, null, 1)}\n`);
-  console.log(`wrote data/buildings.json`);
+  const full = `${JSON.stringify(out, null, 1)}\n`;
+  await writeFile(OUT_PATH, full);
+  console.log(`wrote data/buildings.json  ${gz(full)} bytes gzipped`);
+
+  await writeSmall(buildings, out);
+}
+
+// The second artifact. Skipped rather than fatal when the room index is not
+// built yet, because a first run has to write buildings.json before
+// build-index.mjs can produce a room index to key the small file against.
+async function writeSmall(buildings, meta) {
+  const currentPath = join(ROOT, 'data', 'current.json');
+  if (!existsSync(currentPath)) {
+    console.warn('no data/current.json, skipping the launch subset. Run build-index.mjs, then re-run this.');
+    return;
+  }
+  const term = JSON.parse(readFileSync(currentPath, 'utf8')).term;
+  const roomsPath = join(ROOT, 'data', `rooms-${term}.json`);
+  if (!existsSync(roomsPath)) {
+    console.warn(`no data/rooms-${term}.json, skipping the launch subset.`);
+    return;
+  }
+
+  const rooms = JSON.parse(readFileSync(roomsPath, 'utf8')).rooms;
+  const roomCodes = new Set(Object.values(rooms).map((r) => r.b));
+  const { small, missing } = smallIndex(buildings, roomCodes);
+
+  if (missing.length) {
+    console.warn(
+      `  ${missing.length} code(s) in the room index have no building record: ${missing.join(', ')}`,
+    );
+  }
+  const kept = Object.keys(small).length;
+  if (kept < MIN_CLASS_BUILDINGS) {
+    die(
+      `only ${kept} of ${roomCodes.size} class-hosting codes resolved, ` +
+        `under the ${MIN_CLASS_BUILDINGS} floor.`,
+    );
+  }
+
+  // Compact, like the room index it is keyed against. This one is on the
+  // critical path, so it is read by a machine and never by a person.
+  const text = `${JSON.stringify({
+    generated: meta.generated,
+    term,
+    source: meta.source,
+    attribution: meta.attribution,
+    note: 'the buildings the term room index references, name/lat/lon only. data/buildings.json has every building and every field.',
+    count: kept,
+    buildings: small,
+  })}\n`;
+  await writeFile(smallPath(term), text);
+  console.log(`wrote data/buildings-${term}.json  ${kept} buildings, ${gz(text)} bytes gzipped`);
 }
 
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith('fetch-buildings.mjs');

@@ -184,6 +184,9 @@ async function main() {
     termName: name,
     generated: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
     rooms: `data/rooms-${term}.json`,
+    // The launch subset from fetch-buildings.mjs, named here so the app never
+    // has to build a filename out of the term itself.
+    buildings: `data/buildings-${term}.json`,
     instruction,
   };
 

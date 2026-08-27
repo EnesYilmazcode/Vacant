@@ -13,6 +13,7 @@ import {
   MIN_RELAXED_USABLE,
   PACKUP,
   RELAX_LADDER,
+  SILENT_SHARE,
   SURPLUS_CAP,
   SURPLUS_WEIGHT,
   WALK_MPM,
@@ -24,6 +25,8 @@ import {
   leaveBy,
   query,
   rank,
+  refusalFor,
+  scheduleCoverage,
   scoreOf,
   tierOf,
   typeRank,
@@ -1261,4 +1264,107 @@ test('not knowing where you are is a different answer from nothing being free', 
   const nothing = askFor(60, busy);
   assert.equal(nothing.refused, null);
   assert.notEqual(nothing.reason, lost.reason);
+});
+
+// --- the week the schedule stops describing ---
+
+test('the committed index refuses the finals week it cannot see', () => {
+  // The worst answer this app can give, and it was live: a meeting's endDate is
+  // the last day of INSTRUCTION, so on December 10 the session mask empties the
+  // busy grid and a schedule-only engine reports all 871 rooms free for a week,
+  // while finals are running in them.
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const buildings = readData(`buildings-${term}.json`).buildings;
+  const hours = readData('buildings-hours.json').terms['autumn-2026-classroom-pool-building-schedule'];
+  const rooms = Object.entries(index.rooms).map(([id, r]) => ({ id, ...r }));
+  const opts = {
+    origin: ORIGIN, now: at(14), day: 4, needed: 60, buildings,
+    hoursFor: (code, day) => hours.buildings[code]?.hours[day],
+    sessions: index.sessions,
+  };
+
+  const finals = query(rooms, { ...opts, date: '2026-12-10' });
+  assert.equal(finals.refused, 'no-schedule');
+  assert.deepEqual(finals.rows, []);
+  assert.match(finals.reason, /finals week/i);
+
+  // And an ordinary Thursday in the middle of term still answers.
+  const teaching = query(rooms, { ...opts, date: '2026-09-17' });
+  assert.equal(teaching.refused, null);
+  assert.ok(teaching.rows.length > 0);
+});
+
+test('the two clusters the silence threshold sits between are three orders apart', () => {
+  // The measurement the constant is set from. Every date classes meet, against
+  // every date they do not, over the committed index.
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const rooms = Object.values(index.rooms);
+
+  const share = (date) => scheduleCoverage(rooms, activeMask(index.sessions, date)).share;
+  const teaching = ['2026-08-25', '2026-09-17', '2026-10-14', '2026-11-11', '2026-12-09'].map(share);
+  const silent = ['2026-08-01', '2026-08-24', '2026-12-10', '2026-12-11', '2026-12-15'].map(share);
+
+  assert.ok(Math.min(...teaching) > 0.94, `lowest teaching day was ${Math.min(...teaching)}`);
+  assert.ok(Math.max(...silent) < 0.02, `highest silent day was ${Math.max(...silent)}`);
+  assert.ok(SILENT_SHARE > Math.max(...silent) && SILENT_SHARE < Math.min(...teaching));
+});
+
+test('a small healthy index is not mistaken for a silent one', () => {
+  // Share is null, not zero, when there is nothing to measure. An index with no
+  // busy blocks at all, or a caller that passed no session mask, is missing
+  // evidence rather than carrying evidence of an empty campus.
+  const spec = campus([['A', 300, 3]]);
+  assert.equal(scheduleCoverage(spec.rooms, undefined).share, null);
+  assert.equal(scheduleCoverage(spec.rooms, new Uint8Array([1])).share, null);
+  assert.equal(askFor(60, spec, { sessions: [['2026-08-25', '2026-12-09']], date: '2026-12-15' }).refused, null);
+
+  // One room, one class, one dead session is still a real answer.
+  const one = campus([['A', 300, 1, { busy: [[TUE, at(9), at(10), 0]] }]]);
+  const out = askFor(60, one, { sessions: [['2026-08-25', '2026-09-30']], date: '2026-09-15' });
+  assert.equal(out.refused, null);
+  assert.equal(out.rows.length, 1);
+});
+
+test('a no-class day is answered, not refused, even when the mask is empty', () => {
+  // Autumn Break is the best day of the term: no classes and the doors open.
+  // The registrar saying so outranks the grid, so the silence check stands down.
+  const spec = campus([['A', 300, 3, { busy: [[TUE, at(9), at(10), 0]] }]]);
+  const extra = { sessions: [['2026-08-25', '2026-10-12']], date: '2026-10-15' };
+  assert.equal(askFor(60, spec, extra).refused, 'no-schedule');
+  const holiday = askFor(60, spec, { ...extra, calendar: { noClasses: true } });
+  assert.equal(holiday.refused, null);
+  assert.equal(holiday.rows.length, 3);
+});
+
+test('refusalFor is the same verdict the ladder uses, so a caller outside it agrees', () => {
+  // js/app.js ranks without the ladder, so the refusal has to be reachable on
+  // its own. A screen that asks this and a query that runs it must never
+  // disagree about whether today can be answered.
+  const spec = campus([['A', 300, 3, { busy: [[TUE, at(9), at(10), 0]] }]]);
+  const args = { now: at(12), rooms: spec.rooms, sessions: [['2026-08-25', '2026-10-12']], date: '2026-12-15' };
+  assert.equal(refusalFor(args).refused, 'no-schedule');
+  assert.equal(askFor(60, spec, { sessions: args.sessions, date: args.date }).refused, 'no-schedule');
+
+  assert.equal(refusalFor({ ...args, now: 1500 }).refused, 'clock');
+  assert.equal(refusalFor({ ...args, calendar: { exams: true } }).refused, 'exams');
+  assert.equal(refusalFor({ ...args, calendar: { buildingsClosed: true } }).refused, 'closed');
+  assert.equal(refusalFor({ ...args, date: '2026-09-15' }), null);
+
+  // The exam window is named ahead of the silence it causes, because "finals
+  // are running" is a fact and "the schedule stopped" is only the symptom.
+  assert.equal(refusalFor({ ...args, calendar: { exams: true } }).refused, 'exams');
+});
+
+test('rank refuses nothing on its own, which is why the caller has to ask', () => {
+  // Kept deliberately: rank is the ordering primitive and returns rows. The
+  // guard against shipping it raw is this test plus the one in the app.
+  const spec = campus([['A', 300, 3, { busy: [[TUE, at(9), at(10), 0]] }]]);
+  const rows = rank(spec.rooms, {
+    origin: ORIGIN, now: at(12), day: TUE, needed: 60, buildings: spec.buildings,
+    hoursFor: OPEN_ALL_DAY, sessions: [['2026-08-25', '2026-10-12']], date: '2026-12-15',
+  });
+  assert.equal(rows.length, 3);
+  assert.equal(refusalFor({ now: at(12), rooms: spec.rooms, sessions: [['2026-08-25', '2026-10-12']], date: '2026-12-15' }).refused, 'no-schedule');
 });

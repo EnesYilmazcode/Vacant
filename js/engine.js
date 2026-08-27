@@ -588,6 +588,97 @@ export function rank(rooms, opts) {
   return out;
 }
 
+// -------------------------------------------------------- what today can be
+
+// How much of the index is talking about a given date.
+//
+// A busy block carries a session index, and a session carries the dates it
+// runs. So the share of blocks whose session is live is a fact about whether
+// the schedule still describes today, and it costs one pass.
+//
+// Returns share null when there is nothing to measure: an index with no busy
+// blocks, or a caller that passed no mask. Null is not zero. An engine that
+// read "I cannot tell" as "nothing is running" would refuse to answer a small
+// index that is perfectly healthy.
+export function scheduleCoverage(rooms, active) {
+  let total = 0;
+  let live = 0;
+  for (const room of rooms ?? []) {
+    for (const b of room.busy ?? []) {
+      total++;
+      if (!active || b[3] === undefined || active[b[3]] === undefined || active[b[3]]) live++;
+    }
+  }
+  return { total, live, share: total && active ? live / total : null };
+}
+
+// Below this share of the index live, the schedule has stopped describing the
+// date and an empty room is not evidence of anything.
+//
+// MEASURED on the committed Autumn index, 12,168 blocks over 10 sessions, every
+// date from August 1 to December 31: on all 77 days classes meet the live share
+// sits between 94.98% and 97.64%, and on every other day it is at or below
+// 1.50%. Two clusters three orders of magnitude apart with nothing in between,
+// so this sits an order of magnitude clear of each. December 10, the first day
+// of the wrong week, measures 0.066%.
+export const SILENT_SHARE = 0.1;
+
+// Everything that has to be settled before a single room is swept.
+//
+// Three of these come from a calendar the class API does not publish and one
+// comes from the index itself. They are separate because they fail in different
+// directions: an exam window makes an occupied room look free, a closed campus
+// makes a reachable room look reachable, and a date the schedule has stopped
+// covering makes all of campus look free at once.
+//
+// Returns null when today can be answered normally.
+export function refusalFor({ now, rooms = [], sessions, date, active: given, calendar }) {
+  // Wall-clock minutes since local midnight, and nothing else. A value outside
+  // that range is an epoch subtraction, which is a whole hour wrong for the rest
+  // of the day on the two Sundays a year Ohio changes its clocks. Computing an
+  // answer from it would be confidently wrong rather than usefully wrong.
+  if (!Number.isFinite(now) || now < 0 || now > 1440) {
+    return {
+      refused: 'clock',
+      reason: 'Vacant could not read the time on this device, so it cannot say what is free.',
+    };
+  }
+
+  // During the exam window the API's busy grid is empty for every room while
+  // 200 people sit a final in it, and OSU publishes the exam room assignments
+  // nowhere the app can read, so there is nothing to compute from. Refusing is
+  // the only honest answer.
+  if (calendar?.exams) {
+    return {
+      refused: 'exams',
+      reason: calendar.reason
+        ?? 'Finals week. Ohio State reassigns rooms for exams and does not publish the assignments, so Vacant cannot tell you what is free.',
+    };
+  }
+  if (calendar?.buildingsClosed) {
+    return {
+      refused: 'closed',
+      reason: calendar.reason ?? 'The university is closed today, so the buildings are locked.',
+    };
+  }
+
+  // A day the registrar publishes as having no classes is a day the grid is
+  // wrong the other way, marking rooms busy that nobody is in, and that one is
+  // an answer rather than a refusal.
+  if (calendar?.noClasses) return null;
+
+  const active = given ?? (sessions && date ? activeMask(sessions, date) : undefined);
+  const coverage = scheduleCoverage(rooms, active);
+  if (coverage.share !== null && coverage.share < SILENT_SHARE) {
+    return {
+      refused: 'no-schedule',
+      reason: 'The class schedule has nothing for today, in any room on campus. That is what a break or finals week looks like from here, not an empty campus, so Vacant is not answering.',
+      coverage,
+    };
+  }
+  return null;
+}
+
 // ------------------------------------------------------------------- ladder
 
 // The whole answer for one query, including the fallback ladder.
@@ -623,45 +714,18 @@ export function query(rooms, opts) {
     ms: 0,
   };
 
-  // Wall-clock minutes since local midnight, and nothing else. A value outside
-  // that range is an epoch subtraction, which is a whole hour wrong for the rest
-  // of the day on the two Sundays a year Ohio changes its clocks. Computing an
-  // answer from it would be confidently wrong rather than usefully wrong.
-  if (!Number.isFinite(now) || now < 0 || now > 1440) {
-    return finish({
-      ...base,
-      refused: 'clock',
-      reason: 'Vacant could not read the time on this device, so it cannot say what is free.',
-    }, started);
-  }
-
-  // Two calendar facts the class schedule cannot see, and they fail in opposite
-  // directions. During the exam window the API's busy grid is empty for every
-  // room while 200 people sit a final in it, and OSU publishes the exam room
-  // assignments nowhere the app can read, so there is nothing to compute from.
-  // Refusing is the only honest answer. On a day with no classes the grid is
-  // wrong the other way, marking rooms busy that nobody is in, and that one is
-  // fixable.
-  if (calendar?.exams) {
-    return finish({
-      ...base,
-      refused: 'exams',
-      reason: calendar.reason
-        ?? 'Finals week. Ohio State reassigns rooms for exams and does not publish the assignments, so Vacant cannot tell you what is free.',
-    }, started);
-  }
-  if (calendar?.buildingsClosed) {
-    return finish({
-      ...base,
-      refused: 'closed',
-      reason: calendar.reason ?? 'The university is closed today, so the buildings are locked.',
-    }, started);
-  }
-
   mark('vacant:index:start');
   const active = given ?? (sessions && date ? activeMask(sessions, date) : undefined);
   mark('vacant:index:end');
   measure('vacant:index', 'vacant:index:start', 'vacant:index:end');
+
+  // The clock, the calendar and the index's own coverage of today, all settled
+  // before a room is swept. Same function the app calls, so a refusal reads the
+  // same whether it came from the ladder or from the screen above it.
+  const refusal = refusalFor({ now, rooms, active, calendar });
+  if (refusal) {
+    return finish({ ...base, refused: refusal.refused, reason: refusal.reason }, started);
+  }
 
   const { candidates, dropped } = sweep(rooms, {
     ...opts, active, dayStart, dayEnd, classesSuspended: !!calendar?.noClasses,

@@ -124,11 +124,19 @@ test('the user agent names the project, the repo and the volume', () => {
   assert.match(config.USER_AGENT, /github\.com\/EnesYilmazcode\/Vacant/);
   assert.match(config.USER_AGENT, /requests\/week/);
   // The advertised volume has to be at least what a real harvest sends.
-  const advertised = Number(/~(\d+) requests\/week/.exec(config.USER_AGENT)?.[1]);
+  // Asserted against the harvester's OWN ceiling, not a hand-entered typical
+  // figure. The previous version asserted >= 680, which passed on exactly the
+  // case it was written to catch: a 7-pass run costs 953.
+  const advertised = Number(/<=(\d+) requests\/week/.exec(config.USER_AGENT)?.[1]);
+  const BUCKETS = 8;
+  const PAGES_PER_BUCKET = 17; // 136 pages / 8 buckets, measured on 1268
+  const MAX_PASSES = 8;
+  const ceiling = BUCKETS * PAGES_PER_BUCKET * MAX_PASSES + 1;
   assert.ok(
-    advertised >= 680,
-    `advertised ${advertised} req/week is below the measured harvest cost of ~680`,
+    advertised >= ceiling,
+    `advertised ${advertised} req/week is below the harvester ceiling of ${ceiling}`,
   );
+  assert.ok(config.MAX_REQUESTS > BUCKETS * 50 * MAX_PASSES, 'the hard cap must sit above the worst case');
 });
 
 test('no Accept-Encoding header is set by hand', async () => {

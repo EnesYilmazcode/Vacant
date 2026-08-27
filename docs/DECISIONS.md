@@ -19,14 +19,18 @@ script that touches the network imports it. Nothing else calls `fetch` directly.
 
 Finder runs `CONCURRENCY 5` at `DELAY_MS 120` against a box that answers in
 128 ms p50, which sustains about 15.6 req/s. That is the request shape that
-looks like an attack in a log. Vacant needs roughly 280 requests a week, so it
-runs at `CONCURRENCY 2` / `DELAY_MS 500`, about 2.9 req/s, and the timeout goes
-from Finder's 30 s to 60 s.
+looks like an attack in a log. Vacant sends at most about 1,100 requests a week
+(see the 2026-08-26 harvest entry below; this line originally said 280, which
+was the two-pass estimate before the drift was measured), so it runs at
+`CONCURRENCY 2` / `DELAY_MS 500`, about 2.9 req/s, and the timeout goes from
+Finder's 30 s to 60 s.
 
-`MAX_REQUESTS = 3000` is a module-level cap that throws rather than fetches. A
-full two-pass term harvest is 272 requests, so that is an order of magnitude of
-headroom and still nowhere near abusive. A runaway loop against a university API
-is the failure that gets the whole project blocked, and it is worth a hard stop.
+`MAX_REQUESTS` is a module-level cap that throws rather than fetches. It was
+3000 on a two-pass estimate of 272 requests; the walk-until-stable harvester's
+worst case is 8 buckets x 50 pages x 8 passes = **3,200**, so the old cap sat
+UNDER its own worst case and would have fired mid-run. It is now 4000. A runaway
+loop against a university API is the failure that gets the whole project
+blocked, and it is worth a hard stop that cannot be tripped by normal operation.
 
 Tests are `node --test` with a stub `fetchImpl` injected per call. `npm test`
 makes zero network requests, which is checked by every test passing with the

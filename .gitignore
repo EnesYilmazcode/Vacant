@@ -9,3 +9,4 @@ Thumbs.db
 # must stay, because those terms have left the API and cannot be refetched at
 # any price. The manifest beside the harvest is committed for provenance.
 data/harvest-*.json.gz
+*.tmp

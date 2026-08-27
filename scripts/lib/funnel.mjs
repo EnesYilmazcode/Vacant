@@ -11,6 +11,15 @@
 // the blank check above does not catch them.
 const PSEUDO = new Set(['ONLINE', 'OFFCAMPUS']);
 
+// Exported because a bare `facilityId != null` is NOT "this is a real room".
+// ONLINE and OFFCAMPUS carry a facilityId of their own, and on term 1268 they
+// are 2,975 of the 11,454 meetings that pass a null check: 26%.
+export const isPseudoRoom = (meeting) =>
+  PSEUDO.has(meeting?.buildingCode) || PSEUDO.has(meeting?.facilityId);
+
+export const hasRealRoom = (meeting) =>
+  meeting?.facilityId != null && !isPseudoRoom(meeting);
+
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 // section.location is DELIBERATELY not filtered on, and this was a real bug

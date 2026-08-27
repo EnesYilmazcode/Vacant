@@ -31,7 +31,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { config, fetchJson, requests, sleep } from './lib/fetch.mjs';
-import { stripMeetingInstructors } from './lib/funnel.mjs';
+import { hasRealRoom, stripMeetingInstructors } from './lib/funnel.mjs';
 
 const API = 'https://content.osu.edu/v2/classes/search';
 const CAMPUS = 'col';
@@ -86,16 +86,21 @@ const searchUrl = (term, params = {}) =>
 // The seven fields that identify one meeting. Anything less collides: a course
 // with two meeting rows in the same room differs only by meetingNumber and
 // time, and a section taught in two rooms differs only by facilityId.
-export const meetingKey = (section, meeting) =>
-  [
+export const meetingKey = (section, meeting) => {
+  // The line that calls this already guards for a null row on the stated
+  // principle that shape drift shows up as a moved number rather than a crash.
+  // Dereferencing here unguarded would abort a fifteen minute harvest.
+  if (typeof meeting !== 'object' || meeting === null) return null;
+  return [
     section.classNumber,
     meeting.meetingNumber,
     meeting.facilityId,
     meeting.startTime,
     meeting.endTime,
     meeting.standingMeetingPattern,
-    section.startDate,
+    section?.startDate,
   ].join('|');
+};
 
 async function writeAtomic(path, buffer) {
   const tmp = `${path}.tmp`;
@@ -111,11 +116,23 @@ async function walk(term, buckets, { label }) {
   let cumulative = 0;
 
   for (const { slug, facetCount } of buckets) {
-    const first = await fetchJson(searchUrl(term, { 'catalog-number': slug, p: 1 }));
+    let first = await fetchJson(searchUrl(term, { 'catalog-number': slug, p: 1 }));
     await sleep(PAUSE_MS);
 
+    // The whole premise of this script is that the API is nondeterministic under
+    // paging, so treating one zero-count as fatal is the brittle reading of its
+    // own evidence. A run is now 5 to 8 passes and 15 minutes with nothing
+    // written until the end, so a single blip would discard ~950 requests and
+    // restart from zero. Ask twice before believing it.
+    if ((first?.data?.totalItems ?? 0) === 0) {
+      console.warn(`  warn  ${slug}: totalItems 0 on ${label}, asking once more`);
+      await sleep(PAUSE_MS * 4);
+      first = await fetchJson(searchUrl(term, { 'catalog-number': slug, p: 1 }));
+      await sleep(PAUSE_MS);
+    }
+
     const items = first?.data?.totalItems ?? 0;
-    if (items === 0) die(`bucket ${slug} returned totalItems 0 on ${label}.`);
+    if (items === 0) die(`bucket ${slug} returned totalItems 0 twice on ${label}.`);
     if (items >= RESULT_CAP) {
       die(`bucket ${slug} reports ${items} items, at or past the ${RESULT_CAP} paging cap.`);
     }
@@ -139,7 +156,9 @@ async function walk(term, buckets, { label }) {
           delete section.instructors;
           for (const meeting of section.meetings ?? []) {
             stripMeetingInstructors(meeting);
-            meetings.set(meetingKey(section, meeting), { section, meeting });
+            const key = meetingKey(section, meeting);
+            if (key === null) continue;
+            meetings.set(key, { section, meeting });
           }
         }
       }
@@ -195,9 +214,12 @@ async function main() {
       if (union.has(key)) continue;
       union.set(key, value);
       added++;
-      // Only a meeting in a real room can change an answer. A roomless meeting
-      // arriving late costs nothing, so the two are counted apart.
-      if (value.meeting.facilityId != null) addedWithRoom++;
+      // Only a meeting in a real room can change an answer, and a bare
+      // `facilityId != null` is not that test: ONLINE and OFFCAMPUS carry a
+      // facilityId of their own and are 26% of the rows that pass it. Counting
+      // them meant one drifted ONLINE row could reset stability and buy two
+      // more passes, 272 requests, for a meeting build-index.mjs discards.
+      if (hasRealRoom(value.meeting)) addedWithRoom++;
     }
 
     history.push({ pass: passNo, saw: pass.meetings.size, added, addedWithRoom, unionAfter: union.size });
@@ -208,7 +230,7 @@ async function main() {
     console.log(
       `\npass ${passNo}: saw ${pass.meetings.size}, added ${added} new ` +
         `(${addedWithRoom} in a real room), union now ${union.size}` +
-        (added ? '' : `  [${stable} of ${STABLE_PASSES} clean passes]`),
+        (addedWithRoom ? '' : `  [${stable} of ${STABLE_PASSES} clean passes]`),
     );
     console.log();
   }
@@ -286,7 +308,8 @@ async function main() {
     ),
   );
   console.log(
-    `wrote data/harvest-${term}.json.gz (${(body.length / 1024 / 1024).toFixed(1)} MB raw) and harvest.json`,
+    `wrote data/harvest-${term}.json.gz (${(Buffer.byteLength(body) / 1024 / 1024).toFixed(1)} MB raw) ` +
+      `and data/harvest-${term}.manifest.json`,
   );
 }
 

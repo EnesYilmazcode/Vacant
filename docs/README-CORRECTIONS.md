@@ -250,6 +250,21 @@ grep -rn "not affiliated" index.html README.md privacy.html
 | Manifest `description` | short | manifest lane, file does not exist yet | missing |
 | `privacy.html` footer | short | done | **done** |
 
+### The privacy page has no way in
+
+`privacy.html` ships in this lane, and nothing links to it. `grep -n privacy
+index.html` returns nothing: there is no footer, no About panel and no nav for a
+link to live in, so today a student cannot reach the page from inside the app.
+The page links back out with `<a href="./">Back to Vacant</a>`, which makes it a
+one-way door.
+
+**This blocks the launch**, and it is gated in `LAUNCH.md`. The link has to say
+`privacy.html` with the extension, because `.nojekyll` means Pages does no
+extensionless routing: `/Vacant/privacy.html` is 200 and `/Vacant/privacy` is a
+404, verified against the mirroring server. Nothing in this lane's tests can
+catch its absence, because the file that needs the link is not this lane's to
+edit.
+
 The long form for the README:
 
 > Vacant is an independent student project. It is not affiliated with, authorized
@@ -309,7 +324,8 @@ room index              871 rooms, 96 buildings, 234 KB raw, 26.8 KB gzipped
 buildings with hours    46 of 96, covering 626 of 871 rooms (71.9%)
 first launch            481,460 bytes raw, 104,830 gzipped (102.4 KB)
 published site          7,030,232 bytes over 311 files
-harvest                 545 requests a run, ~19.5 MB, weekly
+harvest                 545 requests a run, ~19.5 MB, run by hand about weekly
+                        (no scheduled workflow exists, see DATA.md)
 one API page            37,460 bytes gzipped on the wire (measured 2026-08-27)
 instructor records
   removed at parse      45,483 across the two archived terms, 0 survived

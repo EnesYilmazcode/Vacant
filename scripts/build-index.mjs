@@ -135,7 +135,7 @@ export function calendarFor(term, name, { ics, fiveYear, finals }) {
   const bounds = CLOSED_DAY_BOUNDS[season];
   const tolerance = ICS_SHIFT_DAYS[season];
   if (!bounds || tolerance === undefined) {
-    die(`term ${term} has an unknown season digit, so there is no closed-day bound for it.`);
+    die(`term ${term} has an unknown season digit, so nothing here knows what to expect of it.`);
   }
 
   // The publisher of record ships. The ICS is a third-party regeneration and
@@ -166,8 +166,8 @@ export function calendarFor(term, name, { ics, fiveYear, finals }) {
     }
   }
 
-  // Three sources for one week, and every one of them that exists must agree. A
-  // silent disagreement here sends someone into a final.
+  // Three sources for one week, and a silent disagreement here sends someone
+  // into a final.
   //
   // The finals page is preferred because it is the only one carrying the
   // time-of-day matrix, but it is the Registrar's LIVE page and it disappears

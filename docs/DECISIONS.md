@@ -618,7 +618,7 @@ Unblocks [#21](https://github.com/EnesYilmazcode/Vacant/issues/21),
 
 ## 2026-08-26  The map is vector, drawn from OSU's own GIS, with no tiles
 
-**Decided.** `data/campus.json`, **64.6 KB gzipped**, drawn from the same GIS
+**Decided.** `data/campus.json`, **50.1 KB gzipped**, drawn from the same GIS
 server `data/buildings.json` already uses. No Mapbox, no Google, no tiles, no
 API key, no account.
 
@@ -630,13 +630,13 @@ State publishes the campus as polygons, so the map is drawn from data we already
 ship, and it looks like this project rather than like everyone else's map.
 
 ```
-layer        shapes   points
-building        461    5,198     the only load-bearing layer
-street        1,121    7,735
-landscape       762    4,815
-water            28      349
+layer      features   points
+building        302    4,293     the only load-bearing layer
+street          836    6,254
+landscape       398    2,554
+water             8      157
                       -------
-                     64.6 KB gzipped, against a 140 KB budget
+                     50.1 KB gzipped, against a 140 KB budget
 ```
 
 **The map covers 2 km from the Oval, not the whole schedule.** Measured against
@@ -653,8 +653,7 @@ outside the map still appear in the list; they have no pin, and a room 5 km away
 was never a walk-to-it answer.
 
 **Simplification is tuned to what is visible, not to what is available.** The
-map shows about 2.4 km across a ~390 px phone, so **one pixel is roughly 6
-metres**. The first pass used `maxAllowableOffset` values ten times finer than
+map is 2.68 km across on a ~390 px phone, so **one pixel is about 6.9 metres**. The first pass used `maxAllowableOffset` values ten times finer than
 that and came back at **263 KB gzipped**, four times the final size, almost
 entirely street and landscape vertices nobody can resolve. The budget guard
 caught it, which is what it is for.
@@ -663,11 +662,35 @@ caught it, which is what it is for.
 bounding box, first pair absolute and the rest steps from the last, so most
 numbers are one or two digits and gzip does the rest.
 
-**Grid values are not bounded to 0..grid.** The query asks for shapes that
-INTERSECT the box, so a road or the river crossing the edge comes back whole:
-measured range is **-11080 to 61621** against a grid of 65535. Clamping would
-tear shapes apart at the boundary, so the renderer clips instead. The first
-version of the comment claimed a 16-bit range and was wrong.
+**Grid values are not bounded to 0..grid in EITHER direction.** The query asks
+for shapes that INTERSECT the box, so a road or the river crossing the edge
+comes back whole: measured range is x **-19205..65000** and y **3313..102550**
+against a grid of 65535, so the maximum EXCEEDS the grid. A renderer packing
+these into a `Uint16Array` wraps 102550 to 37014 and teleports the north edge
+into the middle of the map. Clamping would tear shapes at the boundary, so the
+renderer clips instead.
+
+Two earlier versions of this note were wrong. The first claimed a 16-bit range.
+The second quoted `-11080 to 61621`, which took the minimum from the x axis and
+the maximum from the same axis while y ran to 68750, so it read as though
+overshoot was low-side only, which is exactly the reading that makes a
+`Uint16Array` look safe.
+
+**Rings are grouped per feature, not flattened.** ArcGIS marks a hole only by
+winding order, and that is gone once a ring is delta-encoded. **19 buildings on
+the shipped map have a courtyard**, and a flat list of rings draws every one of
+them as a solid block. Grouped, the renderer draws one path per feature and
+even-odd fill handles it.
+
+**The bounding box is anchored on buildings that HOST CLASSES.** Anchoring it on
+every building in the radius selected 320 rather than 86 and produced a
+**3.96 x 4.59 km** rectangle, roughly twice the linear extent of the region that
+actually has classes. That also made the pixel budget the simplification was
+tuned against wrong by about 2x: 11.8 m per pixel rather than the 6 m the tuning
+assumed. Anchored correctly the map is **2.68 x 2.22 km** and 6.9 m per pixel,
+which is what the table below describes. Buildings with no classes are still
+drawn, because they are context; they simply do not stretch the map to reach
+them.
 
 **Verified by drawing it, not by trusting the byte count.** Rendered as text at
 104 columns: the Olentangy runs north to south, Dreese and Caldwell sit adjacent

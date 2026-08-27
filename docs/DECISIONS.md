@@ -448,3 +448,118 @@ across 96 buildings for Autumn 2026. **72% of those rooms sit in a building with
 published hours**, not the 88.8% the research estimated from 12 subjects, and 46
 of the 96 buildings are in the classroom pool. So the unknown-hours path is
 larger than the research suggests and matters more than it looks.
+## 2026-08-26  The room index, and a divisible-room shape the spec misses
+
+**Decided.** `data/rooms-1268.json`, 871 rooms, **234 KB raw and 26.8 KB
+gzipped**, which lands inside the research's 27 to 33 KB estimate. Built by
+`scripts/build-index.mjs` from the committed harvest.
+
+**Split from `fetch-rooms.mjs`, against the issue's "fetch-rooms writes two
+files".** A full harvest costs about 680 requests against a university's API,
+and every schema change to the index would otherwise mean paying that again just
+to see the result. Reading the harvest instead makes the inversion free to
+iterate on, and the input is identical either way.
+
+**A divisible-room shape the issue's spec cannot see.** It says to copy a
+`facilityGroup` parent's intervals onto "every room whose `facilityId` extends
+the parent's". That covers `MALC0100` to `MALC0100N` and `MALC0100S`. It does
+not cover the other shape:
+
+```
+MALC0100      -> MALC0100N, MALC0100S     a suffix EXTENDS the parent id
+BO0410/420    -> BO0410, BO0420           a slash NAMES both halves
+```
+
+`'BO0410'.startsWith('BO0410/420')` is false. Measured on term 1268,
+`BO0410/420` is a `facilityGroup` parent and **both `BO0410` (7 blocks) and
+`BO0420` (4 blocks) exist as separate rooms in the index**, so a combined
+booking left both halves reading FREE. That is precisely the failure this
+propagation exists to prevent. The digits after the slash replace the last N of
+the base number, which is how the Registrar writes them.
+
+Three of the five group parents on 1268 carry slash names. Only `BO0410/420`
+currently has both halves present, so the live impact today is two rooms, but
+the shape is not rare and a prefix test will never catch it.
+
+**Propagation runs both ways, decided rather than omitted.** The issue flags the
+upward direction as an open question. If `MALC0100N` has a class in it, then
+`MALC0100` is not available as a whole room either, and sending someone to it is
+the same wrong answer in the other direction. A sibling is NOT made busy by its
+twin; only the parent is.
+
+**The prefix trap is still respected.** `KH0333`/`KH0333C` and
+`HC0346`/`HC0346D` are both `facilityGroup: false` and genuinely separate rooms.
+Gating on `facilityGroup` rather than on a bare prefix scan is what keeps a real
+free room from being marked busy.
+
+**Verified on the built file.** 12,150 busy tuples, 0 malformed, 0 unmerged
+overlaps in any room, every room's `b` resolves in `buildings.json`, room keys
+sorted, and two consecutive builds produce a **byte-identical** file. 1,876
+exact duplicates dropped and 37 intervals merged out of 14,059 in.
+
+**`generated` appears only in `current.json`.** Inside the index it would make
+every weekly rebuild differ even when no schedule changed, so nothing could tell
+you whether the data actually moved. A guard fails the build if it appears.
+
+**`instruction` is the min and max of observed meeting dates**, never
+`searchableTermsV2`, whose dates are eleven-month search visibility windows:
+Autumn 2026 "starts" 2026-02-09 by that field. Measured: 2026-08-03 to
+2026-12-11 across 12 sessions.
+
+---
+
+## 2026-08-26  Session filtering, and six defects the room-index review caught
+
+**The biggest one was in already-merged code.** `freeGaps` filtered busy blocks
+by weekday and never looked at `sessionIndex`, so a block belonging to a session
+that has not started, or has already ended, still read as occupied.
+
+A term is not one continuous block. Autumn 2026 has 10 sessions and the
+seven-week ones do not overlap: the second-half sessions start 2026-10-19.
+Measured on the shipped index:
+
+```
+on 2026-08-25   324 of 12,168 busy tuples belong to a session not running
+on 2026-11-15   287 of 12,168, and 3 rooms have their ENTIRE busy list
+                drawn from a session that is not running
+```
+
+Those three rooms read fully booked while they are free all day. The engine now
+takes the index's `sessions` array plus today's date, builds an active mask, and
+skips blocks whose session is not running. Without both it falls back to
+counting every block, which is only correct for a single-session index.
+
+**`propagateGroups` was not idempotent with two halves, and the test I wrote
+certified a property the code did not have.** Snapshotting `busy` at the top of
+the call is not enough: on a second call the parent has already absorbed both
+halves, so each half's blocks flow down into the other and `MALC0100S` ends up
+busy purely because `MALC0100N` is, which the module comment says must never
+happen. The old idempotence test used a **single** half, exactly the shape that
+hides it. Propagation now reads from an `own` snapshot taken before any
+mutation, which is idempotent by construction, and `own` is stripped before the
+index is written.
+
+**Sessions were built from rows the funnel throws away.** Running
+`buildSessions` over all 27,074 harvested meetings emitted 12 sessions of which
+only 10 were referenced by any busy tuple; the other two came from online and
+room-less sections. Since `instruction` is min/max over sessions,
+`current.json` claimed the term started **2026-08-03** when the earliest real
+classroom booking is **2026-08-10**: a week of "in term" during which no room in
+the index holds a single block. Sessions are now built from the rows that
+survive `isRealRoom`.
+
+**Rebuilding an archived term silently repointed the live app at it.** The whole
+reason this script was split from `fetch-rooms.mjs` is that re-inverting is
+cheap, which makes it an easy accident: `build-index.mjs 1262` would have
+overwritten `current.json` with Spring 2026. It now refuses to move the pointer
+when today falls outside the term's own instruction window, with `--pointer` to
+override and `--no-pointer` to skip it entirely.
+
+**`cap: 0` is the index's sentinel for unknown, and the engine shipped it as a
+seat count.** `room.cap ?? null` passes `0` straight through, so 44 of 871 rooms
+would have rendered a confident "0 seats". Checked explicitly now.
+
+**One silent drop got a counter.** A meeting that passed the funnel and then
+matched no session was dropped with nothing recorded, in an otherwise fully
+instrumented pipeline. Zero occurrences today, but a partial upstream drift
+would empty whole rooms while the funnel still printed a healthy usable count.

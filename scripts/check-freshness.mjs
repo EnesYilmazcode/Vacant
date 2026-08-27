@@ -18,7 +18,7 @@
 // The only monitor that survives that is the out-of-band one written down in
 // .github/OPS.md, which fetches the deployed current.json from outside GitHub.
 
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -87,18 +87,27 @@ function main() {
     process.exit(2);
   }
 
+  // The workflow puts this straight into an issue title. A file that will not
+  // parse has not "gone stale", and saying so files a wrong claim somewhere
+  // nobody goes back to correct it.
+  const alert = (title) => {
+    if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `alert=${title}\n`);
+  };
+
   const path = join(ROOT, 'data', 'current.json');
   let current;
   try {
     current = JSON.parse(readFileSync(path, 'utf8'));
   } catch (err) {
     console.error(`FATAL  cannot read data/current.json: ${err.message}`);
+    alert('current.json cannot be read');
     process.exit(1);
   }
 
   const result = freshness(current, new Date(), maxDays);
   console.log(`term ${current.term ?? '?'} (${current.termName ?? '?'})`);
   console.log(result.ok ? `OK     ${result.reason}` : `STALE  ${result.reason}`);
+  if (!result.ok) alert(result.days === null ? 'current.json cannot be read' : 'Room index has gone stale');
   process.exit(result.ok ? 0 : 1);
 }
 

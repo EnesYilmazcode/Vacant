@@ -14,7 +14,7 @@
 // searchable its rooms are not assigned yet, so a human decides when it is
 // ready and re-baselines with --write.
 
-import { writeFileSync, readFileSync, existsSync, renameSync } from 'node:fs';
+import { appendFileSync, writeFileSync, readFileSync, existsSync, renameSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -54,6 +54,15 @@ export function diffTerms(committed, live) {
   };
 }
 
+// The workflow puts this straight into an issue title, so it has to say which
+// thing broke. "Searchable term list changed" on a morning when Ohio State was
+// simply down is a false claim, filed somewhere nobody goes back to correct it.
+function fail(alert, lines) {
+  for (const line of lines) console.error(line);
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `alert=${alert}\n`);
+  process.exit(1);
+}
+
 async function main() {
   const write = process.argv.includes('--write');
 
@@ -64,17 +73,16 @@ async function main() {
     // Rule 8 of the refusal list in docs/research/ops-freshness.md. Every
     // downstream decision reads from this endpoint, so a failure here is not a
     // shrug, it is the whole term picture going dark.
-    console.error(`FATAL  searchableTermsV2 did not answer: ${err.message}`);
-    process.exit(1);
+    fail('Term list endpoint is not answering', [`FATAL  searchableTermsV2 did not answer: ${err.message}`]);
   }
 
   if (live === null) {
-    console.error('FATAL  searchableTermsV2 answered, but data.data was not an array.');
-    process.exit(1);
+    fail('Term list endpoint is not answering', ['FATAL  searchableTermsV2 answered, but data.data was not an array.']);
   }
   if (live.length === 0) {
-    console.error('FATAL  searchableTermsV2 returned an empty term list. Three terms are searchable at all times.');
-    process.exit(1);
+    fail('Term list endpoint is not answering', [
+      'FATAL  searchableTermsV2 returned an empty term list. Three terms are searchable at all times.',
+    ]);
   }
 
   console.log(`${requests()} request. ${live.length} searchable: ${live.map((t) => `${t.strm} ${t.descr}`).join(', ')}`);
@@ -96,9 +104,10 @@ async function main() {
   }
 
   if (!existsSync(TERMS_PATH)) {
-    console.error('FATAL  data/terms.json is missing, so there is nothing to compare against.');
-    console.error('       Run: node scripts/check-terms.mjs --write');
-    process.exit(1);
+    fail('Term list has no committed baseline', [
+      'FATAL  data/terms.json is missing, so there is nothing to compare against.',
+      '       Run: node scripts/check-terms.mjs --write',
+    ]);
   }
 
   const committed = JSON.parse(readFileSync(TERMS_PATH, 'utf8')).terms;
@@ -109,16 +118,16 @@ async function main() {
     return;
   }
 
-  console.error('\nFATAL  the searchable term list moved.');
-  if (appeared.length) console.error(`       appeared: ${appeared.join(', ')}`);
+  const lines = ['\nFATAL  the searchable term list moved.'];
+  if (appeared.length) lines.push(`       appeared: ${appeared.join(', ')}`);
   if (left.length) {
-    console.error(`       left:     ${left.join(', ')}`);
-    console.error('       A term that left the list returns zero sections forever. The committed');
-    console.error('       rooms file is now the only copy of that grid, so do not force a rebuild.');
+    lines.push(`       left:     ${left.join(', ')}`);
+    lines.push('       A term that left the list returns zero sections forever. The committed');
+    lines.push('       rooms file is now the only copy of that grid, so do not force a rebuild.');
   }
-  console.error('\n       Nothing was fetched beyond the term list and nothing was written.');
-  console.error('       Decide what to do, then re-baseline: node scripts/check-terms.mjs --write');
-  process.exit(1);
+  lines.push('\n       Nothing was fetched beyond the term list and nothing was written.');
+  lines.push('       Decide what to do, then re-baseline: node scripts/check-terms.mjs --write');
+  fail('Searchable term list changed', lines);
 }
 
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith('check-terms.mjs');

@@ -34,6 +34,21 @@ A weekly job broken for a month is then one issue with four comments. The daily
 watch passes a second argument, `144`, which is a six day quiet window, so a
 condition that persists until a human acts nags about weekly instead of daily.
 
+Seven titles exist, and each gets its own issue. The two watch scripts choose
+their own rather than letting the workflow guess, because each of them can fail
+in more than one way and the title becomes a claim in a place nobody goes back
+to correct:
+
+| Title | Raised when |
+|---|---|
+| Room index build failed | any step of `rooms.yml` went red |
+| Room index has gone stale | `current.json` is over 10 days old |
+| current.json cannot be read | it does not parse, or has no readable `generated` |
+| Searchable term list changed | a term appeared in or left `searchableTermsV2` |
+| Term list endpoint is not answering | that request failed, or came back empty or reshaped |
+| Term list has no committed baseline | `data/terms.json` is missing |
+| Live API shape has changed | one of the four rot checks failed |
+
 The `ops` label already exists. `gh issue create` fails on an unknown label, so
 if you ever recreate the repository, create it before the first failure.
 

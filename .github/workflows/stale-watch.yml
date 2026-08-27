@@ -46,6 +46,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-terms.mjs
 
+      # Both scripts name their own alert, because the title becomes an issue
+      # title and each of them can fail in more than one way. "Room index has
+      # gone stale" about a current.json that will not parse, or "Searchable
+      # term list changed" on a morning Ohio State was simply down, is a wrong
+      # claim filed somewhere nobody goes back to correct it. The fallbacks are
+      # for a script that died before it could say which.
+      #
       # 144 hours, six days. This job runs daily and both conditions persist
       # until a human does something, so without a quiet window a term that left
       # the list is one comment a day forever, which is exactly how an alert
@@ -54,10 +61,12 @@ jobs:
         if: ${{ failure() && steps.freshness.outcome == 'failure' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash .github/alert.sh "Room index has gone stale" 144
+          TITLE: ${{ steps.freshness.outputs.alert || 'Freshness check failed' }}
+        run: bash .github/alert.sh "$TITLE" 144
 
       - name: Say the term list moved
         if: ${{ failure() && steps.terms.outcome == 'failure' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash .github/alert.sh "Searchable term list changed" 144
+          TITLE: ${{ steps.terms.outputs.alert || 'Term watch failed' }}
+        run: bash .github/alert.sh "$TITLE" 144

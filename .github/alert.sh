@@ -78,9 +78,9 @@ if [ -z "$open_issues" ]; then
   # until the list can see what we just wrote is the only chance to notice a twin
   # filed in the same window.
   for _ in 1 2 3 4 5 6; do
+    sleep "$poll_seconds"
     open_issues=$(marked)
     [ -n "$open_issues" ] && break
-    sleep "$poll_seconds"
   done
 fi
 

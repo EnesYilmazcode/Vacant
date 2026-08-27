@@ -37,7 +37,7 @@ condition that persists until a human acts nags about weekly instead of daily.
 GitHub's issue list is behind its own writes, so the marker alone is not enough.
 Fired against the real API on 2026-08-27, three alerts 2 and 4 seconds apart all
 read an empty list and all filed three separate issues, while a pair 15 seconds
-apart deduplicated correctly. After filing, `alert.sh` now waits up to 25 seconds
+apart deduplicated correctly. After filing, `alert.sh` now waits up to 30 seconds
 for the list to show what it just wrote, and closes the higher-numbered twin if
 one turns up. A twin that surfaces later than that is closed by the next alert.
 The race cannot be prevented outright: the list is the only place to look and it
@@ -154,7 +154,7 @@ it spends a request. That file is not something the workflow can produce:
 room index to exist first, so adding a term is three local steps in order.
 
 ```bash
-node scripts/fetch-rooms.mjs 1272 && node scripts/build-index.mjs 1272
+node scripts/fetch-rooms.mjs <term> && node scripts/build-index.mjs <term>
 node scripts/fetch-buildings.mjs        # reads the term from current.json
 git add data/ && git commit
 ```

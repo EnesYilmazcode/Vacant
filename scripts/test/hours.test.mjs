@@ -197,3 +197,72 @@ test('the committed output never assumes hours it does not have', () => {
 function readIfPresent(url) {
   return existsSync(url) ? readFileSync(url, 'utf8') : null;
 }
+
+// --- regressions found by the PR #32 review ---
+
+test('a combined day cell is reported missing, never shipped as closed', () => {
+  // A panel rendering one <li> for "Monday-Thursday" yields FOUR days found and
+  // ZERO errors. Collapsing the three undefined slots to null publishes a
+  // building open until 10pm as closed on three weekdays, past every guard.
+  const body =
+    '<p>DAY HOURS:</p><ul>' +
+    li('Monday-Thursday', '7am-10pm') +
+    li('Friday', '7am-6pm') +
+    li('Saturday', 'closed') +
+    li('Sunday', 'closed') +
+    '</ul>';
+  const [row] = parsePage(panel('A Hall (AH) | 1 Road', body));
+  assert.equal(row.errors.length, 0, 'nothing throws, which is what makes it dangerous');
+  assert.equal(row.daysFound, 4);
+  assert.deepEqual(row.missing.sort(), ['monday', 'tuesday', 'wednesday'].sort());
+  assert.equal(row.hours[DAY_INDEX.monday], undefined, 'undefined, NOT null');
+  assert.notEqual(row.hours[DAY_INDEX.monday], null, 'null would mean closed');
+});
+
+test('a missing single day is caught the same way', () => {
+  const body =
+    '<p>DAY HOURS:</p><ul>' +
+    ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Sunday']
+      .map((d) => li(d, '7am-8pm'))
+      .join('') +
+    '</ul>';
+  const [row] = parsePage(panel('A Hall (AH) | 1 Road', body));
+  assert.deepEqual(row.missing, ['saturday']);
+  assert.equal(row.daysFound, 6);
+});
+
+test('a panel whose title drifts is reported, not silently dropped', () => {
+  // Dropping it puts the building into unknownHours, so the app claims "hours
+  // not published" about a building that publishes them. With a floor of 40
+  // against 47 panels, seven could vanish without a word.
+  for (const title of [
+    'Ag. Admin. - 2120 Fyffe Road',
+    'Ag. Admin. (AgAdmin1) | x',
+    'Ag. Admin. [AA] | x',
+  ]) {
+    const rows = parsePage(panel(title, dayHours('7am-8pm')));
+    assert.equal(rows.length, 1, `${title}: the panel is still returned`);
+    assert.equal(rows[0].unparseable, true, title);
+    assert.ok(rows[0].raw.length > 0, 'the raw title is carried for the error message');
+  }
+});
+
+test('an extra attribute after aria-controls does not lose the panel', () => {
+  const p = panel('A Hall (AH) | 1 Road', dayHours('7am-8pm')).replace(
+    'aria-controls="collapse-1"',
+    'aria-controls="collapse-1" data-x="y"',
+  );
+  const [row] = parsePage(p);
+  assert.equal(row.unparseable, undefined);
+  assert.equal(row.abbr, 'AH');
+});
+
+test('a 12:30am close is 1470, not 30', () => {
+  // Handling only the whole hour made a well-formed cell throw "close is not
+  // after open", halting a term build and misreporting it as a Registrar typo.
+  assert.equal(parseClock('12:30am', { isClose: true }), 1470);
+  assert.equal(parseClock('12:45am', { isClose: true }), 1485);
+  assert.equal(parseClock('12:30am'), 30, 'as an OPEN time it is still 30');
+  assert.deepEqual(parseDayCell('7am-12:30am'), [420, 1470]);
+  assert.deepEqual(parseDayCell('7am-12am'), [420, 1440]);
+});

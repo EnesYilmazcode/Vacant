@@ -42,7 +42,11 @@ export function parseClock(text, { isClose = false } = {}) {
   const minute = m[2] ? Number(m[2]) : 0;
   if (hour < 1 || hour > 12 || minute > 59) return null;
   const pm = m[3].toLowerCase() === 'p';
-  if (hour === 12 && !pm) return isClose && minute === 0 ? 1440 : minute;
+  // Midnight. As an OPEN time 12:30am is 30 minutes past midnight. As a CLOSE
+  // it is 24 hours and 30 minutes into the day the building opened. Handling
+  // only the whole hour made "7am-12:30am" throw "close is not after open",
+  // halting a term build and misreporting a well-formed cell as a typo.
+  if (hour === 12 && !pm) return isClose ? 1440 + minute : minute;
   const base = hour === 12 ? 12 * 60 : hour * 60;
   return base + minute + (pm && hour !== 12 ? 720 : 0);
 }
@@ -102,9 +106,17 @@ export function extractDayList(body) {
 }
 
 export function parsePanel(panel) {
-  const titleRaw = /aria-controls="[^"]*"\s*>([\s\S]*?)<\/a>/i.exec(panel);
+  // Tolerate further attributes after aria-controls; the CMS is free to add them.
+  const titleRaw = /aria-controls="[^"]*"[^>]*>([\s\S]*?)<\/a>/i.exec(panel);
   const title = parseTitle(titleRaw ? titleRaw[1] : '');
-  if (!title) return null;
+  // A panel whose title markup drifts must NOT be dropped. Silently discarding
+  // it puts the building into unknownHours, so the app reports "hours not
+  // published" for a building whose hours are published, which is the exact
+  // dishonesty this scraper exists to prevent.
+  if (!title) {
+    const raw = squash(decode(strip(titleRaw ? titleRaw[1] : panel.slice(0, 200))));
+    return { unparseable: true, raw, hours: new Array(7).fill(undefined), errors: [], daysFound: 0 };
+  }
 
   const bodyMatch = /panel-body["'\s>]([\s\S]*?)(?:<\/div>)/i.exec(panel);
   const body = bodyMatch ? bodyMatch[1] : '';
@@ -126,11 +138,21 @@ export function parsePanel(panel) {
     }
   }
 
-  return { ...title, hours, errors, daysFound: hours.filter((h) => h !== undefined).length };
+  // daysFound is load bearing, not diagnostics. `undefined` means the day never
+  // appeared in the list, and collapsing that to null would publish it as
+  // CLOSED. A panel rendering "Monday-Thursday: 7am-10pm" as one <li> yields
+  // daysFound 4 with zero errors, and would ship three days of a building open
+  // until 10pm as closed.
+  const missing = Object.entries(DAY_INDEX)
+    .filter(([, i]) => hours[i] === undefined)
+    .map(([day]) => day);
+  return { ...title, hours, errors, daysFound: 7 - missing.length, missing };
 }
 
 export function parsePage(html) {
   // The page has zero <table> elements, so a table parser finds nothing.
   const panels = String(html).split('panel panel-default').slice(1);
-  return panels.map(parsePanel).filter(Boolean);
+  // Never .filter(Boolean) here. The caller has to see every panel, including
+  // the ones that would not parse, or buildings vanish without a word.
+  return panels.map(parsePanel);
 }

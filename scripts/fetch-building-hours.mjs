@@ -2,11 +2,13 @@
 // Scrape the Registrar's classroom pool building schedule into
 // data/buildings-hours.json.
 //
-// This is the dataset the whole project exists for. Measured against it, a flat
-// 7am-10pm assumption overstates open minutes by 27% Mon-Fri and by 837% at
-// weekends, because only 5 of 47 pool buildings open Saturday and 11 open
-// Sunday. Without it Vacant names free rooms behind locked doors, which is the
-// precise failure the README calls out in every other app.
+// This is the dataset the whole project exists for. Recomputed from the file
+// this script actually writes, a flat 7am-10pm assumption overstates open
+// minutes by 16% Mon-Fri and 798% at weekends for Autumn 2026, and by 39% and
+// 3580% for Summer 2026. The research quotes 27% and 837%; neither term
+// produces those. Only 5 of the 47 Autumn pool buildings open Saturday and 11
+// open Sunday. Without this, Vacant names free rooms behind locked doors, which
+// is the precise failure the README calls out in every other app.
 //
 // Usage:  node scripts/fetch-building-hours.mjs
 //         node scripts/fetch-building-hours.mjs --dry-run
@@ -25,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 
 import { fetchText, requests } from './lib/fetch.mjs';
-import { isRealRoom, newCounter, toMinutes } from './lib/funnel.mjs';
+import { formatFunnel, isRealRoom, newCounter, toMinutes } from './lib/funnel.mjs';
 import { DAY_INDEX, parseDayCell, parsePage } from './lib/hours.mjs';
 
 const INDEX_URL =
@@ -60,7 +62,7 @@ const TERM_FOR_SLUG = {
 };
 
 // Latest class end per buildingCode per weekday, read straight from the archive.
-function lastClassEndByBuilding(term, isKnownBuilding) {
+function lastClassEndByBuilding(term, isKnownBuilding, counter) {
   const dir = join(ROOT, 'data', 'raw', term);
   if (!existsSync(dir)) return null;
   const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -70,7 +72,7 @@ function lastClassEndByBuilding(term, isKnownBuilding) {
     for (const course of page?.data?.courses ?? []) {
       for (const section of course.sections ?? []) {
         for (const meeting of section.meetings ?? []) {
-          if (!isRealRoom(meeting, section, newCounter(), { isKnownBuilding })) continue;
+          if (!isRealRoom(meeting, section, counter, { isKnownBuilding })) continue;
           const end = toMinutes(meeting.endTime);
           if (end == null) continue;
           if (!latest.has(meeting.buildingCode)) latest.set(meeting.buildingCode, new Array(7).fill(0));
@@ -102,12 +104,22 @@ async function writeAtomic(path, text) {
 
 // Fetch, cache, and fall back to the cache on failure. The in-repo cache is the
 // answer to "it is unknown whether an old term's page survives".
-async function fetchCached(url, slug) {
+async function fetchCached(url, slug, { validate, dryRun } = {}) {
   const cachePath = join(CACHE_DIR, `${slug}.html`);
   try {
     const html = await fetchText(url);
     if (!html || html.length < 1000) throw new Error(`suspiciously short response (${html?.length} bytes)`);
-    await writeAtomic(cachePath, html);
+    // Validate BEFORE overwriting the cache. fetch follows redirects, so a
+    // removed term page that 301s to the pool index comes back as a healthy 200
+    // with a 40 KB body. Writing that first destroys the committed copy, which
+    // is the only reason the cache exists. A WAF interstitial or a CMS 404
+    // served as 200 does the same.
+    if (validate) {
+      const problem = validate(html);
+      if (problem) throw new Error(`response failed validation: ${problem}`);
+    }
+    // A dry run must not touch committed files.
+    if (!dryRun) await writeAtomic(cachePath, html);
     return { html, from: 'live' };
   } catch (err) {
     if (existsSync(cachePath)) {
@@ -153,7 +165,12 @@ async function main() {
     ? JSON.parse(readFileSync(OVERRIDES_PATH, 'utf8'))
     : { overrides: {} };
 
-  const index = await fetchCached(INDEX_URL, 'pool-index');
+  const looksLikeTermPage = (html) =>
+    html.includes('panel panel-default') ? null : 'no panel panel-default markup';
+  const looksLikeIndex = (html) =>
+    /classroom-pool-building-schedule/i.test(html) ? null : 'no pool schedule links';
+
+  const index = await fetchCached(INDEX_URL, 'pool-index', { validate: looksLikeIndex, dryRun });
   const terms = discoverTermLinks(index.html);
   if (!terms.length) die('no term links found on the pool index. The page markup moved.');
   console.log(`pool index (${index.from}): ${terms.length} term pages\n`);
@@ -161,10 +178,22 @@ async function main() {
   const out = {};
 
   for (const { slug, url } of terms) {
-    const page = await fetchCached(url, slug);
-    const rows = parsePage(page.html);
+    const page = await fetchCached(url, slug, { validate: looksLikeTermPage, dryRun });
+    const all = parsePage(page.html);
+    const broken = all.filter((r) => r.unparseable);
+    const rows = all.filter((r) => !r.unparseable);
     const termOverrides = overrideFile.overrides?.[slug] ?? {};
 
+    // A panel whose title markup drifted used to be dropped silently. With a
+    // floor of 40 against 47 panels, seven buildings could vanish, and each one
+    // then lands in unknownHours, so the app says "hours not published" about a
+    // building that publishes them.
+    if (broken.length) {
+      die(
+        `${slug}: ${broken.length} panel(s) did not parse:\n` +
+          broken.map((b) => `         ${JSON.stringify(b.raw.slice(0, 80))}`).join('\n'),
+      );
+    }
     if (rows.length < MIN_BUILDINGS) {
       die(`${slug}: parsed only ${rows.length} buildings, under the ${MIN_BUILDINGS} floor.`);
     }
@@ -174,8 +203,12 @@ async function main() {
     const unresolvedCells = [];
     const unjoined = [];
 
+    const appliedOverrides = new Set();
+    const missingDays = [];
+
     for (const row of rows) {
       // Repair what the override file covers, and only what it covers.
+      let appliedHere = 0;
       for (const err of row.errors) {
         const fix = termOverrides[row.abbr]?.[err.day];
         if (!fix) {
@@ -183,15 +216,34 @@ async function main() {
           continue;
         }
         row.hours[DAY_INDEX[err.day]] = parseDayCell(fix.value);
+        appliedOverrides.add(`${row.abbr}.${err.day}`);
+        appliedHere++;
         overridden++;
       }
+
+      // A day that never appeared in the list is NOT a closed day, and shipping
+      // it as null publishes a closed building. One <li> reading
+      // "Monday-Thursday: 7am-10pm" produces exactly this with zero errors.
+      //
+      // Recomputed here rather than read off row.missing, because an
+      // unparseable cell also leaves the slot undefined and an override has
+      // just filled it. Only a slot still undefined after overrides is a day
+      // the page genuinely never published.
+      const stillMissing = Object.entries(DAY_INDEX)
+        .filter(([, i]) => row.hours[i] === undefined)
+        .map(([day]) => day);
+      if (stillMissing.length) missingDays.push({ abbr: row.abbr, missing: stillMissing });
 
       const codes = byAbbr.get(row.abbr);
       if (!codes) {
         unjoined.push(row.abbr);
         continue;
       }
-      const hasOverride = Boolean(termOverrides[row.abbr]);
+      // Set from what was actually applied, not from an entry merely existing.
+      // When the Registrar fixes a typo, row.errors is empty, nothing is
+      // replaced, and a fully scraped record would still claim to be
+      // hand-supplied.
+      const hasOverride = appliedHere > 0;
       for (const code of codes) {
         buildingsOut[code] = {
           abbr: row.abbr,
@@ -214,13 +266,47 @@ async function main() {
           `\n       Add them to data/registrar-hours-overrides.json with a documented reason.`,
       );
     }
+    if (missingDays.length) {
+      die(
+        `${slug}: ${missingDays.length} building(s) are missing a day from the published list:\n` +
+          missingDays.map((m) => `         ${m.abbr}: no ${m.missing.join(', ')}`).join('\n') +
+          `\n       A day that never appeared is not a closed day. Check the page markup.`,
+      );
+    }
+
+    // A stale override shadows the real value, which the overrides file's own
+    // _doc says must not happen. Nothing else would ever tell you.
+    for (const [abbr, days] of Object.entries(termOverrides)) {
+      for (const day of Object.keys(days)) {
+        if (appliedOverrides.has(`${abbr}.${day}`)) continue;
+        console.warn(
+          `  warn  ${slug}: override ${abbr}.${day} matched no unparseable cell. ` +
+            `The Registrar may have fixed it; delete the entry.`,
+        );
+      }
+    }
+
     if (unjoined.length) {
       die(`${slug}: ${unjoined.length} abbreviation(s) did not resolve to a buildingCode: ${unjoined.join(', ')}`);
     }
 
     // Does any class run past the published close?
     const archiveTerm = TERM_FOR_SLUG[slug];
-    const latest = archiveTerm ? lastClassEndByBuilding(archiveTerm, (c) => c in buildings) : null;
+    const overrunCounter = newCounter();
+    const latest = archiveTerm
+      ? lastClassEndByBuilding(archiveTerm, (c) => c in buildings, overrunCounter)
+      : null;
+    // Saying nothing reads exactly like "checked, all clear".
+    if (!latest) {
+      console.log(
+        `  note  no class-past-close cross-check: ` +
+          (archiveTerm ? `no archive at data/raw/${archiveTerm}` : 'no term mapped for this page'),
+      );
+    } else if (overrunCounter.usable === 0) {
+      die(`${slug}: the ${archiveTerm} archive yielded 0 usable meetings. ${formatFunnel(overrunCounter)}`);
+    } else {
+      console.log(`  cross-check against ${archiveTerm}: ${formatFunnel(overrunCounter)}`);
+    }
     if (latest) {
       const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
       const overruns = [];

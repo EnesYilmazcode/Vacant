@@ -1,8 +1,10 @@
 // Offline. Fixtures only, no network.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 
-import { buildIndex } from '../fetch-buildings.mjs';
+import { buildIndex, smallIndex } from '../fetch-buildings.mjs';
+import { padCode } from '../fetch-campus.mjs';
 import { OVAL, haversineMetres, kmFromOval } from '../lib/geo.mjs';
 
 const feat = (attributes) => ({ attributes });
@@ -147,4 +149,97 @@ test('an empty BLDG_NAME falls back to FormalName instead of shipping ""', () =>
     Longitude: '-83.01',
   });
   assert.equal(buildIndex([row]).byCode.get('500').name, 'Real Name');
+});
+
+// --- the launch subset, issue #54 ---
+
+const FULL = {
+  '003': { name: 'Arps Hall', short: 'AH', lat: 40.0, lon: -83.01, km_from_oval: 0.2, address: 'x', city: 'Columbus', campus: 'Columbus', floors: 5, status: 'Active' },
+  '279': { name: 'Dreese Laboratories', short: 'DL', lat: 40.002295, lon: -83.015831, km_from_oval: 0.5, address: 'y', city: 'Columbus', campus: 'Columbus', floors: 8, status: 'Active' },
+  '900': { name: 'Never Hosts A Class', short: 'NH', lat: 40.1, lon: -83.1, km_from_oval: 9, address: 'z', city: 'Columbus', campus: 'Columbus', floors: 1, status: 'Active' },
+};
+
+test('the launch subset keeps only the three fields the app reads', () => {
+  const { small } = smallIndex(FULL, new Set(['003']));
+  assert.deepEqual(Object.keys(small['003']), ['name', 'lat', 'lon']);
+  assert.equal(small['003'].name, 'Arps Hall');
+});
+
+test('the launch subset keeps only codes the room index points at', () => {
+  // Sorted, because a plain key order puts '279' before '003': JS orders
+  // integer-like keys numerically and everything else by insertion.
+  const { small } = smallIndex(FULL, new Set(['003', '279']));
+  assert.deepEqual(Object.keys(small).sort(), ['003', '279']);
+});
+
+test('a room code with no building record is reported, not silently dropped', () => {
+  // A room in the grid whose building is missing has nothing to put on the map,
+  // and dropping it quietly is how that reaches a phone.
+  const { small, missing } = smallIndex(FULL, new Set(['003', '404']));
+  assert.deepEqual(missing, ['404']);
+  assert.equal(small['404'], undefined);
+});
+
+test('the committed launch subset covers every building the room index names', () => {
+  const cur = new URL('../../data/current.json', import.meta.url);
+  if (!existsSync(cur)) return;
+  const term = JSON.parse(readFileSync(cur, 'utf8')).term;
+  const smallPath = new URL(`../../data/buildings-${term}.json`, import.meta.url);
+  const roomsPath = new URL(`../../data/rooms-${term}.json`, import.meta.url);
+  const fullPath = new URL('../../data/buildings.json', import.meta.url);
+  if (!existsSync(smallPath) || !existsSync(roomsPath) || !existsSync(fullPath)) return;
+
+  const small = JSON.parse(readFileSync(smallPath, 'utf8')).buildings;
+  const full = JSON.parse(readFileSync(fullPath, 'utf8')).buildings;
+  const rooms = JSON.parse(readFileSync(roomsPath, 'utf8')).rooms;
+  const codes = [...new Set(Object.values(rooms).map((r) => r.b))];
+
+  const absent = codes.filter((c) => !small[c]);
+  assert.deepEqual(absent, [], 'room codes with no record in the launch subset');
+  assert.ok(codes.length > 50, 'the check would be vacuous with too few codes');
+
+  for (const [code, b] of Object.entries(small)) {
+    assert.deepEqual(Object.keys(b), ['name', 'lat', 'lon'], `${code} carries more than it needs`);
+    assert.equal(b.lat, full[code].lat, `${code} disagrees with the full index`);
+    assert.equal(b.lon, full[code].lon, `${code} disagrees with the full index`);
+  }
+});
+
+// --- building codes on the map, issue #50 ---
+
+test('a short building code is padded to the three digits room.b uses', () => {
+  // data/footprints.draft.json ships the unpadded form, and joining on it
+  // resolves 50 of 86 codes while looking like it worked.
+  assert.equal(padCode('3'), '003');
+  assert.equal(padCode('60'), '060');
+  assert.equal(padCode('003'), '003');
+  assert.equal(padCode('1243'), '1243');
+  assert.equal(padCode(''), '');
+  assert.equal(padCode(null), '');
+});
+
+test('the committed map keys its footprints by building code', () => {
+  const mapPath = new URL('../../data/campus.json', import.meta.url);
+  const cur = new URL('../../data/current.json', import.meta.url);
+  if (!existsSync(mapPath) || !existsSync(cur)) return;
+  const c = JSON.parse(readFileSync(mapPath, 'utf8'));
+  const term = JSON.parse(readFileSync(cur, 'utf8')).term;
+  const roomsPath = new URL(`../../data/rooms-${term}.json`, import.meta.url);
+  if (!existsSync(roomsPath)) return;
+
+  assert.ok(Array.isArray(c.buildingCode), 'campus.json carries no buildingCode');
+  assert.equal(
+    c.buildingCode.length,
+    c.layers.building.length,
+    'buildingCode is not aligned with layers.building, so every code after a gap is wrong',
+  );
+
+  const rooms = JSON.parse(readFileSync(roomsPath, 'utf8')).rooms;
+  const codes = new Set(Object.values(rooms).map((r) => r.b));
+  const keyed = c.buildingCode.filter(Boolean);
+  for (const code of keyed) {
+    assert.ok(codes.has(code), `${code} is keyed but hosts no class this term`);
+    assert.match(code, /^\d{3,}$/, `${code} is not in the padded form room.b uses`);
+  }
+  assert.ok(keyed.length >= 80, `only ${keyed.length} class-hosting buildings resolve to a polygon`);
 });

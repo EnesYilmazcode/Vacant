@@ -102,6 +102,44 @@ export const meetingKey = (section, meeting) => {
   ].join('|');
 };
 
+// Every meeting on one search page, into the union. A row in data.courses is
+// { course, sections }, so the course is one level down from the loop variable:
+// entry.course.subject is the code ("CSE") while section.subject is the display
+// name ("Computer Science & Engineering"), which averages 18 characters, runs
+// to 32, and gives values like "Kinesiology:Sprt, Ftns & Hlth Pr". Returns the
+// number of section rows read, which is what the per-bucket log counts.
+export function collectMeetings(page, meetings) {
+  let sections = 0;
+  for (const entry of page?.data?.courses ?? []) {
+    const subject = entry.course?.subject ?? null;
+    for (const section of entry.sections ?? []) {
+      sections++;
+      // At the parse boundary, the moment the meeting is first read.
+      delete section.instructors;
+      for (const meeting of section.meetings ?? []) {
+        stripMeetingInstructors(meeting);
+        const key = meetingKey(section, meeting);
+        if (key === null) continue;
+        meetings.set(key, { subject, section, meeting });
+      }
+    }
+  }
+  return sections;
+}
+
+export const projectMeeting = ({ subject, section, meeting }) => ({
+  classNumber: section.classNumber,
+  subject,
+  catalogNumber: section.catalogNumber,
+  component: section.component,
+  location: section.location,
+  campus: section.campus,
+  sessionCode: section.sessionCode,
+  startDate: section.startDate,
+  endDate: section.endDate,
+  m: meeting,
+});
+
 async function writeAtomic(path, buffer) {
   const tmp = `${path}.tmp`;
   await writeFile(tmp, buffer);
@@ -149,19 +187,7 @@ async function walk(term, buckets, { label }) {
       const page = p === 1 ? first : await fetchJson(searchUrl(term, { 'catalog-number': slug, p }));
       if (p > 1) await sleep(PAUSE_MS);
 
-      for (const course of page?.data?.courses ?? []) {
-        for (const section of course.sections ?? []) {
-          sections++;
-          // At the parse boundary, the moment the meeting is first read.
-          delete section.instructors;
-          for (const meeting of section.meetings ?? []) {
-            stripMeetingInstructors(meeting);
-            const key = meetingKey(section, meeting);
-            if (key === null) continue;
-            meetings.set(key, { section, meeting });
-          }
-        }
-      }
+      sections += collectMeetings(page, meetings);
     }
 
     cumulative += count;
@@ -269,18 +295,7 @@ async function main() {
     source: API,
     passes: passNo,
     history,
-    meetings: [...union.values()].map(({ section, meeting }) => ({
-      classNumber: section.classNumber,
-      subject: section.subject,
-      catalogNumber: section.catalogNumber,
-      component: section.component,
-      location: section.location,
-      campus: section.campus,
-      sessionCode: section.sessionCode,
-      startDate: section.startDate,
-      endDate: section.endDate,
-      m: meeting,
-    })),
+    meetings: [...union.values()].map(projectMeeting),
   };
 
   const body = JSON.stringify(payload);

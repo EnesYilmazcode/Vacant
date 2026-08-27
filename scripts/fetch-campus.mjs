@@ -51,6 +51,13 @@ const MIN_ANCHOR_BUILDINGS = 60;
 // shapes and exits 0.
 const MIN_BUILDING_SHAPES = 250;
 
+// A key join breaks silently. If OSU repads buildingNumber or renumbers a
+// building, buildingCode goes empty for it, the app falls back to lighting
+// whichever footprint is nearest, and nothing on screen says so. Today 86 of
+// the 96 class-hosting buildings resolve; the other 10 are all outside the
+// bbox, the nearest by 2.10 km.
+const MIN_KEYED_BUILDINGS = 80;
+
 // ArcGIS only guarantees stable resultOffset paging when an order is given.
 // Without one a page can repeat or skip features, which is the silent-holes
 // failure the pagination exists to prevent.
@@ -75,7 +82,7 @@ const MAX_PAGES_PER_LAYER = 20;
 // Buildings keep the most detail because they are the only load-bearing layer:
 // the app points at them. The rest exist so the shape of campus is legible.
 const LAYERS = [
-  { id: 11, key: 'building', offset: 0.00002, minPoints: 4, minSpan: 0.00004 },
+  { id: 11, key: 'building', offset: 0.00002, minPoints: 4, minSpan: 0.00004, fields: 'buildingNumber' },
   { id: 12, key: 'street', offset: 0.00008, minPoints: 2, minSpan: 0.0005 },
   { id: 9, key: 'landscape', offset: 0.0001, minPoints: 4, minSpan: 0.0007 },
   { id: 13, key: 'water', offset: 0.00004, minPoints: 4, minSpan: 0.0002 },
@@ -83,34 +90,85 @@ const LAYERS = [
 
 const PAGE = 2000;
 
-// Coordinates are quantised onto a grid across the bounding box. Over a ~4.5 km
-// span that is about 7 cm per step, far finer than anything visible at campus
-// zoom, and it turns every float into a small integer. Deltas within a ring are
-// then mostly single digits, which is what gzip is good at.
+// Coordinates are quantised onto a grid across the bounding box, which turns
+// every float into a small integer. Deltas within a ring are then mostly single
+// digits, which is what gzip is good at.
+//
+// 4096, not 65535. The old grid stored 3.4 cm per step against a screen that
+// resolves about 1.6 m per CSS pixel at campus zoom, so 11 of its 16 bits paid
+// for detail nobody can see. Measured on this bbox, 4096 costs about a third of
+// a pixel of error and saves 13 KB gzipped, a tenth of the whole payload.
 //
 // Values are not bounded to 0..GRID IN EITHER DIRECTION: the query asks for
 // shapes that INTERSECT the box, so anything crossing the edge comes back
-// whole. Measured range on the shipped file is x -11080..61621 and
-// y 3313..102550, so the maximum EXCEEDS the grid. A renderer that packs these
-// into a Uint16Array wraps 102550 to 37014 and teleports the north edge into
-// the middle of the map. Clamping would tear shapes at the boundary, so the
-// renderer clips instead.
-const GRID = 65535;
+// whole, and the measured range runs past the grid on the high side. A renderer
+// that packs these into a Uint16Array wraps the north edge into the middle of
+// the map. Clamping would tear shapes at the boundary, so the renderer clips.
+const GRID = 4096;
 
 // A stated ceiling, so the map cannot quietly grow into the thing this project
 // criticises Roomix for. Roomix costs 3.3 MB to open.
 const BUDGET_KB = 140;
+
+// Everything the app downloads before it can answer, minus the room index and
+// the buildings file, which are named by data/current.json. The map is by far
+// the largest single item on that list, so this is the run that should print
+// the whole number rather than only its own share of it.
+const LAUNCH_FILES = [
+  'index.html',
+  'js/app.js',
+  'js/campus.js',
+  'js/engine.js',
+  'js/map.js',
+  'data/buildings-hours.json',
+  'data/current.json',
+];
 
 function die(message) {
   console.error(`\nFATAL  ${message}`);
   process.exit(1);
 }
 
+// buildingNumber as data/buildings.json and room.b spell it: zero padded to
+// three digits. The GIS layer already pads, but data/footprints.draft.json
+// proves how the unpadded form gets in, and a naive join on that resolves 50 of
+// 86 codes instead of 86 while looking like it worked.
+export function padCode(value) {
+  const s = String(value ?? '').trim();
+  return /^\d{1,2}$/.test(s) ? s.padStart(3, '0') : s;
+}
+
+const buildingCodeOf = (feature) => padCode(feature?.attributes?.buildingNumber);
+
 const localDate = () => {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
+
+function reportPayload(campusGz) {
+  const currentPath = join(ROOT, 'data', 'current.json');
+  const current = existsSync(currentPath) ? JSON.parse(readFileSync(currentPath, 'utf8')) : {};
+  const files = [
+    ...LAUNCH_FILES,
+    current.rooms ?? `data/rooms-${TERM}.json`,
+    current.buildings ?? 'data/buildings.json',
+  ];
+
+  let total = campusGz;
+  for (const rel of files) {
+    const path = join(ROOT, rel);
+    if (!existsSync(path)) {
+      console.log(`  not on disk, not counted: ${rel}`);
+      continue;
+    }
+    total += gzipSync(readFileSync(path), { level: 9 }).length;
+  }
+  console.log(
+    `total launch payload ${(total / 1024).toFixed(1)} KB gzipped, ` +
+      `${((campusGz / total) * 100).toFixed(1)}% of it this map`,
+  );
+}
 
 async function writeAtomic(path, text) {
   const tmp = `${path}.tmp`;
@@ -121,7 +179,7 @@ async function writeAtomic(path, text) {
 // Every feature in the layer inside the box, following pagination rather than
 // trusting one response. A truncated map has holes in it and nothing on screen
 // would say so.
-async function fetchLayer({ id, offset }, bbox) {
+async function fetchLayer({ id, offset, fields = '' }, bbox) {
   const features = [];
   let cursor = 0;
 
@@ -134,7 +192,7 @@ async function fetchLayer({ id, offset }, bbox) {
         geometryType: 'esriGeometryEnvelope',
         spatialRel: 'esriSpatialRelIntersects',
         inSR: '4326',
-        outFields: '',
+        outFields: fields,
         returnGeometry: 'true',
         outSR: '4326',
         maxAllowableOffset: String(offset),
@@ -153,7 +211,7 @@ async function fetchLayer({ id, offset }, bbox) {
       // them turns a building with a courtyard into a solid block. Grouped,
       // the renderer draws one path per feature and even-odd fill handles it.
       const rings = f.geometry?.rings ?? f.geometry?.paths ?? [];
-      if (rings.length) features.push(rings);
+      if (rings.length) features.push({ rings, code: buildingCodeOf(f) });
     }
     cursor += batch.length;
     await sleep(500);
@@ -242,16 +300,40 @@ async function main() {
   console.log(`bbox ${bbox.join(', ')}\n`);
 
   const layers = {};
+  // Index for index with layers.building. Kept as a parallel array rather than a
+  // dictionary because gzip flattens the empty strings: measured, the array
+  // costs 319 bytes gzipped and a sparse { index: code } map costs 494.
+  let buildingCode = [];
   for (const layer of LAYERS) {
     const features = await fetchLayer(layer, bbox);
-    const encoded = features
-      .map((rings) => rings.map((r) => encodeShape(r, bbox, layer)).filter(Boolean))
-      .filter((rings) => rings.length);
+    const encoded = [];
+    const codes = [];
+    for (const { rings, code } of features) {
+      const shapes = rings.map((r) => encodeShape(r, bbox, layer)).filter(Boolean);
+      // Dropping a feature has to drop its code too, or every code after it
+      // shifts by one and the highlight lights the wrong building silently.
+      if (!shapes.length) continue;
+      encoded.push(shapes);
+      codes.push(classCodes.has(code) ? code : '');
+    }
     layers[layer.key] = encoded;
+    if (layer.key === 'building') buildingCode = codes;
     const points = encoded.reduce((a, f) => a + f.reduce((b, r) => b + r.length / 2, 0), 0);
     console.log(
       `  ${layer.key.padEnd(10)} ${String(features.length).padStart(5)} features in, ` +
         `${String(encoded.length).padStart(5)} kept, ${String(points).padStart(6)} points`,
+    );
+  }
+
+  const keyed = new Set(buildingCode.filter(Boolean));
+  console.log(
+    `\n${keyed.size} of ${classCodes.size} class-hosting buildings resolve to a polygon`,
+  );
+  if (keyed.size < MIN_KEYED_BUILDINGS) {
+    die(
+      `only ${keyed.size} class-hosting buildings carry a footprint code, under the ` +
+        `${MIN_KEYED_BUILDINGS} floor. buildingNumber has changed shape and the highlight ` +
+        `would fall back to guessing by distance.`,
     );
   }
 
@@ -274,9 +356,10 @@ async function main() {
     generated: localDate(),
     source: SERVICE,
     attribution: 'Ohio State University Facilities Information and Technology Services, GIS',
-    note: 'layers[name] is an array of FEATURES, each an array of rings, each delta-encoded grid steps across bbox. Values may fall outside 0..grid in either direction. Decode with js/campus.js.',
+    note: 'layers[name] is an array of FEATURES, each an array of rings, each delta-encoded grid steps across bbox. Values may fall outside 0..grid in either direction. Decode with js/campus.js. buildingCode[i] is the building code of layers.building[i], or "" where that building hosts no class this term.',
     bbox,
     grid: GRID,
+    buildingCode,
     layers,
   };
 
@@ -288,6 +371,8 @@ async function main() {
   if (gz / 1024 > BUDGET_KB) {
     die(`${(gz / 1024).toFixed(1)} KB gzipped is over the ${BUDGET_KB} KB budget. Simplify harder.`);
   }
+
+  reportPayload(gz);
 
   if (dryRun) {
     console.log('DRY RUN, nothing written.');

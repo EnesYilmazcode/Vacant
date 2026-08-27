@@ -1404,3 +1404,25 @@ test('a closed campus says which holiday it is when the build knows', () => {
   assert.match(named.reason, /^Veterans Day\. /);
   assert.match(named.reason, /cannot get into/);
 });
+
+test('the day bounds still cover the committed index, including the late rooms', () => {
+  // DAY_END is 23:00 because the harvest says so, and the research note's 22:00
+  // would clip real classes. This pins both halves of that: the latest end in
+  // the index, and exactly which rooms run past 22:00, so a rebuild that pushes
+  // a class later cannot quietly lose it. Day 0 is Sunday, so 1 to 5 is Monday
+  // to Friday.
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const blocks = Object.entries(index.rooms).flatMap(([id, r]) => (r.busy ?? []).map((b) => [id, ...b]));
+
+  assert.equal(Math.max(...blocks.map((b) => b[3])), DAY_END, 'the latest class end');
+  assert.equal(Math.min(...blocks.map((b) => b[2])), 330, 'the earliest class start, 05:30');
+
+  const late = blocks.filter((b) => b[3] > 1320);
+  assert.equal(late.length, 18, 'intervals a 22:00 bound would have clipped');
+  const nights = (id) => late.filter((b) => b[0] === id).map((b) => b[1]).sort();
+  assert.deepEqual(nights('TFM0350'), [1, 2, 3, 4, 5], 'five nights, not four');
+  assert.deepEqual(nights('TFM0360'), [1, 2, 3, 4, 5], 'and it is two rooms, not one');
+  assert.deepEqual(nights('TFM0120A'), [0, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(nights('JE0274'), [2]);
+});

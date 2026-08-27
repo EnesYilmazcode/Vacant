@@ -7,7 +7,7 @@ import {
   formatFunnel,
   isRealRoom,
   newCounter,
-  stripInstructors,
+  stripMeetingInstructors,
   toMinutes,
 } from '../lib/funnel.mjs';
 
@@ -62,26 +62,61 @@ test('OFFCAMPUS is dropped', () => {
   assert.equal(c.pseudoRoom, 1);
 });
 
-test('a CS-MARION section is dropped', () => {
-  const c = newCounter();
-  assert.equal(isRealRoom(meeting(), { location: 'CS-MARION' }, c), false);
-  assert.equal(c.offCampus, 1);
-});
-
-test('the other real satellite locations are dropped too', () => {
-  // All measured in the archives: CS-WOOSTER 148, CS-INTRNTL 159, CS-STONELB 12.
-  for (const location of ['CS-WOOSTER', 'CS-INTRNTL', 'CS-STONELB', 'CS-WASHDC']) {
+test('a section location outside Columbus does NOT drop a real Columbus room', () => {
+  // The regression this stage was removed for. Study-abroad and off-campus
+  // program sections carry CS-INTRNTL or CS-COLOFF and still meet in an
+  // ordinary main-campus classroom. Filtering on location dropped 22 of these,
+  // all inside 0.7 km of the Oval, so the room never entered the index and the
+  // app reported it free with a class sitting in it.
+  for (const location of ['CS-INTRNTL', 'CS-COLOFF', 'CS-MARION', 'CS-WOOSTER']) {
     const c = newCounter();
-    assert.equal(isRealRoom(meeting(), { location }, c), false, location);
-    assert.equal(c.offCampus, 1, location);
+    assert.equal(isRealRoom(meeting(), { location }, c), true, location);
+    assert.equal(c.usable, 1, location);
   }
 });
 
-test('a missing section, or one with no location, is dropped rather than thrown on', () => {
+test('a room in a building we cannot place is dropped, and that is the real filter', () => {
+  // Stone Laboratory, building 118, 185 km away on Lake Erie. Its sections
+  // report location CS-STONELB, but the five Wooster buildings report
+  // CS-COLMBUS, so only the building join catches all of them.
+  const known = (code) => code === '279';
   const c = newCounter();
-  assert.equal(isRealRoom(meeting(), undefined, c), false);
-  assert.equal(isRealRoom(meeting(), {}, c), false);
-  assert.equal(c.offCampus, 2);
+  assert.equal(isRealRoom(meeting({ buildingCode: '118' }), COL, c, { isKnownBuilding: known }), false);
+  assert.equal(c.unknownBuilding, 1);
+  assert.equal(isRealRoom(meeting({ buildingCode: '8002' }), COL, c, { isKnownBuilding: known }), false);
+  assert.equal(c.unknownBuilding, 2, 'Wooster reports CS-COLMBUS, so only this stage catches it');
+  assert.equal(isRealRoom(meeting(), COL, c, { isKnownBuilding: known }), true);
+});
+
+test('with no predicate the building stage is skipped, not silently failing open', () => {
+  const c = newCounter();
+  assert.equal(isRealRoom(meeting({ buildingCode: '118' }), COL, c), true);
+  assert.equal(c.unknownBuilding, 0);
+});
+
+test('a missing or malformed section no longer drops the meeting', () => {
+  assert.equal(isRealRoom(meeting(), undefined, newCounter()), true);
+  assert.equal(isRealRoom(meeting(), {}, newCounter()), true);
+});
+
+test('a null or non-object meeting moves a counter instead of crashing', () => {
+  for (const bad of [null, undefined, 42, 'x']) {
+    const c = newCounter();
+    assert.doesNotThrow(() => isRealRoom(bad, COL, c), JSON.stringify(bad));
+    assert.equal(isRealRoom(bad, COL, newCounter()), false);
+  }
+  assert.doesNotThrow(() => stripMeetingInstructors(42));
+  assert.doesNotThrow(() => stripMeetingInstructors('x'));
+});
+
+test('a pseudo-room is caught by facilityId even if buildingCode drifts', () => {
+  // ONLINE already carries real weekday flags and clock times, so if its
+  // buildingCode ever changes shape it would sail through every other stage and
+  // become a 998-seat room in the grid.
+  const c = newCounter();
+  const drifted = meeting({ facilityId: 'ONLINE', buildingCode: '999' });
+  assert.equal(isRealRoom(drifted, COL, c), false);
+  assert.equal(c.pseudoRoom, 1);
 });
 
 test('Hybrid Delivery in a real room is kept', () => {
@@ -150,11 +185,11 @@ test('toMinutes rejects rather than guesses', () => {
 
 test('instructors are deleted at the parse boundary', () => {
   const m = meeting({ instructors: [{ email: 'buckeye.1@osu.edu', name: 'A' }] });
-  stripInstructors(m);
+  stripMeetingInstructors(m);
   assert.ok(!('instructors' in m), 'the key is gone, not just emptied');
   assert.ok(!/@osu\.edu/.test(JSON.stringify(m)));
-  assert.doesNotThrow(() => stripInstructors(meeting()));
-  assert.doesNotThrow(() => stripInstructors(null));
+  assert.doesNotThrow(() => stripMeetingInstructors(meeting()));
+  assert.doesNotThrow(() => stripMeetingInstructors(null));
 });
 
 test('a serialised index built through the funnel has no pseudo-room and no address', () => {
@@ -165,7 +200,7 @@ test('a serialised index built through the funnel has no pseudo-room and no addr
   ];
   const index = {};
   for (const { m, s } of rows) {
-    stripInstructors(m);
+    stripMeetingInstructors(m);
     if (!isRealRoom(m, s)) continue;
     index[m.facilityId] = { b: m.buildingCode, busy: [[1, toMinutes(m.startTime), toMinutes(m.endTime)]] };
   }
@@ -180,7 +215,7 @@ test('the funnel line prints every counter and the surviving ratio', () => {
   isRealRoom(meeting(), COL, c);
   isRealRoom(meeting({ facilityId: null }), COL, c);
   const line = formatFunnel(c);
-  for (const k of ['meetings', 'blankFacilityId', 'pseudoRoom', 'offCampus', 'noWeekday', 'badTime', 'usable']) {
+  for (const k of ['meetings', 'blankFacilityId', 'pseudoRoom', 'unknownBuilding', 'noWeekday', 'badTime', 'usable']) {
     assert.match(line, new RegExp(k), `missing ${k}`);
   }
   assert.match(line, /usable 1 \(50\.0%\)/);
@@ -192,11 +227,11 @@ test('the counters account for every meeting exactly once', () => {
   isRealRoom(meeting(), COL, c);
   isRealRoom(meeting({ facilityId: null }), COL, c);
   isRealRoom(meeting({ buildingCode: 'ONLINE' }), COL, c);
-  isRealRoom(meeting(), { location: 'CS-WOOSTER' }, c);
+  isRealRoom(meeting({ buildingCode: 'ZZZ' }), COL, c, { isKnownBuilding: (x) => x === '279' });
   isRealRoom(meeting({ monday: false, wednesday: false }), COL, c);
   isRealRoom(meeting({ endTime: '7:00 am' }), COL, c);
   const sum =
-    c.blankFacilityId + c.pseudoRoom + c.offCampus + c.noWeekday + c.badTime + c.usable;
+    c.blankFacilityId + c.pseudoRoom + c.unknownBuilding + c.noWeekday + c.badTime + c.usable;
   assert.equal(sum, c.meetings);
   assert.equal(c.meetings, 6);
 });

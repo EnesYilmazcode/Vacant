@@ -94,27 +94,91 @@ matters about once a week.
 The whole thing is a static site. There is no server, no database, and no login.
 
 ```
-   Ohio State class API  (content.osu.edu/v2)
-              |
-              |  weekly harvest, 8 catalog-number buckets
-              v
-     +------------------------+
-     |  invert the schedule   |     course -> sections -> meetings
-     |  into a room index     |          becomes
-     +------------------------+     room -> when it is busy
-              |
-              |  rooms-1268.json   (~30 KB gzipped)
-              v
-     +------------------------+
-     |  static site on Pages  |  <---- service worker caches everything
-     +------------------------+
-              |
-     GPS + duration + clock
-              |
-              v
-     complement of busy = free
-     minus walk time = usable
-     sort by distance
+ SOURCES                       BUILD, weekly on a Sunday cron
+ =======                       =============================
+
+ content.osu.edu/v2
+ the class schedule
+ 26,298 sections
+        |
+        |   1. walk 8 catalog-number buckets
+        |      136 requests, about 52 seconds, twice to catch page drift
+        v
+   +------------------------------------------------------------------+
+   | 2. funnel, and count every row you drop                          |
+   |      drop the ONLINE and OFFCAMPUS pseudo-rooms      (465 rows)  |
+   |      drop cancelled, no room, no time, no weekday                |
+   |      strip instructors[] HERE, their emails are in the payload   |
+   +------------------------------------------------------------------+
+        |
+        v
+   +------------------------------------------------------------------+
+   | 3. invert                                                        |
+   |      section -> meetings        becomes        room -> busy[]    |
+   |      merge overlapping intervals    (607 pairs, cross-listed)    |
+   |      key every interval to its own session date range            |
+   +------------------------------------------------------------------+
+        |
+ gissvc.osu.edu ---------> 4. join on buildingCode, exact string match
+ OSU's own building           80 of 80 first try. lat, lon, address
+ layer, 80 buildings          |
+                              |
+ registrar.osu.edu -------> 5. scrape open and close, per weekday
+ classroom pool table         47 buildings, plus holidays and exam week
+ 47 bldgs x 7 days            |
+                              v
+   +------------------------------------------------------------------+
+   | 6. GUARDS. fail the build rather than ship a confident wrong     |
+   |    answer. A healthy harvest already reads 81% free, so lost     |
+   |    data does not look like breakage, it looks like good news.    |
+   |                                                                  |
+   |      busy BLOCKS and busy MINUTES above floor  <- not room count |
+   |      weekday balance within range                                |
+   |      zero instructor emails in the output       <- fatal         |
+   +------------------------------------------------------------------+
+        |
+        v
+
+ ARTIFACTS, committed to the repo
+ ================================
+   data/rooms-1268.json        room -> busy[]        about 30 KB gzipped
+   data/buildings.json         code -> name, lat, lon           (ODbL)
+   data/buildings-hours.json   code -> open/close per weekday
+   data/current.json           which term is live, and when it was built
+        |
+        v
+
+ THE PHONE
+ =========
+   installed PWA on GitHub Pages, service worker, two caches
+        |
+        |   cold launch: shell from cache, data stale-while-revalidate
+        |   must answer with the network off, in a stairwell
+        v
+   GPS fix          +     duration chip      +     the clock
+   (watchdog,             30m / 1h / 2h            today's date, so
+    off-campus gate)                               closures apply
+        |
+        v
+   +------------------------------------------------------------------+
+   |   free    = complement of busy                                   |
+   |             minus the 7 campus closure days                      |
+   |             minus the exam window                                |
+   |   open    = intersect the building's published hours             |
+   |   usable  = gap end - arrival time - buffer                      |
+   |   rank    = distance first, then how long it stays yours         |
+   +------------------------------------------------------------------+
+        |
+        v
+   STRONG   "Dreese 357, 4 min walk, yours till 1:55p"
+            a real bounded number, because a class starts then
+
+   MEDIUM   "no class here for the rest of today"
+            open ended, which is 47% of free rooms at peak
+
+   WEAK     "nothing is scheduled anywhere on campus right now"
+            89% of the year. The list is a distance sort and the
+            screen has to say so instead of faking confidence.
 ```
 
 ### 1. The insight

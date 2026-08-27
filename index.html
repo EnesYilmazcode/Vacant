@@ -2,196 +2,164 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5">
 <title>Vacant &middot; Ohio State</title>
 <meta name="description" content="Find an empty classroom near you at Ohio State, free for as long as you need it.">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0d10">
 <style>
   :root {
-    --bg: #fbfaf8;
-    --fg: #16150f;
-    --dim: #6b6862;
-    --line: #e2ded6;
-    --card: #fff;
-    --accent: #a5142b;
-    --ok: #1f6b3a;
+    --bg: #0b0d10;
+    --fg: #eef1f5;
+    --dim: #8b94a2;
+    --line: #1d232c;
+    --card: #121821;
+    --accent: #ff4d3d;
+    --you: #4cc2ff;
+    --warn: #ffb02e;
+    --safe-b: env(safe-area-inset-bottom, 0px);
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #12110f;
-      --fg: #efece6;
-      --dim: #9c978e;
-      --line: #2a2823;
-      --card: #1a1815;
-      --accent: #e2607a;
-      --ok: #5fbd85;
-    }
-  }
-  * { box-sizing: border-box; }
+  /* Author-origin `display` beats the UA sheet's `[hidden] { display: none }`
+     regardless of specificity, so `#ask { display: flex }` made the hidden
+     attribute inert and the question overlay could never be dismissed. The app
+     could not leave its first screen. */
+  [hidden] { display: none !important; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
   body {
-    margin: 0;
-    padding: 2rem 1.15rem 4rem;
-    background: var(--bg);
-    color: var(--fg);
-    font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    margin: 0; background: var(--bg); color: var(--fg); overflow: hidden;
+    font: 16px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-text-size-adjust: 100%;
   }
-  main { max-width: 34rem; margin: 0 auto; }
-  h1 {
-    font-size: 2.6rem; line-height: 1; letter-spacing: -.035em;
-    margin: 0 0 .35rem; font-weight: 800;
+
+  /* The map is the surface of the app, not a panel inside it. */
+  #map {
+    position: fixed; inset: 0; width: 100%; height: 100%; display: block;
+    filter: blur(7px) saturate(.85); transform: scale(1.06);
+    transition: filter .9s ease, transform .9s ease;
   }
-  h1 span { color: var(--accent); }
-  .tag { color: var(--dim); margin: 0 0 2rem; font-size: 1.02rem; }
-  h2 {
-    font-size: .72rem; text-transform: uppercase; letter-spacing: .1em;
-    color: var(--dim); margin: 2.4rem 0 .8rem; font-weight: 700;
+  #map.settled { filter: none; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    #map { transition: none; }
   }
-  .banner {
-    border: 1px solid var(--line); border-left: 3px solid var(--accent);
-    background: var(--card); border-radius: 5px;
-    padding: .85rem 1rem; margin: 0 0 1.6rem; font-size: .93rem;
+
+  /* --- the question --- */
+  #ask {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1.6rem; padding: 1.5rem;
+    background: radial-gradient(120% 80% at 50% 45%, rgba(11,13,16,.45), rgba(11,13,16,.88));
   }
-  .banner b { color: var(--accent); }
-  .grid { display: grid; gap: .6rem; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); }
-  .stat {
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: 6px; padding: .8rem .9rem;
+  #ask h1 {
+    margin: 0; font-size: clamp(2.4rem, 13vw, 3.4rem); font-weight: 800;
+    letter-spacing: -.04em; line-height: 1;
   }
-  .stat .n {
-    font-size: 1.55rem; font-weight: 750; letter-spacing: -.02em;
-    font-variant-numeric: tabular-nums; display: block;
+  #ask h1 span { color: var(--accent); }
+  #ask .q { margin: 0; font-size: 1.18rem; color: var(--fg); font-weight: 600; }
+  #ask .sub { margin: -1.1rem 0 0; color: var(--dim); font-size: .88rem; text-align: center; }
+  .opts { display: flex; gap: .6rem; flex-wrap: wrap; justify-content: center; }
+  .opt {
+    appearance: none; border: 1px solid var(--line); background: var(--card); color: var(--fg);
+    font: inherit; font-weight: 650; padding: .95rem 1.35rem; border-radius: 999px;
+    min-height: 52px; min-width: 88px; cursor: pointer;
   }
-  .stat .l { color: var(--dim); font-size: .78rem; }
-  .stat .of { color: var(--dim); font-size: .6em; }
-  .note { color: var(--dim); font-size: .8rem; margin: .65rem 0 0; }
-  .rows { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--card); }
+  .opt.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .opt:active { transform: scale(.97); }
+  .until { display: flex; align-items: center; gap: .5rem; color: var(--dim); font-size: .9rem; }
+  .until input {
+    appearance: none; background: var(--card); border: 1px solid var(--line); color: var(--fg);
+    font: inherit; padding: .6rem .8rem; border-radius: 10px; min-height: 44px;
+  }
+  /* pointer-events blocks taps but NOT keyboard activation, so Tab+Enter
+     before boot() resolved reached choose() with no data and threw. The
+     buttons carry `disabled` in the markup and app.js clears it when ready;
+     this is only the dimming. */
+  #ask:not(.ready) .opts, #ask:not(.ready) .until { opacity: .45; }
+  #ask:not(.ready) .loading { opacity: 1; }
+  .loading { color: var(--dim); font-size: .82rem; opacity: 0; transition: opacity .3s; }
+
+  /* --- the answer --- */
+  #sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; max-height: 62%;
+    display: flex; flex-direction: column;
+    background: linear-gradient(180deg, rgba(11,13,16,.82), var(--bg) 22%);
+    border-top: 1px solid var(--line); border-radius: 18px 18px 0 0;
+    padding-bottom: var(--safe-b);
+  }
+  #sheet header {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .85rem 1.1rem .7rem; border-bottom: 1px solid var(--line);
+  }
+  #sheet header .grip {
+    position: absolute; top: .4rem; left: 50%; transform: translateX(-50%);
+    width: 34px; height: 4px; border-radius: 2px; background: var(--line);
+  }
+  #sheet h2 { margin: 0; font-size: .95rem; font-weight: 700; flex: 1; }
+  #sheet h2 b { color: var(--accent); }
+  #again {
+    appearance: none; border: 1px solid var(--line); background: transparent; color: var(--dim);
+    font: inherit; font-size: .82rem; padding: .5rem .8rem; border-radius: 999px;
+    min-height: 44px; cursor: pointer;
+  }
+  #list { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: .3rem 0 1rem; }
   .row {
-    display: flex; gap: .7rem; align-items: baseline;
-    padding: .7rem .9rem; border-top: 1px solid var(--line); font-size: .93rem;
+    appearance: none; width: 100%; text-align: left; background: transparent; color: inherit;
+    font: inherit; border: 0; border-left: 3px solid transparent;
+    padding: .72rem 1.1rem; min-height: 56px; cursor: pointer; display: block;
   }
-  .row:first-child { border-top: 0; }
-  .row .k { flex: 1; }
-  .row .v { color: var(--dim); font-size: .85rem; font-variant-numeric: tabular-nums; }
-  .done { color: var(--ok); font-weight: 700; }
-  p { margin: 0 0 1rem; }
-  a { color: inherit; text-decoration-color: var(--dim); text-underline-offset: 2px; }
-  a:hover { text-decoration-color: currentColor; }
-  footer { margin-top: 3rem; color: var(--dim); font-size: .82rem; }
+  .row.on { border-left-color: var(--accent); background: rgba(255,77,61,.07); }
+  .row .name { display: block; font-weight: 700; letter-spacing: -.01em; }
+  .row .name em { font-style: normal; color: var(--dim); font-weight: 500; margin-left: .5rem; font-size: .88rem; }
+  .row .meta { display: block; color: var(--dim); font-size: .84rem; margin-top: .1rem; }
+  .row .meta b { color: var(--fg); font-weight: 650; }
+  .warn { color: var(--warn); }
+  .empty { color: var(--dim); padding: 1.4rem 1.1rem; margin: 0; }
+
+  #note {
+    position: fixed; top: calc(env(safe-area-inset-top, 0px) + .7rem); left: 50%;
+    transform: translateX(-50%); max-width: 92vw;
+    background: var(--card); border: 1px solid var(--line); color: var(--dim);
+    font-size: .8rem; padding: .5rem .85rem; border-radius: 999px; text-align: center;
+  }
+  #term {
+    position: fixed; bottom: calc(var(--safe-b) + .5rem); right: .8rem;
+    color: var(--dim); font-size: .72rem; opacity: .55;
+  }
+  #sheet:not([hidden]) ~ #term { display: none; }
 </style>
 </head>
 <body>
-<main>
+
+<canvas id="map"></canvas>
+<p id="note" hidden></p>
+
+<section id="ask">
   <h1>Vacant<span>.</span></h1>
-  <p class="tag">An empty classroom near you at Ohio State, free for as long as you need it.</p>
-
-  <div class="banner">
-    <b>Being built.</b> The data layer is done and live on this URL. The screen
-    that ranks rooms is not here yet, so there is nothing to use today.
+  <p class="q">How long do you need?</p>
+  <p class="sub">A room near you, open, and free for that long once you get there.</p>
+  <div class="opts">
+    <button class="opt primary" data-min="30" disabled>30 min</button>
+    <button class="opt" data-min="60" disabled>1 hour</button>
+    <button class="opt" data-min="120" disabled>2 hours</button>
   </div>
+  <label class="until">until <input id="until" type="time" aria-label="I need a room until" disabled></label>
+  <p class="loading">finding campus&hellip;</p>
+</section>
 
-  <h2>What is live right now</h2>
-  <div class="grid" id="stats">
-    <div class="stat"><span class="n">&mdash;</span><span class="l">loading</span></div>
-  </div>
-  <p class="note" id="termnote"></p>
+<section id="sheet" hidden>
+  <header>
+    <span class="grip"></span>
+    <h2 id="head">Free for <b id="need">30 min</b>, nearest first</h2>
+    <button id="again">change</button>
+  </header>
+  <div id="list"></div>
+</section>
 
-  <h2>Why it is different</h2>
-  <p>
-    Every app in this category computes &ldquo;no class is scheduled, therefore
-    free.&rdquo; On a Saturday that reports over a thousand rooms free while most
-    classroom buildings are locked. Vacant reads the opening hours Ohio State
-    already publishes, which nobody else does.
-  </p>
-  <p id="honesty"></p>
-  <p>
-    It also answers the question that actually decides where you go: not when a
-    room frees up, but <strong>how long it is yours once you finish walking to
-    it</strong>, with the walk already subtracted.
-  </p>
+<p id="term"></p>
 
-  <h2>Progress</h2>
-  <div class="rows">
-    <div class="row"><span class="k">Term archive, saved before the API deleted it</span><span class="v done">done</span></div>
-    <div class="row"><span class="k">Building coordinates</span><span class="v done">done</span></div>
-    <div class="row"><span class="k">Registrar opening hours</span><span class="v done">done</span></div>
-    <div class="row"><span class="k">Room schedule index</span><span class="v done">done</span></div>
-    <div class="row"><span class="k">Ranking engine</span><span class="v done">done</span></div>
-    <div class="row"><span class="k">The screen you actually use</span><span class="v">next</span></div>
-    <div class="row"><span class="k">Installable, works with no signal</span><span class="v">after that</span></div>
-  </div>
-
-  <footer>
-    <p>
-      Built by <a href="https://github.com/EnesYilmazcode">Enes Yilmaz</a> &middot;
-      <a href="https://github.com/EnesYilmazcode/Vacant">source and open issues</a>
-    </p>
-    <p>
-      Schedule and building data from Ohio State's own public endpoints, read
-      only. Not affiliated with or endorsed by The Ohio State University.
-    </p>
-  </footer>
-</main>
-
-<script type="module">
-// Every number on this page comes from the shipped files, so it cannot claim
-// something the data does not support. It degrades to a dash if a fetch fails.
-const el = document.getElementById('stats');
-const stat = (n, l) => `<div class="stat"><span class="n">${n}</span><span class="l">${l}</span></div>`;
-const fmt = (n) => n.toLocaleString('en-US');
-
-try {
-  const [buildings, hours] = await Promise.all([
-    fetch('data/buildings.json').then((r) => r.json()),
-    fetch('data/buildings-hours.json').then((r) => r.json()),
-  ]);
-
-  // NOT terms[0]. Key order follows discovery order, which puts Summer first,
-  // and Summer opens 1 building on a Saturday against Autumn's 5. Pick the
-  // fullest term deliberately, and say on the page which one is being shown.
-  const terms = Object.values(hours.terms ?? {});
-  const term = terms.reduce(
-    (best, t) =>
-      best && Object.keys(best.buildings).length >= Object.keys(t.buildings).length ? best : t,
-    null,
-  );
-  const pool = term ? Object.keys(term.buildings).length : 0;
-  const label = term
-    ? term.slug
-        .replace(/-classroom-pool.*$/, '')
-        .replace(/-/g, ' ')
-        .replace(/\b\w/g, (c) => c.toUpperCase())
-    : '';
-
-  // How wrong a flat 7am-10pm assumption is at the weekend, computed from the
-  // same file the app will use rather than asserted in prose.
-  const FLAT = 15 * 60;
-  let openSat = 0;
-  let openSun = 0;
-  let realWeekend = 0;
-  for (const b of Object.values(term?.buildings ?? {})) {
-    if (b.hours[6]) { openSat++; realWeekend += b.hours[6][1] - b.hours[6][0]; }
-    if (b.hours[0]) { openSun++; realWeekend += b.hours[0][1] - b.hours[0][0]; }
-  }
-  const overstated = realWeekend ? Math.round((pool * FLAT * 2) / realWeekend) : 0;
-
-  el.innerHTML = [
-    stat(fmt(buildings.count ?? 0), 'buildings mapped'),
-    stat(fmt(pool), 'with published hours'),
-    stat(`${openSat}<span class="of"> / ${pool}</span>`, 'open on Saturday'),
-    stat(`${openSun}<span class="of"> / ${pool}</span>`, 'open on Sunday'),
-  ].join('');
-
-  document.getElementById('termnote').textContent = `Opening hours shown for ${label}.`;
-
-  document.getElementById('honesty').innerHTML =
-    `Of the <strong>${pool}</strong> classroom pool buildings, only ` +
-    `<strong>${openSat}</strong> open on Saturday and <strong>${openSun}</strong> on ` +
-    `Sunday. Assuming they are all open 7am to 10pm overstates the real weekend ` +
-    `hours by about <strong>${overstated}&times;</strong>.`;
-} catch {
-  el.innerHTML = stat('&mdash;', 'data not reachable');
-}
-</script>
+<script type="module" src="js/app.js"></script>
+<noscript>
+  <p style="padding:2rem;color:#8b94a2">Vacant needs JavaScript to rank rooms. The data it uses is at
+  <a href="https://github.com/EnesYilmazcode/Vacant" style="color:#eef1f5">github.com/EnesYilmazcode/Vacant</a>.</p>
+</noscript>
 </body>
 </html>

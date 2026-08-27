@@ -85,6 +85,8 @@
 <script type="module">
 import { rank } from './engine.vendor.js';
 import { pickHoursTerm, makeHoursFor } from './hours.vendor.js';
+import { termGate, fmtDay, isoDate } from './term.vendor.js';
+import { verdict, median, STATES, COLD_STATES } from './verdict.js';
 
 const $ = (id) => document.getElementById(id);
 const RUNS_KEY = 'vacant.spike.launch.runs.v1';
@@ -119,7 +121,6 @@ const round = (n) => Math.round(n * 10) / 10;
 const kb = (b) => (b == null ? '-' : (b / 1024).toFixed(1) + ' KB');
 const load = (k, fallback) => { try { const v = localStorage.getItem(k); return v == null ? fallback : JSON.parse(v); } catch { return fallback; } };
 const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode, the run still reports */ } };
-const median = (xs) => { if (!xs.length) return null; const v = [...xs].sort((a, b) => a - b); return v[(v.length - 1) >> 1]; };
 
 let runs = load(RUNS_KEY, []);
 let baseline = load(BASE_KEY, null);
@@ -192,6 +193,12 @@ async function once() {
   const term = pickHoursTerm(hrs.body, cur.body);
   const hoursFor = makeHoursFor(term);
   const now = new Date();
+  // Fetch and parse cost the same on any date, so they are still worth timing
+  // out of term. The ANSWER is not: js/app.js returns from boot() before
+  // state.ready when the term is over, so it ranks nothing and shows nothing.
+  // The rank() below is then a cost measurement and not a list of free rooms,
+  // and the page has to say which it is.
+  const gate = termGate(cur.body, isoDate(now));
   const a0 = performance.now();
   const rows = rank(
     Object.entries(index.rooms).map(([id, r]) => ({ id, ...r })),
@@ -240,6 +247,7 @@ async function once() {
     tuples,
     sessions: index.sessions.length,
     answered: rows.length,
+    gate: { open: gate.open, headline: gate.headline ?? null, from: gate.from, to: gate.to, term: gate.term },
     hoursTerm: term ? term.slug : null,
     bytes: net,
     device: device(),
@@ -277,11 +285,16 @@ function paintFacts(r) {
     '<span>first answer, rank()</span><b>' + round(r.answerMs) + ' ms</b>' +
     '<span>total with the cold parse</span><b>' + round(r.totalFirstParse) + ' ms</b>' +
     '<span>all four files, wall clock</span><b>' + round(r.netWall) + ' ms</b>' +
-    '<span>rooms answered</span><b>' + r.answered + '</b>' +
+    '<span>rooms answered</span><b>' + (r.gate.open ? r.answered : 'none, the app refuses today') + '</b>' +
     '<span>index</span><b>' + r.rooms + ' rooms, ' + r.buildingsInIndex + ' buildings, ' + r.tuples.toLocaleString() + ' busy tuples, ' + r.sessions + ' sessions</b>' +
     '</div>' +
     '<p class="note">' + cacheLine + '</p>' +
     '<p class="note">' + bar + '</p>' +
+    (r.gate.open
+      ? ''
+      : '<p class="note warn">' + r.gate.headline + '. The app answers only between ' +
+        fmtDay(r.gate.from) + ' and ' + fmtDay(r.gate.to) + ', so it would have ranked nothing today. ' +
+        'Network and parse above are still real costs. The ' + r.answered + ' rows rank() returned are a timing sample, not rooms this page is calling free.</p>') +
     (r.firstInContext
       ? ''
       : '<p class="note warn">This is run ' + contextRuns + ' in this window, so the JIT is already warm and the parse above is not a cold one. Reload before the next recorded run.</p>') +
@@ -325,32 +338,12 @@ function paintRuns() {
     '<p class="note">One recorded run per launch. A second run in the same window has a warm JIT and is marked so.</p>';
 }
 
-function verdict() {
-  const all = runs.filter((r) => r.state === 'cold process');
-  // A warm-JIT run is a smaller number describing a launch nobody performs, so
-  // the verdict is taken from the runs that were first in their page context.
-  const cold = all.filter((r) => r.firstInContext);
-  const use = cold.length ? cold : all;
-  const m = median(use.map((r) => r.total));
-  if (m == null) return { line: 'No cold process runs recorded yet, so #29 has no verdict.', median: null, n: 0, warm: false };
-  const call = m < 300
-    ? 'Under 300 ms: do nothing. Close both optimizations.'
-    : m <= 800
-      ? 'Between 300 and 800 ms: defer only the typed index build to requestIdleCallback.'
-      : 'Over 800 ms: file the packed binary as its own issue.';
-  return {
-    line: call, median: m, n: use.length, total: all.length,
-    warm: cold.length === 0,
-    first: median(use.map((r) => r.totalFirstParse)),
-  };
-}
-
 function markdown() {
   if (!runs.length) return 'No runs recorded yet. Press Run once, then Record run.';
-  const v = verdict();
+  const v = verdict(runs);
   const d = runs[runs.length - 1].device;
   const idx = runs[runs.length - 1];
-  const byState = ['warm', 'cold process', 'cold everything'];
+  const outsideTerm = runs.filter((r) => r.gate && !r.gate.open);
   const table = runs.map((r, i) =>
     '| ' + r.state + ' ' + runs.slice(0, i + 1).filter((x) => x.state === r.state).length +
     ' | ' + shownTime(r.at) +
@@ -363,7 +356,7 @@ function markdown() {
     ' | ' + (r.bytes && r.bytes.fromCache ? 'cache hit' : 'network') +
     ' |').join('\n');
 
-  const counts = byState.map((s) => s + ': ' + runs.filter((r) => r.state === s).length + ' of 5').join(', ');
+  const counts = STATES.map((s) => s + ': ' + runs.filter((r) => r.state === s).length + ' of 5').join(', ');
   const b = idx.bytes;
 
   return '## ' + new Date().toISOString().slice(0, 10) + '  cold launch on a real phone\n' +
@@ -402,9 +395,17 @@ table + '\n' +
 'that actually happens.\n' +
 '\n' +
 '**VERDICT: ' + v.line + '**\n' +
-'Median cold-process total: ' + (v.median == null ? '____' : round(v.median) + ' ms over ' + v.n + ' run' + (v.n === 1 ? '' : 's')) +
+'Median cold total: ' + (v.median == null ? '____' : round(v.median) + ' ms over ' + v.n + ' run' + (v.n === 1 ? '' : 's')) +
   (v.first == null ? '' : '. Using the single cold parse instead of the median it is ' + round(v.first) + ' ms') + '.\n' +
-(v.warm ? '\n**Every cold-process run was recorded in a window that had already parsed the index, so all of them have a warm JIT and this verdict is optimistic.** Reload between runs and record again.\n' : '') +
+'Cold means either state with no warm process behind it, ' + COLD_STATES.join(' or ') + ', pooled.\n' +
+'They are printed apart here so the pooling can be checked:\n' +
+v.byState.map((b) => '- `' + b.state + '`: ' + b.n + ' run' + (b.n === 1 ? '' : 's') +
+  (b.median == null ? ', no median' : ', median ' + round(b.median) + ' ms')).join('\n') + '\n' +
+(v.warm ? '\n**Every cold run was recorded in a window that had already parsed the index, so all of them have a warm JIT and this verdict is optimistic.** Reload between runs and record again.\n' : '') +
+(outsideTerm.length
+  ? '\n**' + outsideTerm.length + ' of these runs ' + (outsideTerm.length === 1 ? 'was' : 'were') + ' recorded outside the term the app answers in (' +
+    fmtDay(outsideTerm[0].gate.from) + ' to ' + fmtDay(outsideTerm[0].gate.to) + ').** Fetch and parse cost the same on any date, but the answer step timed work the app would not have done that day.\n'
+  : '') +
 '\n' +
 (baseline
   ? 'Desktop baseline, taken ' + shown(baseline.at) + ' on `' + baseline.device.ua + '`:\n' +

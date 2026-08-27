@@ -87,10 +87,14 @@
   </div>
 
   <h2>How that is true, and not just a promise</h2>
-  <p>Vacant has no backend. The whole class schedule is a few files on GitHub Pages
-  that your phone downloads once. After that the app works with the network off, in a
-  basement or a stairwell. There is no login, no account, no database, and no request
-  that could carry a coordinate even if somebody wanted it to.</p>
+  <p>Vacant has no backend. The whole class schedule is a few static files on GitHub
+  Pages that your phone downloads when you open the page. There is no login, no
+  account, no database, and no request that could carry a coordinate even if somebody
+  wanted it to.</p>
+  <p>Opening it does still need a connection. There is no offline cache yet, so a
+  stairwell with no signal gets you the browser's error page rather than a room. That
+  is worth saying plainly because the reason to have no backend is often given as
+  "it works offline", and today it does not.</p>
   <p>Your position is read once per search, held in a variable, and gone when you
   close the tab. The app asks for it once and does not keep watching. It is never
   written to storage, never put in a URL, and never attached to anything the app
@@ -128,8 +132,17 @@
   </ul>
 
   <h2>If you say no to location</h2>
-  <p>The app still works. It asks you to pick a building instead of sorting by
-  distance. Saying no costs you the walk time, not the room list.</p>
+  <p>The app still works, and it tells you what it did. It falls back to the middle
+  of the Oval and puts a line above the list saying so: <em>Location is off, showing
+  from the Oval</em>. You get the same campus-wide room list either way. There is no
+  building picker and you are never asked to choose one.</p>
+  <p>The walk times are the part to watch. They are still shown, and they are
+  measured from the Oval, not from you. If you are at the Wexner Center or out on
+  West Campus, every minute figure on the screen is the walk from the middle of
+  campus, which can be wrong in either direction: too long for a room you are
+  standing next to, too short for one across the river. That banner is the only
+  warning you get, so read it as "these minutes are not about you". Turning location
+  on is what makes them yours.</p>
 
   <h2>What Vacant does not know about the rooms</h2>
   <p>Not a privacy point, but it belongs on the page a suspicious person opens.

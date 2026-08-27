@@ -1,0 +1,96 @@
+{
+  "term": "1268",
+  "runs": 1,
+  "facetTotal": 26298,
+  "passes": 7,
+  "history": [
+    {
+      "pass": 1,
+      "saw": 26707,
+      "added": 26707,
+      "addedWithRoom": 11443,
+      "unionAfter": 26707
+    },
+    {
+      "pass": 2,
+      "saw": 26530,
+      "added": 294,
+      "addedWithRoom": 7,
+      "unionAfter": 27001
+    },
+    {
+      "pass": 3,
+      "saw": 26089,
+      "added": 35,
+      "addedWithRoom": 4,
+      "unionAfter": 27036
+    },
+    {
+      "pass": 4,
+      "saw": 26413,
+      "added": 27,
+      "addedWithRoom": 0,
+      "unionAfter": 27063
+    },
+    {
+      "pass": 5,
+      "saw": 26338,
+      "added": 11,
+      "addedWithRoom": 0,
+      "unionAfter": 27074
+    },
+    {
+      "pass": 6,
+      "saw": 26408,
+      "added": 0,
+      "addedWithRoom": 0,
+      "unionAfter": 27074
+    },
+    {
+      "pass": 7,
+      "saw": 26302,
+      "added": 0,
+      "addedWithRoom": 0,
+      "unionAfter": 27074
+    }
+  ],
+  "distinctMeetings": 27074,
+  "meetingsInARealRoom": 11454,
+  "missedBySinglePass": 367,
+  "roomedMissedBySinglePass": 11,
+  "requests": 953,
+  "buckets": [
+    {
+      "slug": "1xxx",
+      "facetCount": 2623
+    },
+    {
+      "slug": "2xxx",
+      "facetCount": 2420
+    },
+    {
+      "slug": "3xxx",
+      "facetCount": 1847
+    },
+    {
+      "slug": "4xxx",
+      "facetCount": 6321
+    },
+    {
+      "slug": "5xxx",
+      "facetCount": 2269
+    },
+    {
+      "slug": "6xxx",
+      "facetCount": 2304
+    },
+    {
+      "slug": "7xxx",
+      "facetCount": 2979
+    },
+    {
+      "slug": "8xxx",
+      "facetCount": 5535
+    }
+  ]
+}

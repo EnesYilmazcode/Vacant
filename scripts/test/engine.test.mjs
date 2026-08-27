@@ -10,6 +10,7 @@ import {
   distanceMetres,
   freeGaps,
   rank,
+  tierOf,
   usableMinutes,
   walkMinutes,
 } from '../../js/engine.js';
@@ -138,11 +139,30 @@ test('a room with no bookings is free for the whole opening window', () => {
   assert.deepEqual(freeGaps([], 1, at(7), at(22)), [[at(7), at(22)]]);
 });
 
-test('bestGap picks the longest usable gap, not the earliest', () => {
+test('a gap you can walk straight into beats a longer one you must wait for', () => {
+  // This test used to assert the opposite, and the opposite is a bug: it sends
+  // someone on a walk to a room that has a class in it, because that room's
+  // afternoon gap is longer than the one free right now.
   const room = { busy: [[1, at(9), at(10)], [1, at(11), at(12)]] };
   const gap = bestGap(room, { now: at(8), day: 1, open: at(8), close: at(18), metres: 0 });
-  assert.equal(gap.gapStart, at(12), 'the afternoon block is longer than 8-9 or 10-11');
-  assert.equal(gap.usable, 360 - PACKUP);
+  assert.equal(gap.gapStart, at(8), 'the 8-9 window is open now');
+  assert.equal(gap.wait, 0);
+});
+
+test('when nothing is open on arrival, the best later gap is offered with its wait', () => {
+  const room = { busy: [[1, at(8), at(13)]] };
+  const gap = bestGap(room, { now: at(9), day: 1, open: at(8), close: at(18), metres: 0 });
+  assert.equal(gap.gapStart, at(13));
+  assert.equal(gap.wait, at(13) - at(9), 'four hours of waiting, reported not hidden');
+});
+
+test('among gaps open on arrival, the one that meets the need wins, then length', () => {
+  const room = { busy: [[1, at(9), at(10)], [1, at(14), at(15)]] };
+  const gap = bestGap(room, {
+    now: at(8), day: 1, open: at(8), close: at(18), metres: 0, needed: 30,
+  });
+  assert.equal(gap.wait, 0);
+  assert.equal(gap.meetsNeed, true);
 });
 
 test('bestGap ignores gaps that have already passed', () => {
@@ -227,7 +247,9 @@ test('a ranked row carries everything the result screen needs', () => {
   assert.equal(row.name, 'Dreese Laboratories');
   assert.equal(row.seats, 46);
   assert.ok(row.walk >= 1 && row.metres > 0);
-  assert.equal(row.freeUntil, at(22));
+  assert.equal(row.nextClassAt, at(22));
+  assert.equal(row.availableAt, at(7), 'already open when the query runs');
+  assert.equal(row.wait, 0);
   // The room is already free at 9:00, so usable is the window minus packup
   // minus the walk. Forgetting the walk here is the same mistake the README
   // formula makes, one level up.
@@ -240,4 +262,115 @@ test('a room with no seat count reports null rather than inventing one', () => {
     origin: ORIGIN, now: at(9), day: 1, buildings: BUILDINGS,
   });
   assert.equal(row.seats, null);
+});
+
+// --- regressions found by the PR #36 review ---
+
+test('a room occupied right now never outranks one that is free now', () => {
+  // The failure: you ask for two hours at 9:00, and are sent on a seven minute
+  // walk to Dreese, which has a class in it until 13:00, because its afternoon
+  // gap is longer than Caldwell's morning one.
+  const rooms = [
+    { id: 'CL0177', b: '26', busy: [[1, at(10, 45), at(18)]] }, // free now, 105 min
+    { id: 'DL0357', b: '279', busy: [[1, at(9), at(13)]] }, // occupied now
+  ];
+  const out = rank(rooms, {
+    origin: ORIGIN, now: at(9), day: 1, needed: 120, buildings: BUILDINGS,
+    hoursFor: () => [at(8), at(18)],
+  });
+  assert.equal(out[0].id, 'CL0177', 'the room you can actually walk into');
+  assert.equal(out[0].wait, 0);
+  assert.ok(out[1].wait > 0, 'the occupied room is still offered, with its wait');
+  assert.ok(out[0].tier < out[1].tier);
+});
+
+test('every row carries when the room opens and how long you would wait', () => {
+  const [row] = rank([{ id: 'DL0357', b: '279', busy: [[1, at(9), at(13)]] }], {
+    origin: ORIGIN, now: at(9), day: 1, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  });
+  assert.equal(row.availableAt, at(13));
+  assert.ok(row.wait > 0);
+  // Without these two a result screen cannot tell "available now" from
+  // "available from 1:00 PM" -- the rows are otherwise identical.
+  assert.ok('availableAt' in row && 'wait' in row);
+});
+
+test('a geolocation fix that never resolved returns nothing, not NaN rooms', () => {
+  // NaN <= 0 is false, so the old guard let every room through with NaN
+  // minutes, and a NaN comparator makes Array.sort return arbitrary order.
+  for (const origin of [{ lat: NaN, lon: NaN }, { lat: undefined, lon: -83 }, {}]) {
+    const out = rank([{ id: 'DL0357', b: '279', busy: [] }], {
+      origin, now: at(9), day: 1, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+    });
+    assert.deepEqual(out, [], JSON.stringify(origin));
+  }
+});
+
+test('a building row with a null coordinate is dropped like a missing one', () => {
+  const buildings = { ...BUILDINGS, 500: { name: 'Broken Hall', lat: null, lon: null } };
+  const out = rank([{ id: 'BR0100', b: '500', busy: [] }], {
+    origin: ORIGIN, now: at(9), day: 1, buildings, hoursFor: () => [at(8), at(18)],
+  });
+  assert.deepEqual(out, []);
+});
+
+test('an unknown-hours room never reports a usable figure', () => {
+  // At 3am the old code said "free for 1243 minutes" in a building nobody knows
+  // is open. A 0-1440 fallback IS an assumed window, and the most generous one
+  // available, which the project decided explicitly against.
+  const [row] = rank([{ id: 'X', b: '279', busy: [] }], {
+    origin: ORIGIN, now: at(3), day: 1, buildings: BUILDINGS, hoursFor: () => undefined,
+  });
+  assert.equal(row.hoursKnown, false);
+  assert.equal(row.usable, null, 'we cannot know when it locks, so we do not say');
+  assert.equal(row.usableUntil, null);
+  assert.equal(row.meetsNeed, null);
+  assert.ok(row.nextClassAt != null, 'what we DO know is when the next class is');
+});
+
+test('usableUntil and usable agree; nextClassAt is the raw end', () => {
+  const [row] = rank([{ id: 'DL0357', b: '279', busy: [] }], {
+    origin: ORIGIN, now: at(9), day: 1, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  });
+  assert.equal(row.nextClassAt, at(18));
+  assert.equal(row.usableUntil, at(18) - PACKUP);
+  // The inconsistency that made a countdown hand back the packup buffer.
+  assert.equal(row.usable, row.usableUntil - at(9) - row.walk);
+});
+
+test('an inverted busy block is treated as busy, never as free', () => {
+  // freeGaps([[1,840,600]], ...) used to return the whole day free. A meeting
+  // crossing midnight, or any upstream time-parse glitch, produces this shape,
+  // and reporting it free sends someone to a room with a class in it.
+  const gaps = freeGaps([[1, at(14), at(10)]], 1, at(8), at(18));
+  assert.notDeepEqual(gaps, [[at(8), at(18)]], 'the whole day is NOT free');
+  assert.deepEqual(gaps, [[at(8), at(14)]], 'read conservatively as running to end of day');
+  assert.equal(gaps.malformed, 1, 'and counted, so a build can assert on it');
+});
+
+test('a non-numeric busy time is counted and dropped rather than trusted', () => {
+  const gaps = freeGaps([[1, NaN, at(10)], [1, at(12), at(13)]], 1, at(8), at(18));
+  assert.equal(gaps.malformed, 1);
+  assert.deepEqual(gaps, [[at(8), at(12)], [at(13), at(18)]]);
+});
+
+test('a day arriving as a string still matches its blocks', () => {
+  // freeGaps is browser-facing and `day` comes out of a <select> or a query
+  // string. A strict === matched nothing and reported the whole day free.
+  assert.deepEqual(freeGaps([[1, at(9), at(10)]], '1', at(8), at(12)), [
+    [at(8), at(9)],
+    [at(10), at(12)],
+  ]);
+});
+
+test('the tier order encodes both decisions the project already made', () => {
+  const t = (hoursKnown, wait, meetsNeed) => tierOf({ hoursKnown, wait, meetsNeed });
+  assert.equal(t(true, 0, true), 0);
+  assert.equal(t(true, 0, false), 1);
+  assert.equal(t(true, 60, true), 2);
+  assert.equal(t(false, 0, null), 3);
+  assert.equal(t(false, 60, null), 4);
+  // Published hours beat unknown hours even when the unknown room is free now
+  // and the published one is not.
+  assert.ok(t(true, 60, true) < t(false, 0, null));
 });

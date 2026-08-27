@@ -987,7 +987,7 @@ async function boot() {
 
   const [rooms, buildings, hours, located] = await Promise.all([
     fetch(`${BASE}${current.rooms}`).then((r) => r.json()),
-    json('buildings.json').then((d) => d.buildings),
+    fetch(`${BASE}${current.buildings}`).then((r) => r.json()).then((d) => d.buildings),
     json('buildings-hours.json'),
     fix,
   ]);

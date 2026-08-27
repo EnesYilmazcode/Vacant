@@ -10,3 +10,6 @@ Thumbs.db
 # any price. The manifest beside the harvest is committed for provenance.
 data/harvest-*.json.gz
 *.tmp
+
+# Claude Code worktrees and session state
+.claude/

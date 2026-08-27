@@ -623,6 +623,11 @@ export function scheduleCoverage(rooms, active) {
 // 1.50%. Two clusters three orders of magnitude apart with nothing in between,
 // so this sits an order of magnitude clear of each. December 10, the first day
 // of the wrong week, measures 0.066%.
+//
+// The split is structural rather than lucky. One full-term session carries
+// 11,386 of the 12,168 blocks, so the share is either that session running or
+// it is not, and the same shape should hold for any term. Re-derive it anyway
+// when a term with a different session layout ships.
 export const SILENT_SHARE = 0.1;
 
 // The calendar the class API does not publish, read off whatever the build put

@@ -9,7 +9,7 @@ one question, and hands you rooms you can walk to, nearest first.
 
 | | | |
 | :--: | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark campus map, the question "How long do you need?", and three buttons reading 30 min, 1 hour and 2 hours](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. Townshend Hall 038, 2 min walk, till 6:50pm, 40 seats. Townshend Hall 245, 2 min, till 2:35pm, class, 20 seats.](docs/media/list.webp) | ![One room picked. Its building footprint is outlined in red on the map and a dashed line runs from the blue dot to it, labelled 2 min walk.](docs/media/room.webp) |
+| ![The opening screen: the word Vacant over a dark campus map, the question "How long do you need?", and three buttons reading 30 min, 1 hour and 2 hours](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. Townshend Hall 038, 2 min walk, till 6:50pm, 40 seats. Townshend Hall 245, 2 min, till 2:35pm, class, 20 seats.](docs/media/list.webp) | ![One room picked, Cunz Hall 160. Its building footprint is outlined in red on the map and a dashed line runs from the blue dot to it, labelled 4 min walk.](docs/media/room.webp) |
 | One question. | The answer. | Where it is. |
 
 ## Yours for, not free until
@@ -33,8 +33,8 @@ minutes.
 
 | | |
 | :--: | :--: |
-| ![The list dragged up to fill the screen, showing ten rooms across three buildings, all two or three minutes away](docs/media/list-full.webp) | ![The room screen for Townshend Hall 245: free till 2:45pm, 2 min walk, then a timeline reading 7:00am Townshend Hall opens, 7:00am free for 7h45, 2:45pm in use, 4:45pm free for 2h15, 7:00pm Townshend Hall closes](docs/media/timeline.webp) |
-| Drag the sheet up for the rest. | Tap a room twice for its whole day. |
+| ![The list dragged up to fill the screen, showing ten rooms across three buildings, all two or three minutes away](docs/media/list-full.webp) | ![The room screen for Cunz Hall 160: no class in here for the rest of today, 4 min walk, 192 m, 42 seats, classroom, then a timeline reading 6:30am Cunz Hall opens, 6:30am free for 1h30, 8:00am in use, 9:10am in use, 10:05am free for 8h55, 7:00pm Cunz Hall closes](docs/media/timeline.webp) |
+| Drag the sheet up for the rest. | Tap a room twice for its whole day, doors included. |
 
 ## What it refuses to guess
 
@@ -97,7 +97,7 @@ Then open `http://localhost:8000`. It has to be served rather than opened as a
 file, because the page is ES modules and it fetches JSON.
 
 ```sh
-npm test                        # node --test, 208 tests, no network
+npm test                        # node --test, 224 tests, no network
 node scripts/shoot.mjs          # redraw docs/media from the real app
 ```
 
@@ -140,6 +140,11 @@ already left the API and cannot be refetched at any price.
 - **The list is a room list where it should be a place list.** One building can
   take a third of the forty rows.
   [#62](https://github.com/EnesYilmazcode/Vacant/issues/62).
+- **The room screen hands back the ten minutes the row took off.** Open a room
+  whose window ends at a class and the headline prints the minute the class
+  starts, not the minute you have to be out, so it reads ten minutes later than
+  the row you tapped. The row is the right one.
+  [#77](https://github.com/EnesYilmazcode/Vacant/issues/77).
 
 ## Roomix
 
@@ -174,7 +179,10 @@ and ignored the clock. Both halves were wrong.
 - [docs/BLUEPRINT.md](docs/BLUEPRINT.md) is the design note this README used to
   be, kept whole, with the places it turned out wrong marked at the top.
 - [scripts/shoot.mjs](scripts/shoot.mjs) regenerates every screenshot above from
-  the real app on a pinned clock, so they cannot quietly stop being true.
+  the real app, on a pinned clock and a pinned location, and refuses to write a
+  frame of a screen that has not stopped moving. Re-running it on an unchanged
+  tree writes the same five files. It also writes down what each screen said, in
+  `docs/media/frames.json`, and a test holds the alt text above to it.
 
 ## Licence
 

@@ -1093,9 +1093,14 @@ function roomHtml(id) {
       ? { head: 'No class in here all day', sub: '' }
       : roomClaim(tl, nowMin, bname, metres);
 
+  // rank() rounds the metres it reports but keeps the walk it computed off the
+  // unrounded distance, so re-deriving one from the other can disagree by a
+  // minute with the row the user just tapped.
+  const walk = r?.walk ?? (Number.isFinite(metres) ? walkMinutes(metres) : null);
+
   const type = TYPE_WORDS[room.type];
   const facts = [
-    Number.isFinite(metres) ? `<span class="w">${WALK_ICON}${walkMinutes(metres)} min walk</span>` : '',
+    walk == null ? '' : `<span class="w">${WALK_ICON}${walk} min walk</span>`,
     Number.isFinite(metres) ? `${metres} m` : '',
     room.cap ? `${room.cap} seats` : 'seats unknown',
     type ? esc(type) : '',

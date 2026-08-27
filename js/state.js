@@ -5,6 +5,10 @@
 // by opening the app, because the only way to reach exam week is to wait until
 // December, so it has to be reachable from a test with a fake date.
 //
+// The row and room phrasing lives here too, for the same reason: a sentence
+// about a door is a decision, and a decision that can only be checked by
+// opening the app on the right afternoon is a decision nobody checks.
+//
 // Runs in the browser and under node, and imports nothing that touches the DOM.
 
 import { PACKUP, activeSessions, distanceMetres, usableMinutes, walkMinutes } from './engine.js';
@@ -469,16 +473,17 @@ export function rankBuildings({ origin, buildings, counts, hoursFor, day, nowMin
 
 // ---------------------------------------------------------------- the row window
 
+// clock() wraps modulo 24 hours, so a window that ran past midnight would print
+// as an innocent morning time rather than as an error, and the test that was
+// meant to catch that parsed the printed string and so could never fail.
+// Nothing in the engine can produce one today. This is what keeps it that way.
+export const DAY_END = 1440;
+const inDay = (m) => m == null || (Number.isFinite(m) && m >= 0 && m <= DAY_END);
+
 // What a row says about the end of its window, in glyphs and in words. No
 // branch here prints a duration for a building nobody publishes hours for. That
 // is the path that once printed "9h44", by capping an unknown window at
 // midnight and calling the remainder free.
-// clock() wraps modulo 24 hours, so a window that ran past midnight would
-// print as an innocent morning time rather than as an error. Nothing in the
-// engine can produce one today, and this is the check that keeps it that way.
-export const DAY_END = 1440;
-const inDay = (m) => m == null || (Number.isFinite(m) && m >= 0 && m <= DAY_END);
-
 export function windowPhrase(row, close) {
   if (![row.availableAt, row.usableUntil, row.nextClassAt, close].every(inDay)) {
     return {

@@ -387,25 +387,61 @@ pass   meetings seen   new   new IN A ROOM   union
 A single pass would have missed 367 meetings, 1.36%, **11 of them in a real
 room**. Eleven rooms that would have read free with a class in them.
 
-**Convergence is on rooms, not on meetings.** The last four passes added 42
-meetings and exactly **zero** in a room. A roomless meeting cannot change what
-the app tells anyone, so paying 272 extra requests against a university's API to
-chase them is not politeness, it is noise. Roomed convergence stops at pass 5,
-about 680 requests. A `MIN_PASSES` floor of 3 stops a lucky first pass from
-claiming stability, since pass 2 found 7 roomed meetings pass 1 missed.
+**Convergence is on rooms, not on meetings, and "a room" is not
+`facilityId != null`.** ONLINE and OFFCAMPUS carry a facilityId of their own, so
+a null check calls them rooms. On term 1268 they are **2,975 of the 11,454 rows
+that pass that check, 26%**, and the genuine figure is 8,479. Counting them let
+one drifted ONLINE row reset stability and buy two more passes, 272 requests,
+for a meeting `build-index.mjs` discards before it reaches the grid. The
+criterion now uses the funnel's own `hasRealRoom`.
 
-**The User-Agent was promising a volume we exceed.** It advertised
-`~280 requests/week`, which was the cost of the two-pass design before the drift
-was measured. Real cost is about 680 for the harvest plus 3 for the Registrar
-hours, so it now says `~700`. A test asserts the advertised figure is at least
-the measured harvest cost, because that string is a promise to the people
-running the server.
+Re-measured with the corrected test, the walk converges in **4 passes and 545
+requests** rather than 7 and 953:
+
+```
+pass   meetings seen   new   new IN A ROOM   union
+  1          26465   26465            8466   26465
+  2          26248     471              13   26936
+  3          26158      61               0   26997   [1 of 2 clean]
+  4          26220      77               0   27074   [2 of 2 clean]
+```
+
+The union is identical at 27,074, so nothing was lost by stopping earlier. A
+single pass would have missed 609 meetings, 2.25%, **13 of them in a real
+room**: thirteen rooms that would have read free with a class in them. A
+`MIN_PASSES` floor of 3 stops a lucky first pass from claiming stability, since
+pass 2 is where those 13 appear.
+
+**The User-Agent has to advertise the CEILING, not the typical run.** It said
+`~280 requests/week`, the two-pass estimate. Corrected to `~700` on the measured
+7-pass cost, which was still wrong: `MAX_PASSES` allows 8 passes over 8 buckets
+of 17 pages, which is 1,089. It now says `<=1100`, and the test asserts against
+`MAX_PASSES x buckets` rather than a hand-entered number. The previous test
+asserted `>= 680` and would have passed on exactly the 953-request run it was
+written to catch. That string is a promise to the people running the server.
+
+**`MAX_REQUESTS` sat under its own worst case.** 8 buckets x `MAX_PAGES` 50 x
+`MAX_PASSES` 8 is 3,200 against a cap of 3,000, so the guard meant to prevent a
+runaway would instead have fired mid-run and discarded a fifteen minute walk.
+Raised to 4,000.
+
+**A transient `totalItems: 0` no longer kills the run.** Nothing is written
+until the end, so one blip in a late pass discarded every request and restarted
+from zero. Since the entire premise of this script is that the API is
+nondeterministic under paging, treating a single zero as fatal was the brittle
+reading of its own evidence. It asks twice.
 
 **Output.** `data/harvest-<term>.json.gz`, the union, 0.50 MB gzipped for 27,074
 meetings. Writing any single pass's pages would reintroduce exactly the gaps the
 extra passes exist to close. It is **not committed**: unlike `data/raw/1262` and
 `data/raw/1264`, a live term can always be refetched, and 0.5 MB rewritten
 weekly is repository bloat. The manifest beside it is committed for provenance.
+
+That claim was false when first written. The blob had already been committed to
+`main` through a careless `git add -A`, and `.gitignore` never applies to a
+tracked path, so both the rule and this entry asserted something untrue. Removed
+with `git rm --cached`. `*.tmp` is ignored too, since `writeAtomic` leaves one
+behind on a crash and the harvest pattern did not match it.
 
 **Coverage, measured on the full term rather than a sample.** 871 distinct rooms
 across 96 buildings for Autumn 2026. **72% of those rooms sit in a building with

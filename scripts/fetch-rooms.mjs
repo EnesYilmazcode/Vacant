@@ -242,7 +242,9 @@ async function main() {
     );
   }
 
-  const roomed = [...union.values()].filter((v) => v.meeting.facilityId != null);
+  // hasRealRoom, not a null check. The manifest's own headline number was
+  // overstating by 26% because ONLINE and OFFCAMPUS pass a null check.
+  const roomed = [...union.values()].filter((v) => hasRealRoom(v.meeting));
   const missedByOnePass = union.size - history[0].saw;
   const roomedMissed = history.slice(1).reduce((a, h) => a + h.addedWithRoom, 0);
   console.log(

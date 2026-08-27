@@ -13,9 +13,21 @@
 
 // Stamped by scripts/stamp-sw.mjs before the commit lands. The authored
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
-// stamp did not run. scripts/test/sw.test.mjs fails on exactly that.
+// stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
+// rather than built from CACHE_PREFIX, because the stamper rewrites this line.
 const SHELL_CACHE = 'vacant-shell-d915246';
 const DATA_CACHE = 'vacant-data-v1';
+
+// CacheStorage is per origin, not per path, and enesyilmazcode.github.io also
+// hosts Finder and the portfolio. Without this test the activate below deleted
+// every cache on the origin that was not one of Vacant's two: measured, one
+// deploy took finder-shell-v3 and portfolio-v1 with it and
+// caches.match('/Finder/index.html') came back empty. The localStorage keys were
+// namespaced for the same reason; the cache names were not.
+const CACHE_PREFIX = 'vacant-';
+function ours(name) {
+  return name.startsWith(CACHE_PREFIX);
+}
 
 // A worker's scope cannot climb above its own URL, and GitHub Pages will not
 // send Service-Worker-Allowed, so this file has to sit at the repo root and the
@@ -71,7 +83,7 @@ self.addEventListener('activate', (event) => {
       }
       const names = await caches.keys();
       await Promise.all(
-        names.filter((n) => n !== SHELL_CACHE && n !== DATA_CACHE).map((n) => caches.delete(n)),
+        names.filter((n) => ours(n) && n !== SHELL_CACHE && n !== DATA_CACHE).map((n) => caches.delete(n)),
       );
       await evictOldTerms();
       // Without this the first visit's own fetches never reach the worker, so

@@ -97,14 +97,36 @@ test('install precaches and does not skip waiting', () => {
   assert.match(sw, /addEventListener\('message'[^]*?event\.data === 'SKIP_WAITING'[^]*?skipWaiting\(\)/);
 });
 
-test('activate drops foreign caches and evicts last term', () => {
+test('activate drops the stale Vacant caches and evicts last term', () => {
   const activate = sw.slice(sw.indexOf("addEventListener('activate'"), sw.indexOf("addEventListener('message'"));
-  assert.match(activate, /n !== SHELL_CACHE && n !== DATA_CACHE/);
+  assert.match(activate, /ours\(n\) && n !== SHELL_CACHE && n !== DATA_CACHE/);
   assert.match(activate, /caches\.delete/);
   assert.match(activate, /evictOldTerms\(\)/);
   const evict = sw.slice(sw.indexOf('async function evictOldTerms'));
   assert.match(evict, /rooms\|buildings/);
   assert.match(evict, /data\.delete\(request\)/);
+});
+
+test('a deploy never touches a neighbour project cache', () => {
+  // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also
+  // hosts Finder and the portfolio. Measured before this test existed: one
+  // Vacant deploy deleted finder-shell-v3 and portfolio-v1, and
+  // caches.match('/Finder/index.html') came back empty afterwards.
+  const prefix = sw.match(/const CACHE_PREFIX = '([^']*)';/);
+  assert.ok(prefix, 'no CACHE_PREFIX in sw.js');
+  assert.equal(prefix[1], 'vacant-');
+  // The shipped predicate, run rather than read.
+  const from = sw.indexOf('function ours(name)');
+  const body = sw.slice(from, sw.indexOf('\n}', from) + 2);
+  const ours = new Function('CACHE_PREFIX', `${body}\nreturn ours;`)(prefix[1]);
+
+  const shell = constant('SHELL_CACHE');
+  const data = constant('DATA_CACHE');
+  const sweep = (names) => names.filter((n) => ours(n) && n !== shell && n !== data);
+  assert.deepEqual(
+    sweep([shell, data, 'vacant-shell-0000000', 'finder-shell-v3', 'portfolio-v1', 'workbox-precache-v2']),
+    ['vacant-shell-0000000'],
+  );
 });
 
 test('a network probe is never answered out of the cache', () => {

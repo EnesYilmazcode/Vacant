@@ -186,8 +186,11 @@ test('a weekend evening is never in scheduled hours', () => {
   assert.equal(inScheduledHours({ now: at('2026-09-03', 14, 2), current: CUR, index: CAL }), true);
 });
 
-test('a closed day is not scheduled hours even at noon on a weekday', () => {
+test('a shut campus is not scheduled hours, but a no-classes day still is', () => {
+  // Autumn break really does leave the buildings open, so the ranked list is
+  // still the right answer there and the quiet-campus line says why.
   assert.equal(inScheduledHours({ now: at('2026-09-07', 12, 0), current: CUR, index: CAL }), false);
+  assert.equal(inScheduledHours({ now: at('2026-10-15', 12, 0), current: CUR, index: CAL }), true);
 });
 
 test('buildings rank in three groups and unknown hours never sort among the open', () => {

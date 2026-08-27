@@ -336,7 +336,10 @@ export function inScheduledHours({ now, current, index }) {
   const busyDay = busyDayOf(current, index);
   if (!busyDay) return false;
   if (!inTermOn(today, current, index)) return false;
-  if (closedDayFor(today, current, index)) return false;
+  // A no-classes day still ranks, with the quiet-campus line saying why. Only a
+  // day the university itself is shut takes the schedule off the table, and
+  // resolveState has already refused by the time that reaches here.
+  if (closedDayFor(today, current, index)?.state === 'offices-closed') return false;
   if (!busyDay.weekdays[now.getDay()]) return false;
   const minute = now.getHours() * 60 + now.getMinutes();
   return minute >= busyDay.earliestStart && minute < busyDay.latestEnd;

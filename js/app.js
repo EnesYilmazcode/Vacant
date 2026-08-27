@@ -1,19 +1,43 @@
 // Vacant. One question, then an answer.
 //
-// Cold start:
-//   the question paints immediately, before any data
-//   campus drifts underneath while the index parses and geolocation resolves
-//   you tap a duration (or it is remembered) and the map settles on you
+// Boot order. Nothing may be inserted above step 5 that waits on a network or
+// on a position, because the first paint is what the app is judged on and a
+// cold phone on outdoor LTE has neither:
+//
+//   1  shell and question paint out of index.html    no network, no fix
+//   2  read data/current.json -> term code
+//   3  parse rooms-<term>.json and the term's building slice
+//   4  getCurrentPosition, started at step 2 so the two waits overlap
+//   5  fix arrives -> rank -> render the list
 //
 // The flyover is the LOADING STATE, not a gate. It must never add a second to
 // the time from tap to answer.
 //
-// Three screens, one sheet: the question, the list, and one room. The sheet
-// routes between the last two so the map, the highlight and the line stay on
-// screen while you read a schedule.
+// Screens, all of them one sheet over one map: the question, the ranked list,
+// one room, the buildings screen for the hours no class covers, the building
+// picker, and what the app believes. The sheet routes between them so the map,
+// the highlight and the line stay on screen while you read.
 
 import { toGrid } from './campus.js';
-import { activeSessions, PACKUP, rank } from './engine.js';
+import { PACKUP, activeSessions, rank } from './engine.js';
+import {
+  allWeekCodes,
+  busyDayOf,
+  clock,
+  diagnosticsBlock,
+  dur,
+  durShort,
+  fmtDay,
+  inScheduledHours,
+  isoDate,
+  rankBuildings,
+  resolveState,
+  roomsPerBuilding,
+  spokenClock,
+  spokenDur,
+  staleness,
+  windowPhrase,
+} from './state.js';
 import {
   FLYOVER_SPAN,
   SETTLED_SPAN,
@@ -31,7 +55,11 @@ import {
 } from './map.js';
 
 const BASE = new URL('.', import.meta.url).pathname.replace(/js\/$/, '');
-const KEY = 'vacant:duration';
+
+// Finder shares this origin, so the prefix is not optional.
+const KEY_DURATION = 'vacant.duration';
+const KEY_ORIGIN = 'vacant.origin';
+const KEY_PICK = 'vacant.lastPick';
 
 // Off-campus is a real state, not an error. Beyond this from the map centre the
 // app cannot honestly rank anything by walk time.
@@ -47,6 +75,17 @@ const FIX_TIMEOUT_MS = 8000;
 // a timetable. Past this wait the app says nothing is open rather than filling
 // the list with tomorrow morning.
 const MAX_WAIT_MIN = 90;
+
+// A picked building is a point in the middle of a footprint, and the door is
+// somewhere on its edge. Half a footprint is about this, and it sits under the
+// 75 m coarse-fix line so the accuracy banner stays off for a choice the user
+// made deliberately.
+const PICKED_ACCURACY_M = 50;
+
+// Places students stand rather than places classes meet, so this list is
+// codes and not names: the label is read out of the shipped building table, and
+// a code that leaves the table renders nothing instead of a dead button.
+const SHORTCUTS = ['161', '050', '246', '005', '279', '274'];
 
 // Where campus actually is, as a fraction of the map's bounding box. Measured
 // from the shipped data: the room-weighted centroid of buildings holding ranked
@@ -82,6 +121,8 @@ const TYPE_WORDS = {
   SMNR: 'seminar room',
 };
 
+const COMPASS = ['north', 'north east', 'east', 'south east', 'south', 'south west', 'west', 'north west'];
+
 const $ = (id) => document.getElementById(id);
 
 const state = {
@@ -92,12 +133,17 @@ const state = {
   userMoved: false,
   rooms: null,
   buildings: null,
+  counts: null,
+  shorts: null,
+  hours: null,
   hoursTerm: null,
+  hoursSlug: null,
   current: null,
   origin: null,
   accuracy: null,
   originIsGuess: true,
-  needed: Number(safeGet(KEY)) || 30,
+  duration: safeGet(KEY_DURATION) ?? '30',
+  needed: 30,
   results: [],
   total: 0,
   day: new Date().getDay(),
@@ -105,6 +151,12 @@ const state = {
   selected: null,
   settled: false,
   ready: false,
+  rankable: false,
+  scheduled: true,
+  situation: null,
+  groups: null,
+  query: '',
+  includeLocation: false,
   screen: 'ask',
   listScroll: 0,
 };
@@ -123,44 +175,28 @@ function safeSet(k, v) {
     /* private mode; a remembered duration is not worth an error */
   }
 }
-
-const clock = (m) => {
-  const h24 = Math.floor(m / 60) % 24;
-  const mm = String(Math.floor(m) % 60).padStart(2, '0');
-  const h = h24 % 12 === 0 ? 12 : h24 % 12;
-  return `${h}:${mm}${h24 < 12 ? 'am' : 'pm'}`;
-};
-const dur = (m) => (m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m} min`);
-const durShort = (m) => (m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m}m`);
-const isoDate = (d) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`);
-
-// Spoken forms. A screen reader gets words where the screen gets glyphs, so
-// "7:50p" is read as "7:50 pm" and "2h05" as "2 hours 5 minutes".
-const spokenClock = (m) => {
-  const h24 = Math.floor(m / 60) % 24;
-  const mm = Math.floor(m) % 60;
-  const h = h24 % 12 === 0 ? 12 : h24 % 12;
-  return `${h}:${String(mm).padStart(2, '0')} ${h24 < 12 ? 'am' : 'pm'}`;
-};
-const spokenDur = (m) => {
-  const h = Math.floor(m / 60);
-  const mm = Math.floor(m) % 60;
-  const parts = [];
-  if (h) parts.push(`${h} hour${h === 1 ? '' : 's'}`);
-  if (mm || !h) parts.push(`${mm} minute${mm === 1 ? '' : 's'}`);
-  return parts.join(' ');
-};
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-function fmtDay(iso) {
-  const [y, m, d] = String(iso).split('-').map(Number);
-  return Number.isFinite(m) ? `${MONTHS[m - 1]} ${d}` : String(iso);
+function safeDel(k) {
+  try {
+    localStorage.removeItem(k);
+  } catch {
+    /* same */
+  }
 }
+
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`);
 
 const say = (text) => {
   $('say').textContent = text;
 };
+
+// The only announcement that is not the result count. A screen that refuses has
+// nothing to count, and a message nobody's focus lands on is a message nobody
+// reads.
+function focusHeading(el) {
+  if (!el) return;
+  el.setAttribute('tabindex', '-1');
+  el.focus({ preventScroll: true });
+}
 
 // ---------------------------------------------------------------- rendering
 
@@ -282,6 +318,7 @@ function frame(r) {
 
 // ---------------------------------------------------------------- the sheet
 
+const PANES = ['list', 'room', 'near', 'pick', 'about'];
 let sheetH = 0;
 // Assigned by attachSheet. Replacing a pane's markup resets its scrollTop
 // without firing a scroll event, so the paint has to re-sync touch-action.
@@ -300,8 +337,8 @@ function setSheet(px, snap) {
 function attachSheet() {
   const sheet = $('sheet');
   const handle = $('handle');
-  const panes = [$('list'), $('room')];
-  const pane = () => ($('room').hidden ? $('list') : $('room'));
+  const panes = PANES.map($);
+  const pane = () => panes.find((el) => !el.hidden) ?? panes[0];
   let drag = null;
   let swallow = false;
 
@@ -345,6 +382,8 @@ function attachSheet() {
 
   sheet.addEventListener('pointerdown', (e) => {
     if (e.target.closest('#handle')) return;
+    // The search field and the chips are controls, not surfaces to drag from.
+    if (e.target.closest('#find, #chips')) return;
     begin(e, 'pending');
   });
 
@@ -428,11 +467,11 @@ function pickHoursTerm(hours, current) {
   const want = (current?.termName ?? '').toLowerCase().replace(/\s+/g, '-');
   const terms = Object.entries(hours?.terms ?? {});
   const exact = terms.find(([slug]) => slug.startsWith(want));
-  if (exact) return exact[1];
+  if (exact) return exact;
   // No table for the live term. Every building then reports unknown hours,
   // which is honest, rather than borrowing another term's doors.
   console.warn(`Vacant: no published hours for ${current?.termName}; all buildings will read unknown.`);
-  return null;
+  return [null, null];
 }
 
 function hoursFor(code, day) {
@@ -441,11 +480,24 @@ function hoursFor(code, day) {
   return rec.hours[day]; // an [open, close] pair, or null for published-closed
 }
 
+const nowMinutes = (d) => d.getHours() * 60 + d.getMinutes();
+
+// "rest of day" is not a constant. It is the minutes between now and the last
+// minute the class schedule covers, read off the index, so a term whose
+// evenings end at 20:15 does not get asked for a window running to 22:30.
+function neededMinutes(now) {
+  if (state.duration !== 'day') return Number(state.duration) || 30;
+  const busyDay = busyDayOf(state.current, state.rooms);
+  const left = busyDay ? busyDay.latestEnd - nowMinutes(now) : 0;
+  return Math.max(30, left);
+}
+
 function answer() {
-  if (!state.ready) return;
+  if (!state.ready || !state.rankable) return;
   const now = new Date();
-  const minutes = now.getHours() * 60 + now.getMinutes();
+  const minutes = nowMinutes(now);
   state.day = now.getDay();
+  state.needed = neededMinutes(now);
   const results = rank(
     Object.entries(state.rooms.rooms).map(([id, r]) => ({ id, ...r })),
     {
@@ -500,28 +552,10 @@ function closeOf(code) {
   return Array.isArray(h) ? h[1] : null;
 }
 
-// The end of the row's window, said twice: once in glyphs and once in words.
 function windowOf(r) {
-  if (r.wait > 0) {
-    return {
-      html: `<span class="warn">from ${clock(r.availableAt)}</span>`,
-      say: `free at ${spokenClock(r.availableAt)} then ${spokenDur(r.usable ?? 0)}`,
-    };
-  }
-  if (!r.hoursKnown) {
-    return {
-      html: '<span class="warn">hours not published</span>',
-      say: 'opening hours are not published for this building so Vacant cannot say when it locks',
-    };
-  }
-  const close = closeOf(r.building);
-  // 83.4% of rows end because the door locks and 16.6% because a class walks
-  // in. Those are different promises, so the smaller half is the one marked.
-  const byClass = close != null && r.nextClassAt < close;
-  return {
-    html: `till ${clock(r.usableUntil)}${byClass ? ', class' : ''}`,
-    say: `free until ${spokenClock(r.usableUntil)}${byClass ? ' when a class starts' : ''}`,
-  };
+  const p = windowPhrase(r, closeOf(r.building));
+  const warn = p.tier === 'wait' || p.tier === 'unknown';
+  return { html: warn ? `<span class="warn">${p.text}</span>` : p.text, say: p.say };
 }
 
 function seatsOf(r) {
@@ -531,18 +565,38 @@ function seatsOf(r) {
 }
 
 const WALK_ICON = '<svg class="ico" aria-hidden="true"><use href="#i-walk"/></svg>';
+const CHEV = '<svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg>';
+
+const FOOT_ACTS = `<p class="foot-acts">
+  <button type="button" class="bar-btn" data-act="recheck">Check again</button>
+  <button type="button" class="bar-btn" data-act="about">What Vacant knows</button>
+</p>`;
+
+// One sentence, said once, at the bottom where a reader lands after the rows.
+// A per-row version of this was tried and rejected: a warning repeated on 98
+// rows stops being read by row four.
+const CAVEAT = `<p class="foot">Class schedule only. Doors get locked and clubs book rooms, and a
+  class scheduled with no room recorded does not appear here at all, so a room can be in use
+  with nothing on its timeline.</p>`;
 
 function paintList() {
   const list = $('list');
+  const note = state.situation?.note
+    ? `<p class="strip">${esc(state.situation.note)}</p>`
+    : '';
 
   if (!state.results.length) {
     const next = state.soonest;
     list.innerHTML =
-      '<p class="strip">Nothing open right now.</p>' +
+      note +
+      '<h2 class="msg" id="list-h" tabindex="-1">Nothing open right now.</h2>' +
       (next
         ? `<p class="empty">Every classroom building near you is closed.
            The first one open is <b>${esc(next.name ?? next.id)}</b> at <b>${clock(next.availableAt)}</b>.</p>`
-        : `<p class="empty">No room is free for ${dur(state.needed)} today. Try a shorter time.</p>`);
+        : `<p class="empty">No room is free for ${dur(state.needed)} today. Try a shorter time.</p>`) +
+      FOOT_ACTS;
+    wireFootActs(list);
+    focusHeading($('list-h'));
     syncPaneTouch();
     return;
   }
@@ -576,6 +630,7 @@ function paintList() {
   const more = state.total - state.results.length;
 
   list.innerHTML =
+    note +
     strip +
     caveat +
     state.results
@@ -596,17 +651,26 @@ function paintList() {
       </button>`;
       })
       .join('') +
-    `<p class="foot">${more > 0 ? `<b>${more} more</b> further away. ` : ''}Class schedule only.
-       Clubs book rooms and doors get locked.</p>`;
+    (more > 0 ? `<p class="foot"><b>${more} more</b> further away.</p>` : '') +
+    CAVEAT +
+    FOOT_ACTS;
 
   for (const el of list.querySelectorAll('.row')) {
     el.onclick = () => select(Number(el.dataset.i));
   }
+  wireFootActs(list);
   markRows();
   syncPaneTouch();
 }
 
-const CHEV = '<svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg>';
+function wireFootActs(root) {
+  for (const el of root.querySelectorAll('[data-act]')) {
+    el.onclick = () => {
+      if (el.dataset.act === 'about') openAbout();
+      else refresh();
+    };
+  }
+}
 
 function markRows() {
   for (const el of $('list').querySelectorAll('.row')) {
@@ -637,7 +701,258 @@ function select(i) {
   say(`${roomLabel(r)}, ${r.walk} minute walk, shown on the map.`);
 }
 
-// ---------------------------------------------------------------- the room
+// ---------------------------------------------------------------- the chips
+
+function paintChips() {
+  for (const el of $('chips').querySelectorAll('.chip')) {
+    const on = el.dataset.min === state.duration;
+    el.setAttribute('aria-checked', String(on));
+    // Roving tabindex: one stop for the whole group, arrows move inside it.
+    el.tabIndex = on ? 0 : -1;
+  }
+  for (const el of document.querySelectorAll('#ask .opt[data-min]')) {
+    el.classList.toggle('primary', el.dataset.min === state.duration);
+  }
+}
+
+function attachChips() {
+  const chips = [...$('chips').querySelectorAll('.chip')];
+  chips.forEach((el, i) => {
+    el.onclick = () => choose(el.dataset.min);
+    el.onkeydown = (e) => {
+      const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+      if (!step) return;
+      e.preventDefault();
+      const next = chips[(i + step + chips.length) % chips.length];
+      choose(next.dataset.min);
+      next.focus();
+    };
+  });
+}
+
+// ------------------------------------------------------- the buildings screen
+
+// The answer for 9:40pm on a Thursday and for every hour of every weekend. The
+// schedule constrains roughly 943 of the 8,760 hours in a year, and outside it
+// a ranked room list is a distance sort wearing the clothes of a schedule
+// answer. The unit here is the building, because the real question is which
+// door is even unlocked.
+function paintNear(reason) {
+  const now = new Date();
+  state.day = now.getDay();
+  const groups = rankBuildings({
+    origin: state.origin,
+    buildings: state.buildings,
+    counts: state.counts,
+    hoursFor,
+    day: state.day,
+    nowMin: nowMinutes(now),
+  });
+  state.groups = groups;
+
+  const allWeek = new Set(allWeekCodes(state.hoursTerm));
+  const read = state.hours?.generated ? fmtDay(state.hours.generated) : null;
+
+  const row = (b) => {
+    const hoursText = b.closesAt == null ? 'hours unknown' : `open till ${clock(b.closesAt)}`;
+    const rooms = `${b.rooms} classroom${b.rooms === 1 ? '' : 's'}`;
+    const name = `${shortName(b.name)}, ${b.walk} minute walk, ${rooms}, ${
+      b.closesAt == null ? 'opening hours not published' : `open until ${spokenClock(b.closesAt)}`
+    }`;
+    return `<button type="button" class="b-row" data-code="${esc(b.code)}" aria-label="${esc(name)}">
+      <span class="r-name">${esc(shortName(b.name))}</span>
+      <span class="r-walk">${WALK_ICON}${b.walk} min</span>
+      <span class="r-win">${rooms}${allWeek.has(b.code) ? ' &middot; open every day' : ''}</span>
+      <span class="b-hours${b.closesAt == null ? ' unknown-h' : ''}">${hoursText}</span>
+    </button>`;
+  };
+
+  const openGroup = groups.open.length
+    ? `<p class="grp">Open now${read ? `<span class="when">Registrar hours, read ${esc(read)}</span>` : ''}</p>` +
+      groups.open.map(row).join('')
+    : '';
+  const unknownGroup = groups.unknown.length
+    ? '<p class="grp">Hours not published</p>' + groups.unknown.map(row).join('')
+    : '';
+  const closedGroup = groups.closed.length
+    ? `<p class="grp"><button type="button" class="bar-btn" data-more="closed" aria-expanded="false">
+         ${groups.closed.length} building${groups.closed.length === 1 ? ' is' : 's are'} closed now</button></p>
+       <div id="closed-list" hidden>${groups.closed.map(row).join('')}</div>`
+    : '';
+
+  $('near').innerHTML =
+    `<h2 class="msg" id="near-h" tabindex="-1">${esc(reason.head)}</h2>
+     <p class="why">${esc(reason.body)}</p>` +
+    openGroup +
+    unknownGroup +
+    (groups.open.length || groups.unknown.length
+      ? ''
+      : '<p class="empty">Nothing in the index has a coordinate to walk to.</p>') +
+    closedGroup +
+    FOOT_ACTS;
+
+  for (const el of $('near').querySelectorAll('.b-row')) {
+    el.onclick = () => selectBuilding(el.dataset.code);
+  }
+  const more = $('near').querySelector('[data-more]');
+  if (more) {
+    more.onclick = () => {
+      const box = $('closed-list');
+      box.hidden = !box.hidden;
+      more.setAttribute('aria-expanded', String(!box.hidden));
+    };
+  }
+  wireFootActs($('near'));
+  syncPaneTouch();
+}
+
+// The buildings screen lights a footprint like the ranked list does, but there
+// is no room to open behind it, so a second tap is not a promise of anything.
+function selectBuilding(code) {
+  const b = state.buildings?.[code];
+  if (!b) return;
+  const found = [...state.groups.open, ...state.groups.unknown, ...state.groups.closed].find((x) => x.code === code);
+  state.selected = { id: code, building: code, walk: found?.walk ?? null };
+  setSheet(PEEK * window.innerHeight, true);
+  frame(state.selected);
+  say(`${shortName(b.name)}, shown on the map.`);
+}
+
+// Why this screen and not a room list. The locked-door caveat lives in this
+// sentence rather than in a footer, because on this screen it is the answer
+// rather than a disclaimer under it.
+function nearReason() {
+  const s = state.situation;
+  if (s && !s.ranked) {
+    return {
+      head: s.heading,
+      body: `${s.body} These are the nearest buildings that hold classrooms, with whatever the Registrar publishes about their doors.`,
+    };
+  }
+  return {
+    head: 'Nothing is scheduled right now',
+    body: 'No class is meeting anywhere on campus at this minute, so the schedule cannot tell you what is empty. These are the nearest buildings that hold classrooms, and a building being open is not a promise that a room inside it is unlocked.',
+  };
+}
+
+// ------------------------------------------------------------- the picker
+
+// Not a consolation screen. On iOS a denied permission is terminal, there is no
+// in-app way back to the prompt, and someone at home planning tomorrow never
+// wanted a fix in the first place. What this emits is indistinguishable from a
+// GPS fix everywhere downstream.
+function paintPick() {
+  const q = state.query.trim().toLowerCase();
+  const codes = Object.keys(state.counts ?? {}).filter((c) => state.buildings?.[c]);
+
+  const entry = (code) => {
+    const b = state.buildings[code];
+    const name = shortName(b.name);
+    return { code, name, short: state.shorts?.[code] ?? null, rooms: state.counts[code] };
+  };
+  let rows = codes.map(entry);
+  if (q) {
+    // Prefix matches first, then anything containing it. No fuzzy scoring: a
+    // list of 96 does not need one, and a wrong first hit costs a tap.
+    const hit = (e) => `${e.name} ${e.short ?? ''}`.toLowerCase();
+    const starts = rows.filter((e) => e.name.toLowerCase().startsWith(q) || (e.short ?? '').toLowerCase().startsWith(q));
+    const contains = rows.filter((e) => !starts.includes(e) && hit(e).includes(q));
+    rows = [...starts, ...contains];
+  }
+  rows.sort((a, b) => (q ? 0 : a.name.localeCompare(b.name)));
+
+  const pickRow = (e) => {
+    const rooms = `${e.rooms} room${e.rooms === 1 ? '' : 's'}`;
+    const name = [e.name, e.short, rooms].filter(Boolean).join(', ');
+    return `<button type="button" class="pick-row" data-code="${esc(e.code)}" aria-label="${esc(name)}">
+      <span class="pn">${esc(e.name)}</span>
+      ${e.short ? `<span class="ps">${esc(e.short)}</span>` : ''}
+      <span class="pc">${rooms}</span>
+    </button>`;
+  };
+
+  const shortcuts = SHORTCUTS.filter((c) => state.buildings?.[c])
+    .map(
+      (c) =>
+        `<button type="button" class="bar-btn" data-code="${esc(c)}">${esc(shortName(state.buildings[c].name))}</button>`,
+    )
+    .join('');
+
+  $('pick').innerHTML =
+    '<h2 class="msg" id="pick-h" tabindex="-1">Where are you?</h2>' +
+    (q ? '' : `<div class="shortcuts">${shortcuts}</div>`) +
+    (rows.length
+      ? rows.map(pickRow).join('')
+      : `<p class="empty">No building matches ${esc(state.query)}.</p>`);
+
+  for (const el of $('pick').querySelectorAll('[data-code]')) {
+    el.onclick = () => pickBuilding(el.dataset.code);
+  }
+  // The abbreviations arrive after the first paint and repaint the whole list,
+  // which drops focus on the floor unless it is put back.
+  if (document.activeElement === document.body) focusHeading($('pick-h'));
+  syncPaneTouch();
+}
+
+function pickBuilding(code) {
+  const b = state.buildings?.[code];
+  if (!b) return;
+  const origin = {
+    lat: b.lat,
+    lon: b.lon,
+    accuracy: PICKED_ACCURACY_M,
+    source: 'picked',
+    label: shortName(b.name),
+    at: Date.now(),
+  };
+  safeSet(KEY_ORIGIN, JSON.stringify(origin));
+  useOrigin(origin, null);
+  state.query = '';
+  $('find-q').value = '';
+  // The picker replaces itself in history rather than stacking, so back still
+  // goes wherever the picker was opened from.
+  const view = state.scheduled && state.rankable ? 'list' : 'near';
+  history.replaceState({ v: view }, '', cleanUrl());
+  if (view === 'list') {
+    showList();
+    answer();
+  } else {
+    showNear();
+  }
+  say(`Showing rooms from ${origin.label}.`);
+}
+
+function clearPickedOrigin() {
+  safeDel(KEY_ORIGIN);
+  locate().then((got) => {
+    useOrigin(got.origin, got.note);
+    refresh();
+  });
+}
+
+function useOrigin(origin, note) {
+  state.origin = origin;
+  state.accuracy = origin.accuracy;
+  // The one place the app branches on where the origin came from. Nothing in
+  // ranking, the off-campus gate or the buildings screen reads it.
+  state.originIsGuess = origin.source === 'oval';
+  $('note-text').textContent = note ?? '';
+  $('note').hidden = !note;
+  $('note-pick').hidden = !note;
+  $('ask-pick').hidden = !note;
+  paintOriginBar();
+}
+
+function paintOriginBar() {
+  const picked = state.origin?.source === 'picked';
+  const label = picked ? state.origin.label : state.originIsGuess ? 'the Oval' : 'your location';
+  const where = $('origin-where');
+  where.querySelector('span').innerHTML = `from <b>${esc(label)}</b>`;
+  where.setAttribute('aria-label', `Measuring from ${label}. Pick a different building.`);
+  $('origin-clear').hidden = !picked;
+}
+
+// -------------------------------------------------------------- the room
 
 // Today's blocks for one room, session mask applied, overlaps merged but
 // back-to-back classes left as two.
@@ -739,10 +1054,20 @@ function claimFor({ rows, blocks, open, close }, nowMin, bname) {
     const later = blocks.find(([s]) => s >= nowMin);
     return {
       head: later ? `Free till ${clock(later[0])}` : 'No class in here for the rest of today',
-      sub: '',
+      sub: `Yours for ${dur(Math.max(0, (here.end ?? close) - PACKUP - nowMin))} from now`,
     };
   }
   return { head: 'Nothing free in here right now', sub: '' };
+}
+
+const rad = (deg) => (deg * Math.PI) / 180;
+
+// Great-circle initial bearing, degrees clockwise from true north.
+function bearingTo(from, to) {
+  const dLon = rad(to.lon - from.lon);
+  const y = Math.sin(dLon) * Math.cos(rad(to.lat));
+  const x = Math.cos(rad(from.lat)) * Math.sin(rad(to.lat)) - Math.sin(rad(from.lat)) * Math.cos(rad(to.lat)) * Math.cos(dLon);
+  return (((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360;
 }
 
 function roomHtml(id) {
@@ -750,7 +1075,7 @@ function roomHtml(id) {
   const b = state.buildings?.[room.b];
   const bname = shortName(b?.name ?? room.b);
   const now = new Date();
-  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const nowMin = nowMinutes(now);
   const r = state.results.find((x) => x.id === id);
 
   const tl = timelineRows(room, bname, nowMin);
@@ -779,11 +1104,24 @@ function roomHtml(id) {
              not know when the doors are unlocked. The timeline stops at the first and last class.</p>`) +
         `<ul class="tl">${tl.rows.map(rowHtml).join('')}</ul>`;
 
-  return `<h2>${esc(bname)} ${esc(room.n ?? '')}</h2>
+  const acts =
+    b && Number.isFinite(b.lat)
+      ? `<p class="acts">
+          <button type="button" id="bearing" class="bar-btn">
+            <svg class="ico" aria-hidden="true" hidden><use href="#i-arrow"/></svg>
+            <span>Point me at it</span>
+          </button>
+          <a class="bar-btn" href="geo:${b.lat},${b.lon}?q=${b.lat},${b.lon}(${encodeURIComponent(bname)})">Open in Maps</a>
+          <button type="button" class="bar-btn" data-act="about">What Vacant knows</button>
+        </p>`
+      : '';
+
+  return `<h2 id="room-h" tabindex="-1">${esc(bname)} ${esc(room.n ?? '')}</h2>
     <p class="claim">${esc(claim.head)}${claim.sub ? `<span class="sub">${esc(claim.sub)}</span>` : ''}</p>
     <p class="facts">${facts.join('')}</p>
+    ${acts}
     ${body}
-    <p class="foot">Class schedule only. Clubs book rooms and doors get locked.</p>`;
+    ${CAVEAT}`;
 }
 
 function rowHtml(row) {
@@ -798,15 +1136,220 @@ function rowHtml(row) {
   return `<li class="edge">${row.t != null ? `<span class="t">${clock(row.t)}</span>` : ''}<span>${esc(row.text)}</span></li>`;
 }
 
+// The compass needle. It stays off until it is asked for, because iOS only
+// grants orientation from inside a tap and a permission prompt nobody asked
+// for is a prompt everybody denies.
+let orientationOff = null;
+
+function attachBearing(id) {
+  const btn = $('bearing');
+  if (!btn) return;
+  const room = state.rooms.rooms[id];
+  const b = state.buildings?.[room.b];
+  const arrow = btn.querySelector('.ico');
+  const label = btn.querySelector('span');
+  const bearing = bearingTo(state.origin, b);
+  const word = COMPASS[Math.round(bearing / 45) % 8];
+  btn.setAttribute('aria-label', `${shortName(b.name)} is ${word} of you. Point the arrow live.`);
+
+  btn.onclick = async () => {
+    const ask = window.DeviceOrientationEvent?.requestPermission;
+    if (typeof ask === 'function') {
+      try {
+        if ((await ask.call(window.DeviceOrientationEvent)) !== 'granted') {
+          label.textContent = `${word}, no compass`;
+          return;
+        }
+      } catch {
+        label.textContent = `${word}, no compass`;
+        return;
+      }
+    }
+    if (!('DeviceOrientationEvent' in window)) {
+      label.textContent = `${word}, no compass`;
+      return;
+    }
+    const onTurn = (e) => {
+      // webkitCompassHeading is already degrees clockwise from true north.
+      // alpha counts the other way, so it has to be flipped before it means
+      // the same thing.
+      const heading = Number.isFinite(e.webkitCompassHeading)
+        ? e.webkitCompassHeading
+        : Number.isFinite(e.alpha)
+          ? 360 - e.alpha
+          : null;
+      if (heading == null) return;
+      arrow.hidden = false;
+      arrow.style.transform = `rotate(${(bearing - heading + 360) % 360}deg)`;
+      label.textContent = word;
+    };
+    window.addEventListener('deviceorientationabsolute', onTurn);
+    window.addEventListener('deviceorientation', onTurn);
+    orientationOff = () => {
+      window.removeEventListener('deviceorientationabsolute', onTurn);
+      window.removeEventListener('deviceorientation', onTurn);
+      orientationOff = null;
+    };
+    label.textContent = word;
+  };
+}
+
+// The complaint arrives after the walk, after the app was backgrounded and
+// possibly killed, so the room the user tapped has to outlive the process.
+function rememberPick(id) {
+  const room = state.rooms?.rooms?.[id];
+  if (!room) return;
+  const r = state.results.find((x) => x.id === id);
+  const busy = blocksToday(room);
+  const active = activeSessions(state.rooms.sessions, isoDate(new Date()));
+  // Which session's class closes the gap. That is the number a maintainer needs
+  // to tell a stale session mask from a wrong gap.
+  const closer = (room.busy ?? []).find(
+    (b) => Number(b[0]) === state.day && Number(b[1]) === r?.nextClassAt && (!active || active[b[3]] !== false),
+  );
+  // 83.4% of gaps end at the door rather than at a class, and "sess ?" reads as
+  // a lookup that failed rather than as the answer.
+  const session = closer ? closer[3] : r && r.nextClassAt === closeOf(room.b) ? 'door' : null;
+  safeSet(
+    KEY_PICK,
+    JSON.stringify({
+      id,
+      type: room.type ?? null,
+      cap: room.cap ?? null,
+      building: room.b,
+      metres: r?.metres ?? null,
+      walk: r?.walk ?? null,
+      gapStart: r?.availableAt ?? null,
+      gapEnd: r?.nextClassAt ?? null,
+      session,
+      usable: r?.usable ?? null,
+      busy,
+      dayName: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][state.day],
+      at: Date.now(),
+    }),
+  );
+}
+
+// ------------------------------------------------------------- diagnostics
+
+async function cacheNames() {
+  try {
+    return await caches.keys();
+  } catch {
+    return [];
+  }
+}
+
+async function paintAbout() {
+  const names = await cacheNames();
+  const shells = names.filter((n) => n.startsWith('vacant-shell-'));
+  // A newer cache sitting beside an older controller is the "you are running
+  // last week's code" state, and it is worth seeing.
+  const build = shells.length === 1 ? shells[0].replace('vacant-shell-', '') : shells.length ? 'more than one' : 'unknown';
+  const controlling = shells.length === 1 && Boolean(navigator.serviceWorker?.controller);
+
+  let pick = null;
+  try {
+    pick = JSON.parse(safeGet(KEY_PICK) ?? 'null');
+  } catch {
+    pick = null;
+  }
+
+  const now = new Date();
+  const stale = staleness({ now, current: state.current });
+  const block = diagnosticsBlock({
+    build,
+    controlling,
+    term: state.current?.term,
+    termName: state.current?.termName,
+    generated: state.current?.generated,
+    ageDays: stale.days,
+    stateKind: state.situation?.kind ?? '?',
+    rooms: Object.keys(state.rooms?.rooms ?? {}).length,
+    buildings: Object.keys(state.buildings ?? {}).length,
+    sessions: (state.rooms?.sessions ?? []).length,
+    originSource: state.origin?.source,
+    accuracy: state.accuracy,
+    originAgeS: state.origin?.at ? Math.round((Date.now() - state.origin.at) / 1000) : null,
+    lat: state.origin?.lat,
+    lon: state.origin?.lon,
+    includeLocation: state.includeLocation,
+    hoursSource: state.hoursSlug,
+    hoursGenerated: state.hours?.generated,
+    clock: `${isoDate(now)} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+    zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    caches: names,
+    room: pick,
+    busy: pick?.busy,
+    dayName: pick?.dayName,
+  });
+
+  const issue =
+    'https://github.com/EnesYilmazcode/Vacant/issues/new?template=wrong-answer.yml&labels=wrong-answer&diagnostics=' +
+    encodeURIComponent(block);
+
+  $('about').innerHTML = `
+    <h2 class="msg" id="about-h" tabindex="-1">What Vacant knows</h2>
+    <p class="why">Everything on this screen came out of memory and the cache. Nothing left the
+      phone to build it, and nothing leaves it now unless you tap one of the buttons.</p>
+    <pre class="diag" id="diag">${esc(block)}</pre>
+    <label class="optin"><input type="checkbox" id="loc-optin" ${state.includeLocation ? 'checked' : ''}>
+      Include my coordinates, rounded to four decimals</label>
+    <p class="acts">
+      <button type="button" class="bar-btn" id="copy">Copy</button>
+      <a class="bar-btn" id="report" href="${esc(issue)}" target="_blank" rel="noopener">This was wrong</a>
+    </p>
+    <p class="foot">A URL is not private. It lands in your address bar, your history and GitHub's
+      logs, so your coordinates stay out of it until you tick the box.</p>`;
+
+  $('loc-optin').onchange = (e) => {
+    state.includeLocation = e.target.checked;
+    paintAbout();
+  };
+  $('copy').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(block);
+      $('copy').textContent = 'Copied';
+    } catch {
+      // Clipboard access is denied outright in a few standalone iOS builds, so
+      // the fallback is to select the block and say so rather than fail quietly.
+      const pre = $('diag');
+      pre.classList.add('picked');
+      const range = document.createRange();
+      range.selectNodeContents(pre);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      $('copy').textContent = 'Select this text and copy';
+    }
+  };
+  syncPaneTouch();
+  focusHeading($('about-h'));
+}
+
 // ---------------------------------------------------------------- screens
+
+function showPane(name) {
+  if (state.screen === 'room' && name !== 'room' && orientationOff) orientationOff();
+  for (const id of PANES) $(id).hidden = id !== name;
+  // The chips belong to the ranked list. Leaving them on the room screen means
+  // a chip tap has to unwind a history entry to get back to the list it edits.
+  $('chips').hidden = name !== 'list';
+  $('find').hidden = name !== 'pick';
+  $('origin').hidden = name !== 'list' && name !== 'near';
+  $('ask').hidden = true;
+  $('sheet').hidden = false;
+  $('back').hidden = false;
+  state.screen = name;
+  syncPaneTouch();
+}
 
 function showAsk() {
   state.screen = 'ask';
   $('ask').hidden = false;
   $('sheet').hidden = true;
   $('back').hidden = true;
-  $('room').hidden = true;
-  $('list').hidden = false;
+  for (const id of PANES) $(id).hidden = id !== 'list';
   state.settled = false;
   state.selected = null;
   state.listScroll = 0;
@@ -816,41 +1359,65 @@ function showAsk() {
   sheetH = 0;
   $('map').classList.remove('settled');
   flyoverStart = performance.now();
+  if (orientationOff) orientationOff();
+}
+
+function sheetHeight(fraction) {
+  if (!sheetH) setSheet(fraction * window.innerHeight, false);
+  else setSheet(sheetH, false);
 }
 
 function showList() {
-  state.screen = 'list';
-  $('ask').hidden = true;
-  $('sheet').hidden = false;
-  $('room').hidden = true;
-  $('list').hidden = false;
-  $('back').hidden = false;
+  showPane('list');
   $('back').setAttribute('aria-label', 'Back to the question');
   $('list').scrollTop = state.listScroll;
-  syncPaneTouch();
-  if (!sheetH) setSheet(PEEK * window.innerHeight, false);
-  else setSheet(sheetH, false);
+  sheetHeight(PEEK);
+}
+
+function showNear() {
+  state.listScroll = 0;
+  showPane('near');
+  $('back').setAttribute('aria-label', 'Back to the question');
+  paintNear(nearReason());
+  $('near').scrollTop = 0;
+  sheetHeight(PEEK);
+  focusHeading($('near-h'));
+  settle();
+}
+
+function showPick() {
+  loadShorts();
+  showPane('pick');
+  $('back').setAttribute('aria-label', 'Back without picking a building');
+  paintPick();
+  $('pick').scrollTop = 0;
+  setSheet(FULL * window.innerHeight, true);
+  focusHeading($('pick-h'));
+}
+
+function showAbout() {
+  showPane('about');
+  $('back').setAttribute('aria-label', 'Back');
+  setSheet(FULL * window.innerHeight, true);
+  paintAbout();
 }
 
 function showRoom(id) {
   const room = state.rooms?.rooms?.[id];
   if (!room) return showList();
+  if (!$('list').hidden) state.listScroll = $('list').scrollTop;
   $('room').innerHTML = roomHtml(id);
-  state.listScroll = $('list').scrollTop;
-  $('ask').hidden = true;
-  $('sheet').hidden = false;
   // Both panes stay in the DOM. That is the whole scroll-restoration
   // mechanism: #list keeps its scrollTop because it was never destroyed.
-  $('list').hidden = true;
-  $('room').hidden = false;
+  showPane('room');
   $('room').scrollTop = 0;
-  syncPaneTouch();
-  $('back').hidden = false;
   $('back').setAttribute('aria-label', 'Back to the room list');
-  state.screen = 'room';
 
   const r = state.results.find((x) => x.id === id);
   state.selected = r ?? { id, building: room.b, walk: null };
+  attachBearing(id);
+  for (const el of $('room').querySelectorAll('[data-act]')) el.onclick = () => openAbout();
+  focusHeading($('room-h'));
   // The sheet does not grow for this screen. Half of all rooms show their whole
   // day inside the peek height, and the three extra rows a taller sheet buys
   // are worth less than the highlight they would hide.
@@ -867,93 +1434,201 @@ function toAsk() {
 
 const cleanUrl = () => location.pathname + location.hash;
 
-function choose(minutes) {
+function choose(min) {
   // Belt and braces. The controls carry `disabled` until boot() finishes, but a
   // caller reaching here early would read state.rooms as null and throw.
   if (!state.ready) return;
-  state.needed = minutes;
-  safeSet(KEY, String(minutes));
+  state.duration = String(min);
+  safeSet(KEY_DURATION, state.duration);
+  paintChips();
+  if (!state.rankable) return;
+  if (!state.scheduled) {
+    if (state.screen !== 'near') {
+      history.pushState({ v: 'near' }, '', cleanUrl());
+      showNear();
+    }
+    return;
+  }
+  if (state.screen === 'ask') history.pushState({ v: 'list' }, '', cleanUrl());
   showList();
   answer();
-  history.pushState({ v: 'list' }, '', cleanUrl());
 }
 
 function openRoom(id) {
+  rememberPick(id);
   history.pushState({ v: 'room', room: id }, '', `?room=${encodeURIComponent(id)}`);
   showRoom(id);
 }
 
+function openPick() {
+  history.pushState({ v: 'pick' }, '', cleanUrl());
+  showPick();
+}
+
+function openAbout() {
+  history.pushState({ v: 'about' }, '', cleanUrl());
+  showAbout();
+}
+
+function openNear() {
+  history.pushState({ v: 'near' }, '', cleanUrl());
+  showNear();
+}
+
+// Recompute. Never on a timer: a list that re-sorts under a thumb loses the row
+// somebody was reaching for. This fires when the app comes back to the
+// foreground, when the duration changes, and when the user asks.
+function refresh() {
+  if (!state.rooms) return;
+  const now = new Date();
+  state.situation = resolveState({ now, current: state.current, index: state.rooms });
+  state.rankable = state.situation.ranked;
+  state.scheduled = inScheduledHours({ now, current: state.current, index: state.rooms });
+  paintGate();
+  if (!state.rankable) {
+    if (state.screen !== 'near' && state.screen !== 'about') showAsk();
+    return;
+  }
+  if (!state.scheduled) {
+    if (state.screen === 'list' || state.screen === 'room') showNear();
+    else if (state.screen === 'near') paintNear(nearReason());
+    return;
+  }
+  if (state.screen === 'near') showList();
+  answer();
+}
+
+// The question screen has three shapes, and which one it wears is decided
+// before any room is ranked.
+function paintGate() {
+  const s = state.situation;
+  const stale = staleness({ now: new Date(), current: state.current });
+  $('stale').hidden = stale.level === 'silent' || stale.level === 'gated';
+  $('stale').textContent = stale.text;
+  $('stale').classList.toggle('banner', stale.level === 'banner');
+
+  if (!s || s.ranked) {
+    $('gate').hidden = true;
+    $('ask-q').hidden = false;
+    if (!state.scheduled && state.ready) {
+      $('ask-q').hidden = true;
+      $('gate-h').textContent = 'Nothing is scheduled right now';
+      $('gate-p').textContent =
+        'No class is meeting anywhere on campus at this minute, so the schedule cannot tell you what is empty.';
+      $('gate-d').hidden = true;
+      $('gate-go').hidden = false;
+      $('gate-go').textContent = 'Show nearest buildings';
+      const fresh = $('gate').hidden;
+      $('gate').hidden = false;
+      if (fresh) focusHeading($('gate-h'));
+    }
+    return;
+  }
+
+  $('ask-q').hidden = true;
+  $('gate-h').textContent = s.heading;
+  $('gate-p').textContent = s.body;
+  $('gate-d').textContent = s.detail ?? '';
+  $('gate-d').hidden = !s.detail;
+  $('gate-go').hidden = !s.action;
+  if (s.action) $('gate-go').textContent = s.action.label;
+  const fresh = $('gate').hidden;
+  $('gate').hidden = false;
+  if (fresh) focusHeading($('gate-h'));
+}
+
 // ---------------------------------------------------------------- geolocation
 
+// A deliberate choice does not expire the way a sensor reading does, so a
+// picked building is read back before geolocation is ever asked.
+function pickedOrigin() {
+  try {
+    const raw = JSON.parse(safeGet(KEY_ORIGIN) ?? 'null');
+    if (raw && Number.isFinite(raw.lat) && Number.isFinite(raw.lon)) {
+      return { accuracy: PICKED_ACCURACY_M, source: 'picked', ...raw };
+    }
+  } catch {
+    /* a corrupt key is the same as no key */
+  }
+  return null;
+}
+
 function locate() {
-  const oval = { lon: -83.013, lat: 39.9995 };
+  const picked = pickedOrigin();
+  if (picked) return Promise.resolve({ origin: picked, note: null });
+
+  const oval = { lat: 39.9995, lon: -83.013, accuracy: null, source: 'oval', label: 'the Oval', at: Date.now() };
   return new Promise((resolve) => {
     let done = false;
-    const finish = (origin, accuracy, guess, note) => {
+    const finish = (origin, note) => {
       if (done) return;
       done = true;
-      resolve({ origin, accuracy, guess, note });
+      resolve({ origin, note });
     };
     // The wall-clock watchdog. iOS documents its own timeout option as
     // unreliable in a standalone window.
-    const watchdog = setTimeout(
-      () => finish(oval, null, true, 'Location timed out, showing from the Oval'),
-      FIX_TIMEOUT_MS,
-    );
+    const watchdog = setTimeout(() => finish(oval, 'Location timed out, showing from the Oval'), FIX_TIMEOUT_MS);
     if (!navigator.geolocation) {
       clearTimeout(watchdog);
-      return finish(oval, null, true, 'No location on this device, showing from the Oval');
+      return finish(oval, 'No location on this device, showing from the Oval');
     }
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
-        clearTimeout(watchdog);
-        const here = { lon: p.coords.longitude, lat: p.coords.latitude };
-        const far = Math.hypot((here.lon - oval.lon) * 85, (here.lat - oval.lat) * 111) > OFF_CAMPUS_KM;
-        if (far) return finish(oval, null, true, 'You are off campus, showing from the Oval');
-        finish(here, p.coords.accuracy, false, null);
-      },
-      (err) => {
-        clearTimeout(watchdog);
-        const why =
-          err.code === 1
-            ? 'Location is off'
-            : err.code === 2
-              ? 'Location unavailable'
-              : 'Location timed out';
-        finish(oval, null, true, `${why}, showing from the Oval`);
-      },
-      { enableHighAccuracy: false, timeout: FIX_TIMEOUT_MS, maximumAge: 60000 },
-    );
+    const fail = (why) => {
+      clearTimeout(watchdog);
+      finish(oval, `${why}, showing from the Oval`);
+    };
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (p) => {
+          clearTimeout(watchdog);
+          const here = { lon: p.coords.longitude, lat: p.coords.latitude };
+          const far = Math.hypot((here.lon - oval.lon) * 85, (here.lat - oval.lat) * 111) > OFF_CAMPUS_KM;
+          if (far) return finish(oval, 'You are off campus, showing from the Oval');
+          finish(
+            { ...here, accuracy: p.coords.accuracy, source: 'gps', label: null, at: Date.now() },
+            null,
+          );
+        },
+        (err) =>
+          fail(err.code === 1 ? 'Location is off' : err.code === 2 ? 'Location unavailable' : 'Location timed out'),
+        { enableHighAccuracy: false, timeout: FIX_TIMEOUT_MS, maximumAge: 60000 },
+      );
+    } catch {
+      // A position source that throws on call is not a state the spec allows,
+      // and it happens anyway inside locked-down webviews.
+      fail('Location is unavailable');
+    }
   });
 }
 
 // ---------------------------------------------------------------- boot
 
 // The term label used to sit in the corner of the result list. It says more
-// here, before any answer exists, and outside the published instruction window
-// it stops being a label and becomes a refusal.
+// here, before any answer exists.
 function provenance(current) {
   const term = current?.termName;
   const read = current?.generated ? fmtDay(current.generated.slice(0, 10)) : null;
   if (!term) return;
   $('prov').innerHTML = `<b>${esc(term)}</b>${read ? `, schedule read ${esc(read)}` : ''}`;
   $('prov').hidden = false;
+}
 
-  const [from, to] = current.instruction ?? [];
-  const today = isoDate(new Date());
-  if (!from || !to || (today >= from && today <= to)) return;
-
-  // A label lets a wrong-term answer render. A gate does not.
-  const early = today < from;
-  $('gate-h').textContent = early
-    ? `${term} has not started yet`
-    : `${term} ended on ${fmtDay(to)}`;
-  $('gate-p').textContent = early
-    ? `Classes run ${fmtDay(from)} to ${fmtDay(to)}. Until then the schedule says nothing about which rooms are empty, so Vacant is not answering.`
-    : `Ohio State has not published a newer schedule yet. Vacant will not rank rooms against a term that is over.`;
-  $('gate').hidden = false;
-  for (const el of document.querySelectorAll('#ask .opts, #ask .until')) el.hidden = true;
-  return true;
+// The abbreviation on the door lives in the full building table, which is 167 KB
+// and has nothing else the app wants. It is fetched only when the picker opens,
+// so it never sits on the path to a first answer, and the picker works without
+// it: the rows are already tappable, the codes just arrive late.
+let shortsPending = null;
+function loadShorts() {
+  if (state.shorts || shortsPending) return shortsPending;
+  shortsPending = fetch(`${BASE}data/buildings.json`)
+    .then((r) => r.json())
+    .then((d) => {
+      state.shorts = Object.fromEntries(Object.entries(d.buildings).map(([code, b]) => [code, b.short]));
+      if (state.screen === 'pick') paintPick();
+    })
+    .catch(() => {
+      /* the picker keeps working, without the two-letter codes */
+    });
+  return shortsPending;
 }
 
 async function boot() {
@@ -983,34 +1658,38 @@ async function boot() {
 
   const current = await json('current.json');
   state.current = current;
-  const gated = provenance(current);
+  provenance(current);
 
   const [rooms, buildings, hours, located] = await Promise.all([
     fetch(`${BASE}${current.rooms}`).then((r) => r.json()),
     fetch(`${BASE}${current.buildings}`).then((r) => r.json()).then((d) => d.buildings),
-    json('buildings-hours.json'),
+    json('buildings-hours.json').catch(() => null),
     fix,
   ]);
   state.rooms = rooms;
   state.buildings = buildings;
-  state.hoursTerm = pickHoursTerm(hours, current);
-  state.origin = located.origin;
-  state.accuracy = located.accuracy;
-  state.originIsGuess = located.guess;
-  if (located.note) {
-    $('note').textContent = located.note;
-    $('note').hidden = false;
-  }
+  state.counts = roomsPerBuilding(rooms);
+  state.hours = hours;
+  const [slug, table] = pickHoursTerm(hours, current);
+  state.hoursSlug = slug;
+  state.hoursTerm = table;
+  useOrigin(located.origin, located.note);
 
-  if (gated) return;
+  const now = new Date();
+  state.situation = resolveState({ now, current, index: rooms });
+  state.rankable = state.situation.ranked;
+  state.scheduled = inScheduledHours({ now, current, index: rooms });
+
   state.ready = true;
   for (const el of document.querySelectorAll('#ask [disabled]')) el.disabled = false;
   $('ask').classList.add('ready');
+  paintChips();
+  paintGate();
   performance.mark('vacant:ready');
 
   // A shared link opens on the room it names, with the list one tap behind it.
   const wanted = new URLSearchParams(location.search).get('room');
-  if (wanted && rooms.rooms[wanted]) {
+  if (wanted && rooms.rooms[wanted] && state.rankable) {
     showList();
     answer();
     history.replaceState({ v: 'list' }, '', cleanUrl());
@@ -1019,22 +1698,38 @@ async function boot() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  for (const b of document.querySelectorAll('[data-min]')) {
-    b.onclick = () => choose(Number(b.dataset.min));
+  for (const b of document.querySelectorAll('#ask [data-min]')) {
+    b.onclick = () => choose(b.dataset.min);
   }
-  $('until').onchange = (e) => {
-    const [h, m] = e.target.value.split(':').map(Number);
-    const now = new Date();
-    const mins = h * 60 + m - (now.getHours() * 60 + now.getMinutes());
-    if (mins > 0) choose(mins);
-  };
+  attachChips();
   $('back').onclick = () => history.back();
+  $('gate-go').onclick = () => openNear();
+  $('ask-pick').onclick = () => openPick();
+  $('note-pick').onclick = () => openPick();
+  $('origin-where').onclick = () => openPick();
+  $('origin-clear').onclick = () => clearPickedOrigin();
+  $('find').onsubmit = (e) => e.preventDefault();
+  $('find-q').oninput = (e) => {
+    state.query = e.target.value;
+    paintPick();
+  };
 
   window.addEventListener('popstate', (e) => {
     const v = e.state?.v;
     if (v === 'room') showRoom(e.state.room);
     else if (v === 'list') showList();
+    else if (v === 'near') showNear();
+    else if (v === 'pick') showPick();
+    else if (v === 'about') showAbout();
     else showAsk();
+  });
+
+  // Coming back to the foreground is the one moment the answer on screen is
+  // certainly stale: the walk happened, the class started, and it may not even
+  // be the same day.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (state.screen === 'list' || state.screen === 'near') refresh();
   });
 
   attachSheet();
@@ -1058,7 +1753,7 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   boot().catch(() => {
-    $('note').textContent = 'Could not load the schedule. Check your connection and reload.';
+    $('note-text').textContent = 'Could not load the schedule. Check your connection and reload.';
     $('note').hidden = false;
   });
 });

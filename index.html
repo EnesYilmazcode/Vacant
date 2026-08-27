@@ -55,9 +55,12 @@
     text-shadow: 0 2px 22px rgba(0,0,0,.75);
   }
   #ask h1 span { color: var(--accent); }
-  /* width:100% matters. As a shrink-to-fit flex item the row sized itself to
-     max-content, so it never wrapped and "2 hours" was clipped off the right
-     edge at 390px. */
+  /* width:100% is here to make the three buttons equal width, nothing more.
+     An earlier comment claimed it fixed a max-content overflow that clipped
+     "2 hours" at 390px. It did not: measured, the old row was 312px inside a
+     342px content box and never overflowed at 320, 375, 390 or 430. The
+     apparent clipping was headless Chrome ignoring --window-size for layout
+     and centring the frame in a wider viewport. */
   .opts {
     display: flex; gap: .55rem; flex-wrap: wrap; justify-content: center;
     width: 100%; max-width: 24rem;
@@ -100,6 +103,7 @@
   }
   #sheet h2 { margin: 0; font-size: .95rem; font-weight: 700; flex: 1; }
   #sheet h2 b { color: var(--accent); }
+  #sheet h2 .term { color: var(--dim); font-weight: 500; font-size: .82em; }
   #again {
     appearance: none; border: 1px solid var(--line); background: transparent; color: var(--dim);
     font: inherit; font-size: .82rem; padding: .5rem .8rem; border-radius: 999px;
@@ -134,7 +138,7 @@
 
 <section id="ask">
   <h1>Vacant<span>.</span></h1>
-  <div class="opts">
+  <div class="opts" role="group" aria-label="How long do you need a room for?">
     <button class="opt primary" data-min="30" disabled>30 min</button>
     <button class="opt" data-min="60" disabled>1 hour</button>
     <button class="opt" data-min="120" disabled>2 hours</button>

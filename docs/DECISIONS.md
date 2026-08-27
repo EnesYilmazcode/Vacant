@@ -781,6 +781,41 @@ review had caught:
    and this page uses `addEventListener`. The "schedule updated" bar had never
    once appeared.
 
+**Found by a second pass over the same code.** Four more, none of them visible
+in a browser until something was deliberately broken:
+
+1. `pickTier()` called a cache holding the pointer and the rooms file tier 1, but
+   `boot()` also awaits the buildings file and the Registrar's hours in the same
+   `Promise.all`. The worker's warm skips any file that came back non-ok, so one
+   503 on `buildings-hours.json` left three disabled duration buttons, a line of
+   grey text and no Try again anywhere. The tier now tests every file the answer
+   is built from, and `campus.json` deliberately is not one of them.
+2. The probe that decides whether there is a network asks for the term pointer
+   with `cache: 'no-store'`, and `networkFirst` was answering it out of the data
+   cache. Measured with the server killed: 200 back, and `reachable()` reported a
+   working network. The offline card had only ever rendered on a cache with no
+   pointer in it at all.
+3. The install hint and the refresh notice were both `position: fixed; bottom: 0;
+   z-index: 4`. With both up the refresh bar covered all but 12px of the hint and
+   `document.elementFromPoint` at the centre of the hint's own 44px dismiss X
+   returned an element inside the refresh bar. `--bar-h` carried the newest bar
+   only, so the list padding shrank from 96px to 84px while 146px of it was
+   covered. They share one fixed rail now and stack: hint at y 706, refresh at y
+   785, both dismiss buttons answering taps.
+4. `activate` deleted every CacheStorage cache on the origin that was not one of
+   Vacant's two. CacheStorage is per origin, not per path, and
+   `enesyilmazcode.github.io` also hosts Finder and the portfolio. Measured: one
+   Vacant deploy took `finder-shell-v3` and `portfolio-v1` with it. The
+   localStorage keys had been namespaced for this; the cache names had not.
+
+**Geolocation stays in `js/app.js`.** Issue #23 asked the cold start to call
+`getPosition()` in the same tick as the data fetch. `boot()` already does, ahead
+of every `await` and collected in the same `Promise.all`, so a second caller in
+`js/firstrun.js` would only prompt twice on the one visit the card exists for.
+Measured on a cold load at 393x852: geolocation at 60 ms, the first fetch at
+60 ms, the first response back at 71 ms. A test holds the order, which is what
+the criterion was really asking for.
+
 **`navigator.onLine` decides which tier to start in and is never allowed to
 decide that the network works.** Measured on this box: with Chrome emulating an
 offline page, `navigator.onLine` stayed `true` while every request refused. It

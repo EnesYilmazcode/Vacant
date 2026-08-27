@@ -12,8 +12,9 @@ never a link inside a button.
 
 Name order is identity, distance, window, size, caveat:
 
-> "Hagerty Hall 050, 2 minute walk, free till 1:55 pm, 40 seats. Class schedule
-> only, the door may be locked."
+> "Hagerty Hall 050, 2 minute walk, free until 1:45 pm, which is 10 minutes
+> before the next class at 1:55 pm, 40 seats. Class schedule only, the door may
+> be locked."
 
 Visually the same row says `2 min`, `free till 1:55p`, `40 seats`. Glyphs on
 screen, words in the accessible name. `7:50p` reads as "7:50 pm" and `2h05`
@@ -39,6 +40,12 @@ Four phrases and no fifth. Each one is a different promise:
 two lines, so the accessible name carries it instead: "no class in it for the
 rest of today, and the building locks at 9:30 pm".
 
+The glyphs say `free till 1:45p` and the room screen for the same room says
+`Free till 1:55pm`, because one has the packing buffer taken off and the other
+is the class time. That gap is why the spoken form names both numbers and the
+minutes between them. It read "free until 1:45 pm when a class starts" once,
+which states a cause the data contradicts: nothing starts at 1:45.
+
 There is no branch that prints a duration for a building with no published
 hours. That path once printed `9h44` by capping an unknown window at midnight
 and calling the remainder free.
@@ -46,6 +53,25 @@ and calling the remainder free.
 `facilityCapacity === 0` is the index's sentinel for unknown and 44 of 871 rooms
 carry it. It renders `seats unknown` and reads as "seat count not published".
 Never `0 seats`.
+
+## The building row
+
+The buildings screen carries a door instead of a window, and it has five
+phrases, because five things can be true of a door and only one of them is an
+absence:
+
+| phrase | what it means |
+| --- | --- |
+| `open till 11:00pm` | the Registrar publishes today's hours and we are inside them |
+| `opens 7:00am` | published, and today's window has not started |
+| `locked 6:00pm` | published, and today's window has passed |
+| `closed today` | the Registrar publishes this building as shut all day |
+| `hours unknown` | nobody publishes this building's doors |
+
+Only the last one takes the warning colour, because only the last one is a gap
+in what we know. 43 of the 47 buildings in the Registrar pool publish at least
+one day as closed, so on a Saturday `closed today` is most of the closed group,
+and calling it unknown throws away the only published fact on the screen.
 
 ## Live regions
 
@@ -72,9 +98,24 @@ the picker rows and the icon-only clear button. Icon-only controls carry a real
 
 The room name is the one field a user carries while walking, so it never
 truncates. At large text the row reflows: the name wraps freely, the walk time
-drops below it, and the window and seat count stack. That reflow is a container
-query in `em`, not a media query, because `rem` inside a media query resolves
-against 16px forever and the reflow would never fire.
+drops below it, and the window and seat count stack. The building row and the
+picker row do the same thing. That reflow is a container query in `em`, not a
+media query, because `rem` inside a media query resolves against 16px forever
+and the reflow would never fire.
+
+A container query carries no specificity of its own, so a plain rule further
+down the sheet beats one inside the query. The building row was given the
+container name and then had no rule inside the query at all: measured at 393px
+with the root at 53px, all 53 rows computed a 0px name column against a 342px
+walk column and the pane scrolled sideways at 454 against 393. A test asserts
+that no plain rule for a selector in a container block is declared below that
+block.
+
+Nothing on any screen may sit above the scroll origin. `justify-content: center`
+on a scrolling column does exactly that once the content stops fitting: at 393px
+with the root at 53px the question screen's 30 minute button sat at top -644,
+and `scrollTop`, `scrollIntoView` and Tab all left it there. Centring is `safe`,
+which falls back to the start edge at the moment it stops being reachable.
 
 A column layout with four fields on one line was tried and rejected. At 390px it
 forces every field to about 11 characters, which truncates

@@ -772,3 +772,103 @@ recoverable, which is when #33 gets reopened.
 rooms, 12,168 busy blocks and 1,026,283 busy minutes, identical before and
 after. Rebuilding Summer 1264 from the archive turns DL0280 from 0 busy blocks
 into 28, four slots on seven days, and touches no other room.
+
+---
+
+## 2026-08-27  The room safety filter, and what `ga: false` means ([#9](https://github.com/EnesYilmazcode/Vacant/issues/9))
+
+**Decided.** Two sources, one filter and one flag. The room's own `facilityType`
+decides whether the room ships at all, from an allow list in
+`scripts/lib/room-safety.mjs`. The Registrar's general assignment list decides
+nothing; it rides along as `ga: true|false` so the ranking can prefer a centrally
+scheduled room without hiding a departmental one.
+
+**Measured on the full Autumn 2026 harvest.** The research sampled 633 rooms; the
+harvest has 871, so every number below is larger than the issue's estimate and
+these are the real ones.
+
+```
+                   rooms  buildings  busy minutes
+before the filter    871         96     1,026,283
+shown                486         70       651,663
+secondary             95         45        57,185
+dropped by type      250         58       280,129   27.3% of the term's busy time
+dropped, restricted   40          8
+shipped              581         78       708,848
+```
+
+**The three Wooster rooms cost nothing to name and are named anyway.** `WSB300`,
+`WAB0130` and `SY0203` report campus Columbus and location CS-COLMBUS while
+sitting 126 km away. All three resolve to buildings 8002, 549 and 410, none of
+which is in `data/buildings.json`, so the funnel's building join already dropped
+them before the filter ran and `OFF_CAMPUS` catches zero rooms today. It stays,
+because the join that saves us is a side effect of a geocoding radius and this is
+the statement of intent.
+
+**The parked decision in BACKLOG.md is implemented as written.** A room that
+passes the type filter and is absent from the Registrar list ships, ranked below
+general assignment rooms, carrying `ga: false`. **255 of the 581 shipped rooms are
+in that state, 43.9%.** Hiding them would delete nearly half the inventory,
+including most of Enarson and Hamilton. They are also the rooms most likely to be
+departmentally controlled, which is what the flag is for. The app ranks on it; it
+never filters on it. Reversing this needs a ranking change, not a rebuild.
+
+**What the app does with the flag, so it is written down before the result screen
+renders it.** `ga: true` ranks above `ga: false` at equal walking distance and
+equal free time. `ga: false` gets a one-word label on the row, not a paragraph,
+and never a hedge like "usually open". Neither value is ever a reason to drop a
+room or to claim anything about the door.
+
+**All 327 general assignment rooms appear in the harvest.** The research's "69 of
+them never appeared in any sample" was an artifact of sampling 40 subjects. In
+the full harvest the number is 0. That kills one of the two arguments for the
+multi-term union in #30 before the spike starts.
+
+**One room where the two sources point opposite ways.** `CM0100`, Campbell Hall
+100, is on the Registrar's Autumn 2026 general assignment list and reports
+`facilityType: 5L`, which the allow list hides. It stays hidden this term. Ranking
+GA membership over the type table would open the whole hidden set to any room the
+Registrar happens to list, and 5L's other room is Fisher Hall 700 at 9 seats. The
+build prints the conflict on every run so it cannot go quiet, and it is the
+concrete case in `docs/registrar-room-type-key-email.md`.
+
+**The allow list does not need a per-term refresh, and this was measured rather
+than assumed.** Diffing `facilityType`, `facilityCapacity`, `buildingCode` and
+`facilityGroup` across 1262, 1264 and 1268 for the 798 `facilityId` values present
+in two or more terms:
+
+```
+type changed across terms:  0
+cap changed across terms:   0
+buildingCode changed:       0
+facilityGroup changed:      0
+```
+
+Zero, on every field, over three terms and 16 months. The facility record is
+stable and a room re-typed after a renovation has not happened yet. Re-run the
+diff when a fourth term lands; do not schedule it.
+
+**One new code the research never saw.** `6E`, one room, Hagerty Hall 335. It is
+hidden, like everything undecoded, and it is listed in `KNOWN_HIDDEN` so the
+build's "new facilityType" line stays silent until something genuinely new turns
+up.
+
+**Dropping a room can strand a session.** Autumn 2026's 7W1 window 2026-08-24 to
+2026-10-09 belongs entirely to nine LAW sections in Drinko Hall, which is a
+restricted building, so after the filter no busy tuple pointed at it. Sessions
+with no tuple are now pruned and the rest renumbered: 10 sessions became 7. This
+matters because `instruction` is min and max over the session list, so a stranded
+session stretches the term the app thinks it is in.
+
+**The map keeps buildings the index no longer ships.** 15 of `campus.json`'s 86
+keyed footprints now host classes only in rooms the filter refuses: the Adventure
+Recreation Center's classes are all in a climbing wall, Ohio Stadium's in a
+meeting room, Drinko's in the law school. They stay drawn, because the map is
+context and re-anchoring its bounding box on 78 buildings instead of 96 would move
+every coordinate in a file the app already renders. `buildings.test.mjs` was
+changed to assert what actually matters: a keyed code is a real building, and a
+shipped room inside the map has a footprint to point at.
+
+**Decided against dropping a room for `facilityCapacity === 0`.** The field has no
+null: 0 means unknown and 998 means online. 32 real rooms report 0, seven of them
+ordinary Campbell Hall classrooms that would silently vanish.

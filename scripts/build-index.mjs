@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 import { isRealRoom, isUnplaceable, newCounter, formatFunnel, toMinutes } from './lib/funnel.mjs';
 import { buildSessions, expandMeeting, mergeIntervals, propagateGroups } from './lib/rooms.mjs';
+import { classify, OFF_CAMPUS, TYPE_VISIBILITY } from './lib/room-safety.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -58,7 +59,7 @@ async function writeAtomic(path, text) {
 // Pure and exported so the whole inversion can be tested on hand-built records
 // without a 0.5 MB harvest on disk. main() below only reads files, prints and
 // refuses.
-export function invert(records, { isKnownBuilding } = {}) {
+export function invert(records, { isKnownBuilding, safety } = {}) {
   // Sessions are built from the rows that SURVIVE the funnel, not from all
   // 27,074 harvested meetings. Building them from everything emitted 12
   // sessions of which only 10 were referenced by any busy tuple: two came from
@@ -184,10 +185,26 @@ export function invert(records, { isKnownBuilding } = {}) {
   // `own` is scaffolding for idempotent propagation and must not ship.
   for (const room of Object.values(rooms)) delete room.own;
 
+  // The safety filter runs LAST, after group propagation.
+  //
+  // MALC0100 is a facilityGroup parent typed 6F, which is hidden, and its two
+  // halves are typed separately. Dropping the parent first would take its
+  // booking with it and leave a half reading free during a class held in the
+  // whole room, which is the one thing propagateGroups exists to prevent.
+  const safetyStats = safety ? applySafety(rooms, safety) : null;
+
+  // Dropping rooms can strand a whole session. Autumn 2026's 7W1 window
+  // 2026-08-24 to 2026-10-09 belongs entirely to nine LAW sections in Drinko
+  // Hall, and Drinko is a restricted building, so after the filter no busy tuple
+  // points at it. A stranded session is not cosmetic: `instruction` is min and
+  // max over the session list, so it stretches the term the app thinks it is in.
+  const live = pruneSessions(rooms, sessions);
+
   return {
     rooms,
-    sessions,
+    sessions: live,
     counter,
+    safety: safetyStats,
     stats: {
       intervalsIn,
       dropped,
@@ -199,6 +216,65 @@ export function invert(records, { isKnownBuilding } = {}) {
       unplaceableIds,
     },
   };
+}
+
+// Drop sessions nothing points at any more, and renumber what is left.
+// Mutates the session index inside every busy and unplaceable tuple.
+export function pruneSessions(rooms, sessions) {
+  const used = new Set();
+  for (const room of Object.values(rooms)) {
+    for (const b of room.busy) used.add(b[3]);
+    for (const u of room.unplaceable ?? []) used.add(u[2]);
+  }
+  if (used.size === sessions.length) return sessions;
+
+  const live = [];
+  const renumber = new Map();
+  for (let i = 0; i < sessions.length; i++) {
+    if (!used.has(i)) continue;
+    renumber.set(i, live.length);
+    live.push(sessions[i]);
+  }
+  for (const room of Object.values(rooms)) {
+    for (const b of room.busy) b[3] = renumber.get(b[3]);
+    for (const u of room.unplaceable ?? []) u[2] = renumber.get(u[2]);
+  }
+  return live;
+}
+
+// Drop every room a student should not be sent to, and flag what is left.
+// Mutates `rooms` and returns what it did, so the build can print it.
+export function applySafety(rooms, { gaRooms, restricted } = {}) {
+  const unknown = new Map();
+  const kept = { shown: 0, secondary: 0 };
+  const dropped = { type: 0, restricted: 0, offCampus: 0 };
+  const nonGa = [];
+  const gaButHidden = [];
+
+  for (const id of Object.keys(rooms)) {
+    const room = rooms[id];
+    const verdict = classify(
+      { facilityId: id, facilityType: room.type, buildingCode: room.b },
+      { gaRooms, restricted, unknown },
+    );
+    if (!verdict) {
+      if (gaRooms && gaRooms.has(id)) gaButHidden.push(`${id} type ${room.type}`);
+      // Attributed in the order classify decides, so a wet lab inside a
+      // restricted building counts once, against the reason that actually
+      // dropped it.
+      if (OFF_CAMPUS.has(id)) dropped.offCampus++;
+      else if (!TYPE_VISIBILITY[room.type]) dropped.type++;
+      else dropped.restricted++;
+      delete rooms[id];
+      continue;
+    }
+    room.vis = verdict.vis;
+    room.ga = verdict.ga;
+    kept[verdict.vis]++;
+    if (!verdict.ga) nonGa.push(id);
+  }
+
+  return { kept, dropped, unknown, nonGa, gaButHidden };
 }
 
 async function main() {
@@ -219,11 +295,36 @@ async function main() {
   const buildingsPath = join(ROOT, 'data', 'buildings.json');
   if (!existsSync(buildingsPath)) die('data/buildings.json is missing.');
 
+  // Both safety inputs are required. A missing file must not silently ship an
+  // index with a dissection lab in it, so this refuses rather than filtering on
+  // whatever it happens to have.
+  const gaPath = join(ROOT, 'data', 'ga-rooms.json');
+  if (!existsSync(gaPath)) {
+    die(`data/ga-rooms.json is missing. Run fetch-ga-rooms.mjs ${term} first.`);
+  }
+  const restrictedPath = join(ROOT, 'data', 'restricted-buildings.json');
+  if (!existsSync(restrictedPath)) die('data/restricted-buildings.json is missing.');
+
   const harvest = JSON.parse(gunzipSync(readFileSync(harvestPath)));
   const buildings = JSON.parse(readFileSync(buildingsPath, 'utf8')).buildings;
   const isKnownBuilding = (code) => Object.prototype.hasOwnProperty.call(buildings, code);
 
-  const { rooms, sessions, counter, stats } = invert(harvest.meetings, { isKnownBuilding });
+  const gaFile = JSON.parse(readFileSync(gaPath, 'utf8'));
+  const restrictedFile = JSON.parse(readFileSync(restrictedPath, 'utf8'));
+  const safety = {
+    gaRooms: new Set(gaFile.rooms),
+    restricted: new Set(Object.keys(restrictedFile.buildings)),
+  };
+  if (gaFile._meta?.term !== term) {
+    console.warn(
+      `  warn  data/ga-rooms.json was pulled for term ${gaFile._meta?.term}, building ${term}`,
+    );
+  }
+
+  const { rooms, sessions, counter, stats, safety: safetyStats } = invert(harvest.meetings, {
+    isKnownBuilding,
+    safety,
+  });
 
   const roomCount = Object.keys(rooms).length;
   console.log(formatFunnel(counter));
@@ -241,6 +342,28 @@ async function main() {
   console.log(`${sessions.length} sessions from observed date pairs`);
   if (stats.noSession) {
     console.warn(`  warn  ${stats.noSession} meeting(s) passed the funnel but matched no session`);
+  }
+
+  const { kept, dropped, unknown, nonGa, gaButHidden } = safetyStats;
+  console.log(
+    `\nsafety filter: ${kept.shown} shown, ${kept.secondary} secondary, ` +
+      `${dropped.type + dropped.restricted + dropped.offCampus} dropped ` +
+      `(${dropped.type} by type, ${dropped.restricted} in a restricted building, ` +
+      `${dropped.offCampus} off campus)`,
+  );
+  console.log(
+    `${nonGa.length} of ${kept.shown + kept.secondary} kept rooms are absent from ` +
+      `data/ga-rooms.json and ship ga:false`,
+  );
+  // An unrecognised code is hidden, so this line is the only way the allow list
+  // ever grows. Silence here means the code space has not moved.
+  for (const [code, info] of [...unknown.entries()].sort((a, b) => b[1].rooms - a[1].rooms)) {
+    console.log(`  new facilityType ${code}: ${info.rooms} room(s), for example ${info.example}`);
+  }
+  // The two sources disagreeing in the direction that costs us a room. Printed
+  // rather than resolved: the Registrar schedules it, our type table hides it.
+  for (const line of gaButHidden) {
+    console.log(`  on the GA list but hidden by type: ${line}`);
   }
 
   if (roomCount < MIN_ROOMS) die(`only ${roomCount} rooms, under the ${MIN_ROOMS} floor.`);
@@ -276,7 +399,11 @@ async function main() {
     schema:
       'busy=[day,start,end,session] day 0=Sun cap 0=unknown 998=online; ' +
       'unplaceable=[start,end,session] is a real booking whose weekday the API never gave, ' +
-      'blocked on all seven days of that session',
+      'blocked on all seven days of that session; ' +
+      'vis shown|secondary from facilityType; ga=false means the Registrar does not list ' +
+      'the room as general assignment, which ranks it lower and never hides it',
+    gaPulled: gaFile._meta?.pulled ?? null,
+    restrictedPulled: restrictedFile._meta?.pulled ?? null,
     sessions,
     rooms: sorted,
   };
@@ -284,6 +411,14 @@ async function main() {
 
   // `generated` lives only in current.json. If it appeared here, every weekly
   // rebuild would differ even when no schedule changed.
+  // Every shipped room carries a visibility the allow list put there. A room
+  // with none reached the file without passing classify, which is the fail-open
+  // this whole module exists to prevent.
+  const unclassified = Object.entries(sorted).filter(([, r]) => r.vis !== 'shown' && r.vis !== 'secondary');
+  if (unclassified.length) {
+    die(`${unclassified.length} room(s) reached the index with no visibility: ${unclassified.slice(0, 10).map(([id]) => id).join(' ')}`);
+  }
+
   if (/"generated"/.test(json)) die('generated must not appear inside the room index.');
   if (/@osu\.edu/i.test(json)) die('an address reached the room index.');
   if (/"lat"|"lon"|"name"/.test(json)) die('geography belongs in buildings.json, not here.');

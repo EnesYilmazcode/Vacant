@@ -159,3 +159,64 @@ test('fetchWith passes the parsed response through untouched', async () => {
   const out = await fetchWith('https://example.test/x', (res) => res.status, { fetchImpl: impl });
   assert.equal(out, 200);
 });
+
+// --- regressions found by code review, 2026-08-26 ---
+
+test('the 403 bonus retry is spent per RUN, not refreshed per request', async () => {
+  resetRequests();
+  // First call spends the one bonus retry.
+  const a = scripted([stub(403), stub(200, { ok: true })]);
+  assert.deepEqual(await fetchJson('https://example.test/a', { fetchImpl: a }), { ok: true });
+
+  // Second call must NOT get another one. Under a real NetScaler block a 272
+  // request harvest would otherwise issue 544 against a WAF already refusing it.
+  const b = scripted([stub(403), stub(200, { never: true })]);
+  await assert.rejects(() => fetchJson('https://example.test/b', { fetchImpl: b }), /403/);
+  assert.equal(b.calls.length, 1, 'no second bonus retry within the same run');
+
+  resetRequests();
+  const c = scripted([stub(403), stub(200, { ok: true })]);
+  assert.deepEqual(await fetchJson('https://example.test/c', { fetchImpl: c }), { ok: true });
+});
+
+test('the fatal flag survives the rewrap, so callers can tell stop from skip', async () => {
+  resetRequests();
+  const err = await fetchJson('https://example.test/x', {
+    fetchImpl: scripted([stub(400)]),
+  }).catch((e) => e);
+  assert.equal(err.fatal, true, 'a non-retryable 4xx must stay fatal to the caller');
+
+  resetRequests();
+  const soft = await fetchJson('https://example.test/x', {
+    fetchImpl: scripted([stub(500), stub(500), stub(500), stub(500)]),
+  }).catch((e) => e);
+  assert.notEqual(soft.fatal, true, 'an exhausted retry ladder is not fatal');
+});
+
+test('the request cap error reaches the caller as fatal', async () => {
+  resetRequests();
+  setRequests(config.MAX_REQUESTS);
+  const err = await fetchJson('https://example.test/x', {
+    fetchImpl: scripted([stub(200, {})]),
+  }).catch((e) => e);
+  assert.match(err.message, /request cap reached/);
+  assert.equal(err.fatal, true);
+  resetRequests();
+});
+
+test('mapLimit stops the other runners when one fails', async () => {
+  resetRequests();
+  let started = 0;
+  const items = Array.from({ length: 40 }, (_, i) => i);
+  await assert.rejects(() =>
+    mapLimit(items, async (n) => {
+      started++;
+      if (n === 1) throw new Error('boom');
+      await new Promise((r) => setTimeout(r, 1));
+      return n;
+    }),
+  );
+  // Without the shared stop flag the surviving runner walks all 40, burning
+  // requests against MAX_REQUESTS with nothing able to stop it.
+  assert.ok(started < items.length, `started ${started} of ${items.length} after a failure`);
+});

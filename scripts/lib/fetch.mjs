@@ -33,9 +33,16 @@ const USER_AGENT =
 
 let requestCount = 0;
 
+// Per RUN, not per request. The comment on the 403 branch says a repeat across a
+// run is a block rather than a twitchy WAF, and a flag scoped inside fetchWith
+// resets on every call, so a 272 request harvest would issue 544 against a WAF
+// already refusing it.
+let retriedForbidden = false;
+
 export const requests = () => requestCount;
 export const resetRequests = () => {
   requestCount = 0;
+  retriedForbidden = false;
 };
 
 // Tests only, so the cap can be exercised without making 3000 stub calls.
@@ -58,7 +65,6 @@ export function retryAfterMs(header) {
 export async function fetchWith(url, parse, { allow404 = false, fetchImpl = fetch } = {}) {
   let lastError;
   let wait = 0;
-  let retriedForbidden = false;
 
   for (let attempt = 0; attempt <= RETRIES; attempt++) {
     if (attempt > 0) await sleep(wait || 500 * 2 ** (attempt - 1));
@@ -114,7 +120,12 @@ export async function fetchWith(url, parse, { allow404 = false, fetchImpl = fetc
     }
   }
 
-  throw new Error(`GET ${url} failed: ${lastError?.message ?? 'unknown'}`);
+  const err = new Error(`GET ${url} failed: ${lastError?.message ?? 'unknown'}`);
+  // Callers distinguish "stop the whole run" from "skip this item", which is the
+  // only reason the flag exists. Rewrapping into a plain Error threw it away.
+  if (lastError?.fatal) err.fatal = true;
+  err.cause = lastError;
+  throw err;
 }
 
 export const fetchJson = (url, opts) => fetchWith(url, (res) => res.json(), opts);
@@ -123,13 +134,26 @@ export const fetchText = (url, opts) => fetchWith(url, (res) => res.text(), opts
 export async function mapLimit(items, worker, limit = CONCURRENCY) {
   const out = new Array(items.length);
   let next = 0;
+  // Promise.all rejects on the first failure but does not stop the other
+  // runners, which keep issuing requests against MAX_REQUESTS with no way for
+  // the caller to stop them. One shared flag ends the walk.
+  let stopped = false;
+
   const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
+    while (next < items.length && !stopped) {
       const i = next++;
-      out[i] = await worker(items[i], i);
-      await sleep(DELAY_MS);
+      try {
+        out[i] = await worker(items[i], i);
+      } catch (err) {
+        stopped = true;
+        throw err;
+      }
+      // Space the requests, but not after the last one. A trailing pause per
+      // runner added DELAY_MS to every call for nothing.
+      if (next < items.length && !stopped) await sleep(DELAY_MS);
     }
   });
+
   await Promise.all(runners);
   return out;
 }

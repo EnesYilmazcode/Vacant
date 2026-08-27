@@ -192,3 +192,67 @@ geographic. `InstType = "Academic"` includes Refuse Vehicle Storage. Nothing in
 the GIS layer identifies a classroom, and the only filter that works is the
 harvest itself, which lands in
 [#9](https://github.com/EnesYilmazcode/Vacant/issues/9).
+
+---
+
+## 2026-08-26  Code review of the spine, and eight defects it caught
+
+A `/code-review` pass over the spine found twelve issues. Four were already
+fixed while building
+[#3](https://github.com/EnesYilmazcode/Vacant/issues/3) (a red test fixture, the
+10 km justification, a stale building count, the unresolved satellite codes).
+Eight were real and live. All eight are fixed, each behind a regression test.
+
+**The three that mattered, all in `snapshot-term.mjs`, all on the archive that
+cannot be rebuilt.**
+
+*A rerun rewrote the manifest with zeros.* Every page hit the `existsSync` skip,
+so `written` was 0 for every bucket, and the manifest of an unrepeatable archive
+was overwritten with `sectionsWritten: 0`. The provenance record was destroyed
+by the act of checking it.
+
+*A resumed run reported SHORT and exited 1 on a complete archive.* `written`
+counted only newly fetched sections but was compared against the bucket's full
+facet count. Interrupt during `4xxx` and the resume reports 618 against 6272 and
+dies.
+
+*A cached bucket could mask a failed one.* `skipped` was a run-wide counter, so
+once any bucket was cached, a later bucket that came back empty was labelled
+`cached` rather than `SHORT`, and the run exited 0 with an entire bucket
+missing. That is precisely the failure the check exists to catch.
+
+All three have the same root cause and the same fix: count what is **on disk**
+by reading the cached pages back, per bucket, instead of counting only what this
+run happened to fetch. Verified by stashing three pages of `4xxx` and rerunning:
+3 pages refetched, 4 requests, every bucket `ok`, exit 0, 25,274 sections intact.
+
+**Writes are now atomic.** `writeFile` straight to the destination plus an
+`existsSync` resume key means a crash or a full disk leaves a truncated
+`.json.gz` that the next run skips forever and never refetches. Temp file then
+rename. This is the same failure that destroyed a 170 KB report on this machine
+once already.
+
+**A cached rerun no longer refetches page 1 of every bucket.** It cost 9
+requests to do nothing. Now 1.
+
+**In `fetch.mjs`:** the 403 bonus retry was scoped inside `fetchWith`, so it
+reset on every call, and its own comment says a repeat across a run is a block
+rather than a twitchy WAF. Under a real NetScaler block a 272 request harvest
+would have issued 544 against a server already refusing it. The flag is now per
+run. Separately, `err.fatal` was set and then thrown away when the loop rewrapped
+into a plain `Error`, so no caller could tell "stop the run" from "skip this
+item"; it now survives. And `mapLimit` let the surviving runners keep firing
+after one failed, burning requests with no way to stop them.
+
+**In `fetch-buildings.mjs`:** the dedupe ran before the distance cap, so the
+first of two rows sharing a code was dropped before it was stored, the second
+found nothing to compare against, a genuine position conflict outside the cap
+went undetected, and `beyondCap` counted one building twice. The cap now runs
+first. `name` used `??`, which keeps an empty string, so a blank `BLDG_NAME`
+would ship as `""` rather than falling back to `FormalName`. And `generated` was
+a UTC date, stamping the file a day ahead of the local one.
+
+**The lesson worth keeping.** Every one of the three serious bugs was in the
+resume and rerun path, which the happy-path first run never touches. The script
+header claimed "re-running is safe and cheap" and it was neither. On a dataset
+that cannot be refetched, the second run deserves more scrutiny than the first.

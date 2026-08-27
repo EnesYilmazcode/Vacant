@@ -4,17 +4,22 @@
   "campus": "col",
   "sort": "catalogNumber",
   "facetTotal": 25274,
-  "sectionsWritten": 25274,
+  "sectionsOnDisk": 25274,
   "pagesOnDisk": 130,
-  "instructorRecordsRemoved": 28664,
-  "requests": 131,
+  "instructorRecordsRemoved": 29282,
+  "lastRun": {
+    "fetched": 3,
+    "requests": 4
+  },
   "buckets": [
     {
       "bucket": "1xxx",
       "facetCount": 2043,
       "bucketItems": 2043,
       "pages": 11,
-      "written": 2043,
+      "sections": 2043,
+      "fetched": 0,
+      "cached": 11,
       "status": "ok"
     },
     {
@@ -22,7 +27,9 @@
       "facetCount": 2323,
       "bucketItems": 2323,
       "pages": 12,
-      "written": 2323,
+      "sections": 2323,
+      "fetched": 0,
+      "cached": 12,
       "status": "ok"
     },
     {
@@ -30,7 +37,9 @@
       "facetCount": 1846,
       "bucketItems": 1846,
       "pages": 10,
-      "written": 1846,
+      "sections": 1846,
+      "fetched": 0,
+      "cached": 10,
       "status": "ok"
     },
     {
@@ -38,7 +47,9 @@
       "facetCount": 6272,
       "bucketItems": 6272,
       "pages": 32,
-      "written": 6272,
+      "sections": 6272,
+      "fetched": 3,
+      "cached": 29,
       "status": "ok"
     },
     {
@@ -46,7 +57,9 @@
       "facetCount": 2558,
       "bucketItems": 2558,
       "pages": 13,
-      "written": 2558,
+      "sections": 2558,
+      "fetched": 0,
+      "cached": 13,
       "status": "ok"
     },
     {
@@ -54,7 +67,9 @@
       "facetCount": 2077,
       "bucketItems": 2077,
       "pages": 11,
-      "written": 2077,
+      "sections": 2077,
+      "fetched": 0,
+      "cached": 11,
       "status": "ok"
     },
     {
@@ -62,7 +77,9 @@
       "facetCount": 2979,
       "bucketItems": 2979,
       "pages": 15,
-      "written": 2979,
+      "sections": 2979,
+      "fetched": 0,
+      "cached": 15,
       "status": "ok"
     },
     {
@@ -70,7 +87,9 @@
       "facetCount": 5176,
       "bucketItems": 5176,
       "pages": 26,
-      "written": 5176,
+      "sections": 5176,
+      "fetched": 0,
+      "cached": 26,
       "status": "ok"
     }
   ]

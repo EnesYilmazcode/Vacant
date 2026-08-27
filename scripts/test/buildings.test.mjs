@@ -114,3 +114,37 @@ test('the funnel adds up to the feature count', () => {
     funnel.noBuildingNumber + funnel.noCoordinate + funnel.duplicateRows + funnel.beyondCap + funnel.kept;
   assert.equal(accounted, funnel.features, 'every feature is accounted for in exactly one bucket');
 });
+
+// --- regressions found by code review, 2026-08-26 ---
+
+test('a position conflict outside the cap is still detected', () => {
+  // With the cap checked before the dedupe, the first row is dropped before it
+  // is stored, so the second finds nothing to compare against and the conflict
+  // is invisible.
+  const a = feat({ buildingNumber: '9001', Latitude: '40.7789', Longitude: '-81.9310' });
+  const b = feat({ buildingNumber: '9001', Latitude: '41.6578', Longitude: '-82.8222' });
+  const { funnel } = buildIndex([a, b]);
+  assert.equal(funnel.beyondCap, 1, 'one building, not two');
+  assert.equal(funnel.duplicateRows, 1, 'the second row is a duplicate, not a second building');
+});
+
+test('a duplicated far-away building is counted once against the cap', () => {
+  const row = feat({ buildingNumber: '8002', Latitude: '40.7798986', Longitude: '-81.9277940' });
+  const { funnel } = buildIndex([row, row, row]);
+  assert.equal(funnel.beyondCap, 1);
+  assert.equal(funnel.duplicateRows, 2);
+  const accounted =
+    funnel.noBuildingNumber + funnel.noCoordinate + funnel.duplicateRows + funnel.beyondCap + funnel.kept;
+  assert.equal(accounted, funnel.features);
+});
+
+test('an empty BLDG_NAME falls back to FormalName instead of shipping ""', () => {
+  const row = feat({
+    buildingNumber: '500',
+    BLDG_NAME: '',
+    FormalName: 'Real Name',
+    Latitude: '40.0',
+    Longitude: '-83.01',
+  });
+  assert.equal(buildIndex([row]).byCode.get('500').name, 'Real Name');
+});

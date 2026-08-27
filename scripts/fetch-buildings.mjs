@@ -70,6 +70,13 @@ const MAX_KM = 20;
 // floor. Measured: 612 buildings inside 20 km.
 const MIN_BUILDINGS = 550;
 
+// Local calendar date as YYYY-MM-DD.
+const localDate = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
 function die(message) {
   console.error(`\nFATAL  ${message}`);
   process.exit(1);
@@ -97,6 +104,9 @@ export function buildIndex(features) {
 
   const byCode = new Map();
   const conflicts = [];
+  // Codes already counted against the cap, so a duplicated far-away row is not
+  // counted as two separate buildings.
+  const beyondCap = new Set();
 
   for (const feature of features) {
     const a = feature.attributes ?? feature;
@@ -110,6 +120,23 @@ export function buildIndex(features) {
     const lon = coord(a.Longitude);
     if (lat === null || lon === null) {
       funnel.noCoordinate++;
+      continue;
+    }
+
+    const km = kmFromOval({ lat, lon });
+
+    // The cap is checked BEFORE the dedupe, not after. The other way round, the
+    // first of two rows sharing a code is dropped by the cap before it is ever
+    // stored, so the second row finds nothing to compare itself against, a
+    // genuine position conflict outside the cap goes undetected, and beyondCap
+    // counts the same building twice.
+    if (km > MAX_KM) {
+      if (!beyondCap.has(code)) {
+        beyondCap.add(code);
+        funnel.beyondCap++;
+      } else {
+        funnel.duplicateRows++;
+      }
       continue;
     }
 
@@ -127,14 +154,10 @@ export function buildIndex(features) {
       continue;
     }
 
-    const km = kmFromOval({ lat, lon });
-    if (km > MAX_KM) {
-      funnel.beyondCap++;
-      continue;
-    }
-
     byCode.set(code, {
-      name: a.BLDG_NAME ?? a.FormalName ?? null,
+      // `??` keeps an empty string, so a row with a blank BLDG_NAME and a real
+      // FormalName would ship as "". Every other string field here uses `||`.
+      name: a.BLDG_NAME || a.FormalName || null,
       short: a.SchedulingAbbreviation || null,
       lat,
       lon,
@@ -216,7 +239,9 @@ async function main() {
   }
 
   const out = {
-    generated: new Date().toISOString().slice(0, 10),
+    // Local date, not UTC. toISOString stamped the file 2026-08-27 when it
+    // was generated on the 26th Eastern, which is wrong on a provenance field.
+    generated: localDate(),
     source: SERVICE,
     layer: 'Data/FacilitiesStreets_RO/MapServer/11 (Building)',
     attribution: 'Ohio State University Facilities Information and Technology Services, GIS',

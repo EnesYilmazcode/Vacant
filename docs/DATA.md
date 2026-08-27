@@ -16,14 +16,19 @@ stopped, say so and it will be done the same day. You do not have to explain why
 Vacant is a student project. It is not affiliated with, authorized by, or
 endorsed by The Ohio State University.
 
-It downloads the public class schedule once a week, turns it into a table of
-which rooms are busy when, and serves that table as a static file. Students'
-phones never talk to an Ohio State server. All the load is one build job, once a
-week, in the middle of the night.
+It downloads the public class schedule, turns it into a table of which rooms are
+busy when, and serves that table as a static file. Students' phones never talk to
+an Ohio State server. All the load is one harvest job, run about once a week.
+
+**That job is started by hand.** There is no scheduled workflow in this
+repository, so the harvest runs when a person runs it and at no other time. A
+weekly cron is planned, Sunday 3:25am Eastern, and the off switch below tells you
+how to disable it on the day it lands. Until then the off switch is that nobody
+is pressing the on switch.
 
 ```
-                    once a week, Sunday ~3:25am ET
-   content.osu.edu ----------------------------------> GitHub Actions
+                    by hand, about once a week
+   content.osu.edu ----------------------------------> a laptop
    registrar.osu.edu                                        |
    gissvc.osu.edu                                           | writes JSON,
                                                             | commits it
@@ -58,7 +63,7 @@ free with a class sitting in them.
 
 | | |
 | --- | --- |
-| Cadence | Weekly. `cron: '25 7 * * 0'`, Sunday 07:25 UTC, which is 3:25am Eastern |
+| Cadence | Run by hand, about once a week. **No scheduled workflow exists in the repository.** The planned cron is `'25 7 * * 0'`, Sunday 07:25 UTC, which is 3:25am Eastern |
 | Requests per run | **545**, measured on term 1268 over 4 passes |
 | Advertised ceiling | **1,100 a week**. `MAX_PASSES` x 8 buckets x 17 pages is 1,089, and the `User-Agent` states the ceiling rather than the typical run |
 | Hard stop | `MAX_REQUESTS` is 4,000 and throws rather than fetches |
@@ -74,6 +79,11 @@ The `User-Agent` says who is calling and how much:
 Vacant/0.1 (+https://github.com/EnesYilmazcode/Vacant; contact via repo issues)
 weekly classroom-schedule index, <=1100 requests/week
 ```
+
+That string is hardcoded in `scripts/lib/fetch.mjs`, and while the harvest is run
+by hand it is a promise rather than a description of a timer. Running it more than
+once a week would make the `User-Agent` a lie to your logs, so it does not get run
+more than once a week.
 
 ### 2. The Registrar's classroom pool building schedule
 
@@ -277,6 +287,14 @@ the app down, and it is only needed if somebody has asked for that specifically.
 
 ### Edit 1: stop the harvester
 
+**Right now there is nothing to switch off.** There is no `.github/` directory in
+the repository, so no job runs on a timer. The harvest is started by hand, which
+means it is already stopped between runs. Ask, and it stays stopped.
+
+The rest of this section is for the day the weekly workflow lands, so that the
+instructions are already written and already true when somebody needs them at
+3am.
+
 Open each file under
 [`.github/workflows/`](https://github.com/EnesYilmazcode/Vacant/tree/main/.github/workflows)
 in the web editor, find the `schedule:` block near the top, and put a `#` in front
@@ -293,12 +311,11 @@ on:
 Commit straight to `main`. The next scheduled run does not happen. Nothing else in
 the repository reaches an Ohio State server, so at that point the load is zero.
 
-**As of 2026-08-27 there is no `.github/` directory yet.** The harvest is run by
-hand, which means it is already stopped between runs and this edit has nothing to
-edit. It becomes real the day the weekly workflow lands. Whoever adds that
-workflow owns keeping this section true: the `schedule:` block has to stay on its
-own two lines, near the top of the file, so commenting it out is a two-keystroke
-edit on a phone and not a YAML puzzle.
+Whoever adds that workflow owns keeping this section true, and owns changing the
+cadence line at the top of this page from "by hand" to "on a timer" on the same
+commit. The `schedule:` block has to stay on its own two lines, near the top of
+the file, so commenting it out is a two-keystroke edit on a phone and not a YAML
+puzzle.
 
 ### Edit 2: take the app down
 

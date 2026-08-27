@@ -27,9 +27,15 @@ const MAX_RETRY_AFTER_MS = 30000;
 // order of magnitude of headroom and still nowhere near abusive.
 const MAX_REQUESTS = 3000;
 
+// The volume here is a promise to the people running the server, so it tracks
+// what is actually sent. A measured full harvest of term 1268 needed 7 passes
+// and 953 requests to converge; converging on rooms rather than on every
+// meeting brings that to about 680, plus 3 for the Registrar hours. The first
+// draft of this string said 280, which was the cost of the two-pass design
+// before the drift was measured.
 const USER_AGENT =
   'Vacant/0.1 (+https://github.com/EnesYilmazcode/Vacant; ' +
-  'contact via repo issues) weekly classroom-schedule index, ~280 requests/week';
+  'contact via repo issues) weekly classroom-schedule index, ~700 requests/week';
 
 let requestCount = 0;
 

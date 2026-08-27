@@ -123,6 +123,12 @@ test('the user agent names the project, the repo and the volume', () => {
   assert.match(config.USER_AGENT, /Vacant/);
   assert.match(config.USER_AGENT, /github\.com\/EnesYilmazcode\/Vacant/);
   assert.match(config.USER_AGENT, /requests\/week/);
+  // The advertised volume has to be at least what a real harvest sends.
+  const advertised = Number(/~(\d+) requests\/week/.exec(config.USER_AGENT)?.[1]);
+  assert.ok(
+    advertised >= 680,
+    `advertised ${advertised} req/week is below the measured harvest cost of ~680`,
+  );
 });
 
 test('no Accept-Encoding header is set by hand', async () => {

@@ -347,3 +347,64 @@ The day is not recoverable from anything in the payload, so the funnel drops
 them. **Dreese 280 will therefore read free during those lab hours.** That is a
 real wrong answer, it is small, and it is written down here rather than hidden
 in a counter. If the day ever becomes derivable, this is the first thing to fix.
+
+---
+
+## 2026-08-26  The harvest walks until stable, because two passes are not enough
+
+**Decided.** `scripts/fetch-rooms.mjs` repeats the bucket walk until two
+consecutive passes add no new meeting **in a real room**.
+
+**The research's drift budget is wrong by about seven times.** It says sorted
+paging is "about 98% deterministic" and specifies a fixed two-pass union with a
+0.5% gate. Measured over the whole of term 1268:
+
+```
+pass 1 read 26,298 section rows but only 25,270 DISTINCT classNumbers.
+1,028 rows were the same section served twice on different pages while
+others were dropped. pass 2 then found 937 sections pass 1 never saw at
+all, 3.6%, and pass 1 in turn caught 612 that pass 2 missed.
+```
+
+Neither pass is a superset of the other, so a fixed two-pass union is still
+incomplete. Walking until stable took **7 passes and 953 requests**:
+
+```
+pass   meetings seen   new   new IN A ROOM   union
+  1          26707   26707           11443   26707
+  2          26530     294               7   27001
+  3          26089      35               4   27036
+  4          26413      27               0   27063
+  5          26338      11               0   27074
+  6          26408       0               0   27074
+  7          26302       0               0   27074
+```
+
+A single pass would have missed 367 meetings, 1.36%, **11 of them in a real
+room**. Eleven rooms that would have read free with a class in them.
+
+**Convergence is on rooms, not on meetings.** The last four passes added 42
+meetings and exactly **zero** in a room. A roomless meeting cannot change what
+the app tells anyone, so paying 272 extra requests against a university's API to
+chase them is not politeness, it is noise. Roomed convergence stops at pass 5,
+about 680 requests. A `MIN_PASSES` floor of 3 stops a lucky first pass from
+claiming stability, since pass 2 found 7 roomed meetings pass 1 missed.
+
+**The User-Agent was promising a volume we exceed.** It advertised
+`~280 requests/week`, which was the cost of the two-pass design before the drift
+was measured. Real cost is about 680 for the harvest plus 3 for the Registrar
+hours, so it now says `~700`. A test asserts the advertised figure is at least
+the measured harvest cost, because that string is a promise to the people
+running the server.
+
+**Output.** `data/harvest-<term>.json.gz`, the union, 0.50 MB gzipped for 27,074
+meetings. Writing any single pass's pages would reintroduce exactly the gaps the
+extra passes exist to close. It is **not committed**: unlike `data/raw/1262` and
+`data/raw/1264`, a live term can always be refetched, and 0.5 MB rewritten
+weekly is repository bloat. The manifest beside it is committed for provenance.
+
+**Coverage, measured on the full term rather than a sample.** 871 distinct rooms
+across 96 buildings for Autumn 2026. **72% of those rooms sit in a building with
+published hours**, not the 88.8% the research estimated from 12 subjects, and 46
+of the 96 buildings are in the classroom pool. So the unknown-hours path is
+larger than the research suggests and matters more than it looks.

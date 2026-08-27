@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5">
+<title>Privacy &middot; Vacant</title>
+<meta name="description" content="Where you are stays on your phone. Vacant is a student project. It is not affiliated with, authorized by, or endorsed by The Ohio State University.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0d10">
+<style>
+  /* Tokens copied from index.html rather than shared, because a stylesheet is a
+     second request on the critical path of a page whose whole job is to load
+     when somebody is already suspicious. */
+  :root {
+    --bg: #0b0d10;
+    --fg: #eef1f5;
+    --dim: #8b94a2;
+    --line: #1d232c;
+    --card: #121821;
+    --accent: #ff4d3d;
+    --you: #4cc2ff;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    padding: calc(var(--safe-t) + 2rem) 1.25rem calc(var(--safe-b) + 3rem);
+  }
+  main { max-width: 38rem; margin: 0 auto; }
+
+  h1 { font-size: clamp(2rem, 9vw, 2.6rem); font-weight: 800; letter-spacing: -.035em;
+       line-height: 1.05; margin: 0 0 .35rem; }
+  h1 span { color: var(--accent); }
+  .lede { color: var(--dim); margin: 0 0 2.25rem; }
+
+  h2 { font-size: 1.15rem; font-weight: 700; letter-spacing: -.01em;
+       margin: 2.5rem 0 .6rem; }
+  p { margin: 0 0 1rem; }
+  ul { margin: 0 0 1rem; padding-left: 1.2rem; }
+  li { margin-bottom: .4rem; }
+  strong { font-weight: 650; }
+
+  a { color: var(--you); }
+  /* 44px minimum tap target on every link a thumb has to hit. Inline links in a
+     paragraph inherit the line box, so only the standalone ones get this. */
+  .tap { display: inline-block; min-height: 44px; line-height: 44px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 1rem 1.15rem; margin: 0 0 1rem;
+  }
+  .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+
+  code { font: .875em/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         background: var(--card); border: 1px solid var(--line); border-radius: 5px;
+         padding: .08em .35em; }
+
+  .later { border-left: 3px solid var(--line); padding-left: 1rem; color: var(--dim); }
+  .later strong { color: var(--fg); }
+
+  footer {
+    margin-top: 3.5rem; padding-top: 1.5rem; border-top: 1px solid var(--line);
+    color: var(--dim); font-size: .875rem;
+  }
+  footer p { margin: 0 0 .75rem; }
+  nav.foot { display: flex; flex-wrap: wrap; gap: 1.25rem; margin-top: .5rem; }
+  nav.foot a { min-height: 44px; line-height: 44px; }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>Privacy<span>.</span></h1>
+  <p class="lede">Vacant is a free student project. This page says what it knows about
+  you, which is very little, and it does not round any of it in the flattering
+  direction.</p>
+
+  <div class="card">
+    <p><strong>Where you are stays on your phone.</strong> Vacant asks your browser for
+    your location so it can sort rooms by how far away they are. That sorting happens
+    on your phone, in the page, with the numbers your browser hands it. Your
+    coordinates are never sent anywhere, because there is no Vacant server to send
+    them to.</p>
+  </div>
+
+  <h2>How that is true, and not just a promise</h2>
+  <p>Vacant has no backend. The whole class schedule is a few files on GitHub Pages
+  that your phone downloads once. After that the app works with the network off, in a
+  basement or a stairwell. There is no login, no account, no database, and no request
+  that could carry a coordinate even if somebody wanted it to.</p>
+  <p>Your position is read once per search, held in a variable, and gone when you
+  close the tab. The app asks for it once and does not keep watching. It is never
+  written to storage, never put in a URL, and never attached to anything the app
+  caches. You can check: every line of the app is at
+  <a href="https://github.com/EnesYilmazcode/Vacant">github.com/EnesYilmazcode/Vacant</a>,
+  and there are only four JavaScript files.</p>
+  <p>The app does store exactly one thing on your phone, and it is not about you:
+  a key called <code>vacant:duration</code> holding how long you last said you
+  needed a room, so it does not have to ask twice. Clearing your browser data
+  removes it. That is the complete list.</p>
+
+  <h2>What is known anyway</h2>
+  <p>Two things, and saying "we collect nothing" would make both of them a lie.</p>
+  <ul>
+    <li><strong>GitHub sees an IP address.</strong> The site is hosted on GitHub Pages.
+    Like any web host, GitHub's servers see the address your phone connects from when
+    it downloads the page and the schedule file. Vacant has no access to those logs
+    and cannot connect them to a location or to each other.</li>
+    <li><strong>Your browser remembers the location permission.</strong> That grant
+    lives in your browser's settings, not in Vacant. You can revoke it at any time and
+    the app will not notice, because it never stored anything to forget.</li>
+  </ul>
+
+  <h2>What is never done</h2>
+  <ul>
+    <li>No accounts, no sign-in, and no Ohio State credentials. Ever. Vacant will
+    never ask you for a BuckID or a password, and any page that does is not this
+    one.</li>
+    <li>No advertising, no sponsorship, no affiliate links, no paid tier and no
+    donations. This is not a business and it is not allowed to become one.</li>
+    <li>No analytics, no tracking pixels, and no third-party scripts of any kind. The
+    page loads nothing from any other company: no fonts, no map tiles, no SDKs.</li>
+    <li>Nothing is shared with Ohio State, or with anyone else. There is nothing to
+    share.</li>
+  </ul>
+
+  <h2>If you say no to location</h2>
+  <p>The app still works. It asks you to pick a building instead of sorting by
+  distance. Saying no costs you the walk time, not the room list.</p>
+
+  <h2>What Vacant does not know about the rooms</h2>
+  <p>Not a privacy point, but it belongs on the page a suspicious person opens.
+  Vacant knows what the Registrar publishes and nothing more. It knows no class is
+  scheduled in a room. It does not know whether a club booked it, whether the
+  building's outer door is locked, or whether somebody is already sitting in there.
+  When it does not know, it says so instead of guessing. Read
+  <a href="https://github.com/EnesYilmazcode/Vacant/blob/main/docs/DATA.md">docs/DATA.md</a>
+  for exactly what it fetches and how often.</p>
+
+  <h2 id="reports">If room reports ever ship</h2>
+  <div class="later">
+    <p>They have not. There is no backend today and no report button anywhere in the
+    app. This paragraph is written in advance so the design is settled before there is
+    a deadline pushing against it, and it goes live unchanged on the day the feature
+    does.</p>
+    <p><strong>When you report a room.</strong> Tapping "it was open" or "it was
+    locked" would send the room and the half-hour block, and nothing else. Not your
+    location, not the exact time, not who you are. We would add one to a counter.
+    There would be no row anywhere recording that a particular person reported
+    anything, because there would be no per-report rows at all. To stop one person
+    voting a thousand times we would keep a scrambled, one-way number worked out from
+    your connection for about a month, in a separate list that has no room in it, no
+    building in it, and no way to be joined back to any room. A room's "usually open"
+    label would only appear once at least three different people had reported it, so a
+    single report is never visible to anyone.</p>
+    <p>The full design, including the parts that were rejected and why, is in
+    <a href="https://github.com/EnesYilmazcode/Vacant/blob/main/docs/design/reports.md">docs/design/reports.md</a>.</p>
+  </div>
+
+  <h2>Is any of this legally required?</h2>
+  <p>No, and that is worth saying out loud. Ohio has no consumer privacy law on the
+  books. Nothing here touches a student record, so nothing here touches FERPA. This
+  page exists because you should be able to check what an app on your phone is doing,
+  not because a statute made someone write it.</p>
+
+  <h2>Questions</h2>
+  <p>Open an issue at
+  <a class="tap" href="https://github.com/EnesYilmazcode/Vacant/issues">github.com/EnesYilmazcode/Vacant/issues</a>,
+  or email the address on the commits in the repository. If something on this page
+  turns out to be wrong, say so and it gets fixed and the change gets logged.</p>
+
+  <footer>
+    <p>Vacant is a student project. It is not affiliated with, authorized by, or
+    endorsed by The Ohio State University.</p>
+    <p>Room data from Ohio State's public class search. Building locations
+    &copy; 2025 The Ohio State University, Facilities Information and Technology
+    Services.</p>
+    <p>Last updated 27 August 2026.</p>
+    <nav class="foot" aria-label="Site">
+      <a href="./">Back to Vacant</a>
+      <a href="https://github.com/EnesYilmazcode/Vacant/blob/main/docs/DATA.md">Data</a>
+      <a href="https://github.com/EnesYilmazcode/Vacant">Source</a>
+    </nav>
+  </footer>
+
+</main>
+</body>
+</html>

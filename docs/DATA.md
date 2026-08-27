@@ -254,8 +254,16 @@ worker caching 4.1 MB onto a phone, is not fixed by excluding one directory when
 `docs/` is another 1.4 MB on the same origin. The fix for that is an explicit
 precache list, which the service worker needs regardless.
 
-`robots.txt` asks crawlers to leave the archive alone. It stays reachable to a
-person who wants it.
+**There is no way to hide it from crawlers, and that was checked rather than
+assumed.** `robots.txt` is origin-scoped: a crawler reads
+`https://enesyilmazcode.github.io/robots.txt`, never
+`https://enesyilmazcode.github.io/Vacant/robots.txt`. That origin-root URL
+returns HTTP 404 today, because the user site it would come from does not exist,
+and this repository cannot create it. Pages sets no response headers either, so
+`X-Robots-Tag` is out, and a `<meta name="robots">` tag cannot go on a
+`.json.gz` file. So a crawler that walks the archive will walk it. At 4.1 MB
+against GitHub Pages' 100 GB monthly soft limit, that would take about 24,000
+full crawls to matter.
 
 ---
 

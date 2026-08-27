@@ -1,0 +1,50 @@
+name: Live rot detector
+
+# Every refusal guard in the build fires when the harvest FAILS. None of them
+# fire when the harvest succeeds against changed data. If Ohio State renames the
+# ONLINE pseudo-room, the funnel's exclusion stops matching, a 998-seat phantom
+# room enters the index carrying real busy blocks, every count stays inside its
+# floor, the build goes green, and the app gets quietly worse.
+#
+# So this asks the live API four questions a week. It writes nothing and it
+# commits nothing.
+#
+# Thursday, three days ahead of Sunday's build, so a shape change has a working
+# day to be looked at before the harvest runs on top of it. No push and no
+# pull_request trigger on purpose: a contributor's pull request must never hit
+# Ohio State's servers, and the API having a bad morning must never turn the
+# repository's checks red.
+on:
+  schedule:
+    - cron: '45 8 * * 4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: live-rot
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Two requests, shared across the four tests. The retry wrapper inside the
+      # file gives each one three attempts, so one bad morning is not a red run.
+      - name: Ask the live API whether it still has the shape we harvest
+        env:
+          VACANT_LIVE: '1'
+        run: node --test scripts/test/live-rot.live.test.mjs
+
+      - name: Say so, loudly
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/alert.sh "Live API shape has changed"

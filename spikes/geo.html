@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>geo spike, Vacant #5</title>
+<style>
+  /* Light, not the app's dark. This page is read outdoors at arm's length in
+     sunlight, where a bright panel beats a dark one. */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font: 16px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: #fff; color: #000;
+    padding: max(10px, env(safe-area-inset-top)) 12px max(10px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 8px;
+    overflow: hidden;
+  }
+  h1 { font-size: 15px; margin: 0; letter-spacing: .02em; text-transform: uppercase; }
+  h1 a { color: #444; }
+  .env { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; margin: 0; }
+  .env dt { color: #555; }
+  .env dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .yes { color: #06621f; }
+  .no  { color: #a11111; }
+  .unk { color: #7a4b00; }
+  button {
+    font: inherit; min-height: 44px; border: 2px solid #000; background: #fff;
+    color: #000; border-radius: 8px; padding: 8px 12px; cursor: pointer;
+  }
+  button:disabled { opacity: .45; cursor: default; }
+  #go { font-size: 20px; font-weight: 700; min-height: 64px; background: #000; color: #fff; }
+  #out { border: 2px solid #000; border-radius: 8px; padding: 8px 10px; flex: 1; min-height: 0; overflow: auto; }
+  .verdict { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
+  .msnum { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; margin: 0; }
+  .msnum small { font-size: 15px; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-size: 13px; margin-top: 6px; }
+  .grid b { font-variant-numeric: tabular-nums; }
+  .bar { display: flex; gap: 6px; flex-wrap: wrap; }
+  .bar button { flex: 1; font-size: 14px; padding: 6px 8px; }
+  select { font: inherit; min-height: 44px; border: 2px solid #000; border-radius: 8px; padding: 0 8px; background: #fff; }
+  .sheet {
+    position: fixed; inset: 0; background: #fff; padding: 10px; display: flex;
+    flex-direction: column; gap: 8px; z-index: 2;
+  }
+  .sheet[hidden] { display: none; }
+  textarea { flex: 1; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; border: 2px solid #000; border-radius: 8px; padding: 8px; width: 100%; }
+  .note { font-size: 12px; color: #555; margin: 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    #go:active { transform: scale(.98); }
+  }
+</style>
+</head>
+<body>
+
+<h1>geo spike <a href="https://github.com/EnesYilmazcode/Vacant/issues/5">#5</a></h1>
+
+<dl class="env" id="env"></dl>
+
+<button id="go" aria-label="Request a location fix and time it by wall clock">Get a fix</button>
+
+<div id="out" aria-live="polite"><p class="note">Nothing measured yet. Every elapsed number on this page is timed by this page around the API call, not read off the API.</p></div>
+
+<div class="bar">
+  <select id="place" aria-label="Where you are standing">
+    <option value="Oval">Oval</option>
+    <option value="indoors, middle floor">indoors, middle floor</option>
+    <option value="campus edge">campus edge</option>
+    <option value="other">other</option>
+  </select>
+  <button id="save" disabled>Save sample</button>
+  <button id="report">Report <span id="n">(0)</span></button>
+</div>
+
+<section class="sheet" id="sheet" hidden aria-label="Markdown report">
+  <textarea id="md" readonly spellcheck="false"></textarea>
+  <div class="bar">
+    <button id="copy">Copy</button>
+    <button id="wipe">Erase samples</button>
+    <button id="close">Close</button>
+  </div>
+</section>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const KEY = 'vacant.spike.geo.v1';
+
+// The app's own numbers, so what this measures is what the app lives with.
+// js/app.js: FIX_TIMEOUT_MS 8000, maximumAge 60000.
+const FIX_TIMEOUT_MS = 8000;
+const APP_MAX_AGE_MS = 60000;
+const CODE = { 1: 'PERMISSION_DENIED', 2: 'POSITION_UNAVAILABLE', 3: 'TIMEOUT' };
+
+// Local, never UTC. These get pasted into a log of when somebody was standing
+// somewhere, and a stamp four hours off is worse than no stamp.
+const pad2 = (n) => String(n).padStart(2, '0');
+const localDate = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+const shown = (iso) => { const d = new Date(iso); return localDate(d) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
+
+const ms = (n) => (n == null ? '-' : Math.round(n) + ' ms');
+const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) ?? []; } catch { return []; } };
+const store = (rows) => { try { localStorage.setItem(KEY, JSON.stringify(rows)); } catch { /* private mode, the run still reports */ } };
+
+let samples = load();
+let last = null;
+
+// navigator.standalone and the display-mode query disagree across iOS versions,
+// and #5 turns on which window the test actually ran in, so both are shown and
+// a disagreement is called out rather than resolved.
+function standaloneReadings() {
+  const legacy = 'standalone' in navigator ? navigator.standalone === true : null;
+  const media = window.matchMedia ? window.matchMedia('(display-mode: standalone)').matches : null;
+  return { legacy, media, agree: legacy === null || media === null ? null : legacy === media };
+}
+
+function flag(v, yes, no) {
+  if (v === null || v === undefined) return '<span class="unk">not reported</span>';
+  return v ? '<span class="yes">' + (yes || 'yes') + '</span>' : '<span class="no">' + (no || 'no') + '</span>';
+}
+
+async function permissionState() {
+  if (!navigator.permissions || !navigator.permissions.query) return null;
+  try {
+    const p = await navigator.permissions.query({ name: 'geolocation' });
+    return p.state;
+  } catch {
+    // Some engines ship the API but reject the geolocation name.
+    return 'query rejected';
+  }
+}
+
+async function paintEnv() {
+  const s = standaloneReadings();
+  const perm = await permissionState();
+  const permCell = perm === null
+    ? '<span class="unk">no Permissions API here</span>'
+    : '<span class="' + (perm === 'granted' ? 'yes' : perm === 'denied' ? 'no' : 'unk') + '">' + perm + '</span>';
+  const rows = [
+    ['navigator.standalone', flag(s.legacy, 'true', 'false')],
+    ['display-mode: standalone', flag(s.media, 'true', 'false')],
+    ['the two agree', s.agree === null ? '<span class="unk">only one reported</span>' : flag(s.agree)],
+    ['permissions.query', permCell],
+    ['secure context', flag(window.isSecureContext)],
+    ['navigator.geolocation', flag(!!navigator.geolocation, 'present', 'missing')],
+  ];
+  $('env').innerHTML = rows.map(([k, v]) => '<dt>' + k + '</dt><dd>' + v + '</dd>').join('');
+}
+
+// One call, timed by wall clock on this side of the API.
+//
+// The iOS timeout option is documented as unreliable in a standalone window, so
+// a setTimeout watchdog decides when we stop waiting. The callback is NOT torn
+// down when the watchdog fires, because a fix that lands forty seconds late is
+// the single most useful thing this page can catch.
+function fix(options, onLate) {
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    let settled = false;
+    const done = (r) => {
+      const elapsed = performance.now() - t0;
+      if (settled) { if (onLate) onLate({ ...r, elapsed }); return; }
+      settled = true;
+      clearTimeout(watch);
+      resolve({ ...r, elapsed });
+    };
+    const watch = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve({ outcome: 'WATCHDOG', elapsed: performance.now() - t0 });
+    }, FIX_TIMEOUT_MS);
+
+    if (!navigator.geolocation) { done({ outcome: 'NO API' }); return; }
+    navigator.geolocation.getCurrentPosition(
+      (p) => done({ outcome: 'ok', pos: p }),
+      (e) => done({ outcome: 'error ' + e.code, code: e.code, message: e.message }),
+      options,
+    );
+  });
+}
+
+function describe(r) {
+  if (r.outcome === 'ok') return 'fix';
+  if (r.outcome === 'WATCHDOG') return 'WATCHDOG at ' + FIX_TIMEOUT_MS + ' ms, the API had not called back';
+  if (r.code) return r.outcome + ' ' + (CODE[r.code] || '');
+  return r.outcome;
+}
+
+function pack(r) {
+  return {
+    outcome: r.outcome,
+    code: r.code == null ? null : r.code,
+    elapsed: Math.round(r.elapsed),
+    lat: r.pos ? r.pos.coords.latitude : null,
+    lon: r.pos ? r.pos.coords.longitude : null,
+    accuracy: r.pos ? r.pos.coords.accuracy : null,
+    timestamp: r.pos ? r.pos.timestamp : null,
+  };
+}
+
+async function run() {
+  $('go').disabled = true;
+  $('save').disabled = true;
+  $('out').innerHTML = '<p class="verdict">waiting</p><p class="note">Wall clock is running. If the watchdog fires this page keeps listening, and a late arrival is reported.</p>';
+
+  const before = await permissionState();
+  let lateNote = '';
+  const onLate = (r) => {
+    // The signature of the iOS bug: no callback inside the watchdog window,
+    // then one arrives anyway.
+    lateNote = 'late arrival after ' + ms(r.elapsed) + ', outcome ' + describe(r);
+    if (last) { last.late = lateNote; paint(); }
+  };
+
+  // Call A is #5's exact configuration. maximumAge 0 forces a real fix.
+  const a = await fix({ enableHighAccuracy: false, timeout: FIX_TIMEOUT_MS, maximumAge: 0 }, onLate);
+  // Call B is the app's live configuration. If maximumAge is doing anything at
+  // all, B comes back carrying A's own timestamp and costs no measurable time.
+  const b = await fix({ enableHighAccuracy: false, timeout: FIX_TIMEOUT_MS, maximumAge: APP_MAX_AGE_MS });
+  const after = await permissionState();
+
+  const cached = a.pos && b.pos ? b.pos.timestamp === a.pos.timestamp : null;
+  last = {
+    at: new Date().toISOString(),
+    // Filled in at save time, not here. You press the button first and work out
+    // what to call where you are standing second.
+    place: null,
+    standalone: standaloneReadings(),
+    permBefore: before,
+    permAfter: after,
+    a: pack(a),
+    b: pack(b),
+    cached,
+    ua: navigator.userAgent,
+    late: lateNote || null,
+  };
+  paint();
+  $('go').disabled = false;
+  $('save').disabled = false;
+
+  function paint() {
+    const coords = a.pos ? a.pos.coords : null;
+    const cacheLine = cached === null
+      ? '<span class="unk">no second fix to compare</span>'
+      : cached
+        ? '<span class="yes">yes, same position timestamp, ' + ms(b.elapsed) + '</span>'
+        : '<span class="no">no, a second fix was taken, ' + ms(b.elapsed) + '</span>';
+    $('out').innerHTML =
+      '<p class="verdict">' + describe(a) + '</p>' +
+      '<p class="msnum">' + Math.round(a.elapsed) + '<small> ms wall clock, measured here</small></p>' +
+      '<div class="grid">' +
+      '<span>latitude</span><b>' + (coords ? coords.latitude.toFixed(6) : '-') + '</b>' +
+      '<span>longitude</span><b>' + (coords ? coords.longitude.toFixed(6) : '-') + '</b>' +
+      '<span>accuracy</span><b>' + (coords ? Math.round(coords.accuracy) + ' m' : '-') + '</b>' +
+      '<span>second call cached</span><b>' + cacheLine + '</b>' +
+      '<span>permission before</span><b>' + (last.permBefore || 'no API') + '</b>' +
+      '<span>permission after</span><b>' + (last.permAfter || 'no API') + '</b>' +
+      (last.late ? '<span>late arrival</span><b class="no">' + last.late + '</b>' : '') +
+      '</div>';
+  }
+}
+
+function median(xs) {
+  if (!xs.length) return null;
+  const v = [...xs].sort((x, y) => x - y);
+  return v[(v.length - 1) >> 1];
+}
+
+function markdown() {
+  if (!samples.length) return 'No samples saved yet. Tap Get a fix, then Save sample.';
+  const first = samples[0];
+  const latest = samples[samples.length - 1];
+  const oks = samples.filter((s) => s.a.outcome === 'ok');
+  const accAt = (needle) => {
+    const hit = samples.find((s) => s.place.indexOf(needle) === 0 && s.a.accuracy != null);
+    return hit ? Math.round(hit.a.accuracy) + ' m' : '____';
+  };
+  const firstFix = median(oks.map((s) => s.a.elapsed));
+
+  const table = samples.map((s) =>
+    '| ' + shown(s.at) +
+    ' | ' + s.place +
+    ' | ' + s.a.outcome + (s.a.code ? ' (' + (CODE[s.a.code] || s.a.code) + ')' : '') +
+    ' | ' + s.a.elapsed +
+    ' | ' + (s.a.accuracy == null ? '-' : Math.round(s.a.accuracy)) +
+    ' | ' + s.b.outcome +
+    ' | ' + s.b.elapsed +
+    ' | ' + (s.cached === null ? '-' : s.cached ? 'yes' : 'no') +
+    ' | ' + (s.standalone.legacy === null ? '-' : s.standalone.legacy) + ' / ' + (s.standalone.media === null ? '-' : s.standalone.media) +
+    ' |').join('\n');
+
+  // A granted permission is not proof an alert appeared. Only a run that STARTED
+  // at prompt and ENDED granted saw one, and if every run started granted this
+  // page cannot tell, so it leaves the blank rather than filling it in.
+  const sawAlert = samples.some((s) => s.permBefore === 'prompt' && s.permAfter === 'granted');
+  const denied = samples.some((s) => s.a.code === 1);
+  const watchdogged = samples.some((s) => s.a.outcome === 'WATCHDOG');
+  const anyFix = oks.length > 0;
+  // #5 says an ambiguous result counts as FAIL, so a mixed run is not a pass.
+  const verdict = !anyFix || denied || watchdogged || oks.length !== samples.length ? 'FAIL' : 'PASS';
+  const lates = samples.filter((s) => s.late);
+
+  return '## ' + new Date().toISOString().slice(0, 10) + '  iOS installed-PWA geolocation\n' +
+'\n' +
+'Measured with `spikes/geo.html`. Every elapsed figure is wall clock, timed in the\n' +
+'page around `getCurrentPosition`, not a number the API reported.\n' +
+'\n' +
+'```\n' +
+'iOS version / device:        ' + latest.ua + '\n' +
+'Permission alert shown:      ' + (sawAlert ? 'yes, permissions.query went prompt to granted' : '____  (no run started at prompt, so this page cannot tell)') + '\n' +
+'Coordinates arrived:         ' + (anyFix ? 'yes' : 'no') + '\n' +
+'Elapsed to first fix:        ' + (firstFix == null ? '____' : firstFix) + ' ms (median of ' + oks.length + ' successful call A runs)\n' +
+'Accuracy Oval / indoors / edge:  ' + accAt('Oval') + ' / ' + accAt('indoors') + ' / ' + accAt('campus edge') + '\n' +
+'permissions.query before / after grant:  ' + (first.permBefore || 'no API') + ' / ' + (latest.permAfter || 'no API') + '\n' +
+'Grant survived close and reopen:  ____  (close the icon, reopen it, reload this page, read permissions.query at the top)\n' +
+'VERDICT: ' + verdict + '\n' +
+'```\n' +
+'\n' +
+'navigator.standalone / display-mode:standalone on the last run: ' +
+  latest.standalone.legacy + ' / ' + latest.standalone.media +
+  (latest.standalone.agree === false ? '  **these disagree, and the run happened in whichever window the icon opened**' : '') + '\n' +
+(lates.length ? '\nLate arrivals, meaning the API called back after the watchdog had already given up:\n' + lates.map((s) => '- ' + s.at + ': ' + s.late).join('\n') + '\n' : '') +
+'\n' +
+'| when | where | call A | A ms | acc m | call B | B ms | B cached | standalone legacy / media |\n' +
+'|---|---|---|---|---|---|---|---|---|\n' +
+table + '\n' +
+'\n' +
+'Call A is `{enableHighAccuracy:false, timeout:' + FIX_TIMEOUT_MS + ', maximumAge:0}`, the configuration #5 asks for.\n' +
+'Call B is the same call with `maximumAge:' + APP_MAX_AGE_MS + '`, the configuration `js/app.js` ships. "B cached"\n' +
+'means B came back carrying A\'s own position timestamp, which is the only proof\n' +
+'that `maximumAge` is doing anything for the app.\n' +
+'\n' +
+'A WATCHDOG row means the API never called back inside ' + FIX_TIMEOUT_MS + ' ms of wall clock.\n' +
+'That is not the same as a TIMEOUT error, and the difference is the whole reason\n' +
+'`js/app.js` wraps the call.\n';
+}
+
+$('go').addEventListener('click', run);
+$('save').addEventListener('click', () => {
+  if (!last) return;
+  last.place = $('place').value;
+  samples.push(last);
+  store(samples);
+  last = null;
+  $('save').disabled = true;
+  $('n').textContent = '(' + samples.length + ')';
+});
+$('report').addEventListener('click', () => {
+  $('md').value = markdown();
+  $('sheet').hidden = false;
+});
+$('close').addEventListener('click', () => { $('sheet').hidden = true; });
+$('copy').addEventListener('click', async () => {
+  $('md').select();
+  try {
+    await navigator.clipboard.writeText($('md').value);
+    $('copy').textContent = 'Copied';
+  } catch {
+    $('copy').textContent = 'Select all and copy';
+  }
+  setTimeout(() => { $('copy').textContent = 'Copy'; }, 1500);
+});
+$('wipe').addEventListener('click', () => {
+  if (!confirm('Erase all ' + samples.length + ' saved samples?')) return;
+  samples = [];
+  store(samples);
+  $('n').textContent = '(0)';
+  $('md').value = markdown();
+});
+
+$('n').textContent = '(' + samples.length + ')';
+paintEnv();
+// The permission state can change while the page sits open, from Settings or
+// from the prompt itself.
+if (navigator.permissions && navigator.permissions.query) {
+  navigator.permissions.query({ name: 'geolocation' })
+    .then((p) => { p.onchange = paintEnv; })
+    .catch(() => {});
+}
+</script>
+</body>
+</html>

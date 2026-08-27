@@ -84,9 +84,17 @@
   }
 
   /* --- the question --- */
+  /* justify-content: center on a scroll container puts overflow ABOVE the
+     scroll origin, where nothing can reach it. Measured at 393x852 with root
+     53px (AX5): content 1989px in an 852px box, the 30 min button at top -644,
+     and scrollTop, scrollIntoView and Tab all left it there. safe centring
+     falls back to flex-start the moment the content stops fitting, which is
+     exactly when the centring stopped being worth anything. The plain value
+     stays above it for engines that do not parse the safe keyword. */
   #ask {
     position: fixed; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 1.05rem; padding: 1.5rem;
+    align-items: center; justify-content: center; justify-content: safe center;
+    gap: 1.05rem; padding: 1.5rem;
     padding-bottom: calc(1.5rem + var(--safe-b));
     background: radial-gradient(90% 55% at 50% 46%, rgba(11,13,16,.78), rgba(11,13,16,.55) 62%, rgba(11,13,16,.9));
     overflow-y: auto;
@@ -218,7 +226,7 @@
   .r-chev { grid-area: chev; color: var(--dim); display: flex; align-items: center; justify-content: flex-end; }
   /* rem inside a media query resolves against 16px forever, so the large-text
      reflow has to be a container query in em or it never fires. */
-  #list, #near { container-type: inline-size; container-name: list; }
+  #list, #near, #pick { container-type: inline-size; container-name: list; }
   @container list (max-width: 18em) {
     .row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "walk" "win" "chev"; }
     .row .r-walk, .row .r-chev { justify-self: start; }
@@ -282,6 +290,23 @@
   .pick-row .pn { flex: 1 1 auto; min-width: 0; }
   .pick-row .ps { color: var(--dim); font-size: .8rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .pick-row .pc { color: var(--dim); font-size: .84rem; white-space: nowrap; }
+  /* A container query carries no specificity of its own, so this block has to
+     sit BELOW .b-row and .pick-row or the plain rules win on source order.
+     .b-row had the container name and no rule inside the query at all: measured
+     at 393px with root 53px, all 53 building rows computed a 0px name column
+     against a 342px walk column and #near scrolled sideways at 454 to 393. */
+  @container list (max-width: 18em) {
+    .b-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "walk" "sub" "hours"; }
+    .b-row .r-walk { justify-self: start; }
+    .b-row .b-hours { white-space: normal; }
+    .pick-row { flex-wrap: wrap; }
+    .pick-row .pc { white-space: normal; }
+    /* 8rem is 424px once the root is 53px, and a shortcut label is one flex
+       item that will not shrink under its longest word, so the picker scrolled
+       sideways by 6px. One button per line, and the label breaks the way the
+       row names already do. */
+    .shortcuts .bar-btn { flex-basis: 100%; min-width: 0; overflow-wrap: anywhere; }
+  }
   #find {
     flex: none; display: flex; gap: .5rem; padding: .5rem .7rem;
     border-top: 1px solid var(--line);

@@ -19,7 +19,7 @@
 // the highlight and the line stay on screen while you read.
 
 import { toGrid } from './campus.js';
-import { PACKUP, activeSessions, rank } from './engine.js';
+import { activeSessions, distanceMetres, rank, walkMinutes } from './engine.js';
 import {
   allWeekCodes,
   busyDayOf,
@@ -32,7 +32,9 @@ import {
   isoDate,
   rankBuildings,
   resolveState,
+  roomClaim,
   roomsPerBuilding,
+  scheduleDarkOn,
   spokenClock,
   staleness,
   windowPhrase,
@@ -152,6 +154,7 @@ const state = {
   ready: false,
   rankable: false,
   scheduled: true,
+  dark: false,
   situation: null,
   groups: null,
   query: '',
@@ -752,17 +755,28 @@ function paintNear(reason) {
   const allWeek = new Set(allWeekCodes(state.hoursTerm));
   const read = state.hours?.generated ? fmtDay(state.hours.generated) : null;
 
+  // Five doors, five sentences. A building the Registrar publishes as shut
+  // today is a fact and reads as one; only a building nobody publishes anything
+  // about gets "unknown" and the warning colour. The one line every row used to
+  // share said "open till 6:00pm" at 9:40pm, three hours forty after the door
+  // had already locked.
+  const DOOR = {
+    open: (b) => [`open till ${clock(b.closesAt)}`, `open until ${spokenClock(b.closesAt)}`],
+    before: (b) => [`opens ${clock(b.opensAt)}`, `shut now, opens at ${spokenClock(b.opensAt)}`],
+    after: (b) => [`locked ${clock(b.closesAt)}`, `locked since ${spokenClock(b.closesAt)}`],
+    'closed-today': () => ['closed today', 'published as closed all day today'],
+    unknown: () => ['hours unknown', 'opening hours not published'],
+  };
+
   const row = (b) => {
-    const hoursText = b.closesAt == null ? 'hours unknown' : `open till ${clock(b.closesAt)}`;
+    const [hoursText, hoursSay] = DOOR[b.when](b);
     const rooms = `${b.rooms} classroom${b.rooms === 1 ? '' : 's'}`;
-    const name = `${shortName(b.name)}, ${b.walk} minute walk, ${rooms}, ${
-      b.closesAt == null ? 'opening hours not published' : `open until ${spokenClock(b.closesAt)}`
-    }`;
+    const name = `${shortName(b.name)}, ${b.walk} minute walk, ${rooms}, ${hoursSay}`;
     return `<button type="button" class="b-row" data-code="${esc(b.code)}" aria-label="${esc(name)}">
       <span class="r-name">${esc(shortName(b.name))}</span>
       <span class="r-walk">${WALK_ICON}${b.walk} min</span>
       <span class="r-win">${rooms}${allWeek.has(b.code) ? ' &middot; open every day' : ''}</span>
-      <span class="b-hours${b.closesAt == null ? ' unknown-h' : ''}">${hoursText}</span>
+      <span class="b-hours${b.when === 'unknown' ? ' unknown-h' : ''}">${hoursText}</span>
     </button>`;
   };
 
@@ -817,20 +831,39 @@ function selectBuilding(code) {
   say(`${shortName(b.name)}, shown on the map.`);
 }
 
+// Why the schedule cannot answer. Two reasons, not one: "the last class of the
+// day has finished" and "this whole day has almost no classes in it" are
+// different facts, and the second is the one that covers finals week, the days
+// before a term starts, and a build that came back empty. Saying "right now" on
+// a day where nothing runs at any hour would point at the clock for a problem
+// that is not about the clock.
+function unscheduled() {
+  if (state.dark) {
+    return {
+      head: 'Almost nothing is scheduled today',
+      body:
+        "The term's schedule has all but emptied out for today. That happens at the end of a term, " +
+        'before one starts, and when a build breaks, and Vacant cannot tell those three apart, ' +
+        'so it will not read an empty schedule as an empty campus.',
+    };
+  }
+  return {
+    head: 'Nothing is scheduled right now',
+    body: 'No class is meeting anywhere on campus at this minute, so the schedule cannot tell you what is empty.',
+  };
+}
+
 // Why this screen and not a room list. The locked-door caveat lives in this
 // sentence rather than in a footer, because on this screen it is the answer
 // rather than a disclaimer under it.
 function nearReason() {
   const s = state.situation;
-  if (s && !s.ranked) {
-    return {
-      head: s.heading,
-      body: `${s.body} These are the nearest buildings that hold classrooms, with whatever the Registrar publishes about their doors.`,
-    };
-  }
+  const base = s && !s.ranked ? { head: s.heading, body: s.body } : unscheduled();
   return {
-    head: 'Nothing is scheduled right now',
-    body: 'No class is meeting anywhere on campus at this minute, so the schedule cannot tell you what is empty. These are the nearest buildings that hold classrooms, and a building being open is not a promise that a room inside it is unlocked.',
+    head: base.head,
+    body:
+      `${base.body} These are the nearest buildings that hold classrooms, and a building being ` +
+      'open is not a promise that a room inside it is unlocked.',
   };
 }
 
@@ -1027,38 +1060,6 @@ function timelineRows(room, bname, nowMin) {
   return { known, rows, blocks: inside, open, close };
 }
 
-// The one line at the top that makes a claim, and the only place on the room
-// screen that talks about now.
-function claimFor({ rows, blocks, open, close }, nowMin, bname) {
-  if (nowMin < open) {
-    const first = rows.find((r) => r.kind === 'free');
-    return {
-      head: `${bname} opens at ${clock(open)}`,
-      sub: first ? `Free from ${clock(first.t)} for ${dur(first.len - PACKUP)}` : '',
-    };
-  }
-  if (nowMin >= close) return { head: `${bname} is closed for the day`, sub: '' };
-
-  const inClass = blocks.find(([s, e]) => nowMin >= s && nowMin < e);
-  if (inClass) {
-    const next = rows.find((r) => r.kind === 'free' && r.t >= inClass[1]);
-    return {
-      head: `In use till ${clock(inClass[1])}`,
-      sub: next ? `Next free ${clock(next.t)}, for ${dur(next.len - PACKUP)}` : 'Nothing free after it today',
-    };
-  }
-  const here = rows.find((r) => r.kind === 'free' && r.now);
-  if (!blocks.length) return { head: 'No class in here all day', sub: '' };
-  if (here) {
-    const later = blocks.find(([s]) => s >= nowMin);
-    return {
-      head: later ? `Free till ${clock(later[0])}` : 'No class in here for the rest of today',
-      sub: `Yours for ${dur(Math.max(0, (here.end ?? close) - PACKUP - nowMin))} from now`,
-    };
-  }
-  return { head: 'Nothing free in here right now', sub: '' };
-}
-
 const rad = (deg) => (deg * Math.PI) / 180;
 
 // Great-circle initial bearing, degrees clockwise from true north.
@@ -1076,18 +1077,26 @@ function roomHtml(id) {
   const now = new Date();
   const nowMin = nowMinutes(now);
   const r = state.results.find((x) => x.id === id);
+  // The walk belongs in the claim, so it has to be here whether or not the room
+  // came off a ranked row: a shared link and the buildings screen both land on
+  // this screen with state.results empty.
+  const metres = Number.isFinite(r?.metres)
+    ? r.metres
+    : state.origin && b && Number.isFinite(b.lat) && Number.isFinite(b.lon)
+      ? Math.round(distanceMetres(state.origin, b))
+      : null;
 
   const tl = timelineRows(room, bname, nowMin);
   const claim = tl.closed
     ? { head: `${bname} is closed today`, sub: '' }
     : tl.nothing
       ? { head: 'No class in here all day', sub: '' }
-      : claimFor(tl, nowMin, bname);
+      : roomClaim(tl, nowMin, bname, metres);
 
   const type = TYPE_WORDS[room.type];
   const facts = [
-    r ? `<span class="w">${WALK_ICON}${r.walk} min walk</span>` : '',
-    r ? `${r.metres} m` : '',
+    Number.isFinite(metres) ? `<span class="w">${WALK_ICON}${walkMinutes(metres)} min walk</span>` : '',
+    Number.isFinite(metres) ? `${metres} m` : '',
     room.cap ? `${room.cap} seats` : 'seats unknown',
     type ? esc(type) : '',
   ].filter(Boolean);
@@ -1225,6 +1234,10 @@ function rememberPick(id) {
       gapEnd: r?.nextClassAt ?? null,
       session,
       usable: r?.usable ?? null,
+      // The minute the row was tapped, so the block can print the departure
+      // deadline behind the usable figure. Reading the clock when the panel
+      // opens instead would date-stamp a walk that already happened.
+      nowMin: nowMinutes(new Date()),
       busy,
       dayName: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][state.day],
       at: Date.now(),
@@ -1486,6 +1499,7 @@ function refresh() {
   state.situation = resolveState({ now, current: state.current, index: state.rooms });
   state.rankable = state.situation.ranked;
   state.scheduled = inScheduledHours({ now, current: state.current, index: state.rooms });
+  state.dark = scheduleDarkOn({ now, index: state.rooms });
   paintGate();
   if (!state.rankable) {
     if (state.screen !== 'near' && state.screen !== 'about') showAsk();
@@ -1513,10 +1527,10 @@ function paintGate() {
     $('gate').hidden = true;
     $('ask-q').hidden = false;
     if (!state.scheduled && state.ready) {
+      const u = unscheduled();
       $('ask-q').hidden = true;
-      $('gate-h').textContent = 'Nothing is scheduled right now';
-      $('gate-p').textContent =
-        'No class is meeting anywhere on campus at this minute, so the schedule cannot tell you what is empty.';
+      $('gate-h').textContent = u.head;
+      $('gate-p').textContent = u.body;
       $('gate-d').hidden = true;
       $('gate-go').hidden = false;
       $('gate-go').textContent = 'Show nearest buildings';
@@ -1681,6 +1695,7 @@ async function boot() {
   state.situation = resolveState({ now, current, index: rooms });
   state.rankable = state.situation.ranked;
   state.scheduled = inScheduledHours({ now, current, index: rooms });
+  state.dark = scheduleDarkOn({ now, index: rooms });
 
   state.ready = true;
   for (const el of document.querySelectorAll('#ask [disabled]')) el.disabled = false;
@@ -1689,12 +1704,21 @@ async function boot() {
   paintGate();
   performance.mark('vacant:ready');
 
-  // A shared link opens on the room it names, with the list one tap behind it.
+  // A shared link opens on the room it names, with one screen behind it. Which
+  // screen is not a detail: the ranked list is a claim about the whole campus,
+  // and outside scheduled hours that claim is exactly the one this app refuses
+  // to make. Opening the list here anyway put 40 rows one back press behind a
+  // link tapped at 3am on a Saturday, with the reason sentence nowhere.
   const wanted = new URLSearchParams(location.search).get('room');
   if (wanted && rooms.rooms[wanted] && state.rankable) {
-    showList();
-    answer();
-    history.replaceState({ v: 'list' }, '', cleanUrl());
+    if (state.scheduled) {
+      showList();
+      answer();
+      history.replaceState({ v: 'list' }, '', cleanUrl());
+    } else {
+      showNear();
+      history.replaceState({ v: 'near' }, '', cleanUrl());
+    }
     openRoom(wanted);
   }
 }

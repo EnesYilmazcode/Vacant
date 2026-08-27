@@ -10,18 +10,24 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
+  DAY_END,
   allWeekCodes,
   busyDayOf,
+  clock,
+  closedDayFor,
   diagnosticsBlock,
   inScheduledHours,
   indexFloorCheck,
   rankBuildings,
   resolveState,
+  roomClaim,
   roomsPerBuilding,
+  scheduleDarkOn,
+  scheduleShareOn,
   staleness,
   windowPhrase,
 } from '../../js/state.js';
-import { rank } from '../../js/engine.js';
+import { PACKUP, rank, usableMinutes } from '../../js/engine.js';
 
 const ROOT = new URL('../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const read = (f) => JSON.parse(readFileSync(join(ROOT, f), 'utf8'));
@@ -193,6 +199,58 @@ test('a shut campus is not scheduled hours, but a no-classes day still is', () =
   assert.equal(inScheduledHours({ now: at('2026-10-15', 12, 0), current: CUR, index: CAL }), true);
 });
 
+test('a day whose sessions have all ended is not a scheduled day', () => {
+  // The measurement, on the shipped index, that the threshold sits on. Every
+  // weekday between the first and last day of instruction is either a day the
+  // sessions cover or a day they have all left, and there is nothing in the
+  // middle: the dark days top out at 0.11% of their weekday's blocks and the
+  // thinnest teaching day, Mon Aug 24, comes out 1.80%.
+  const share = (iso, h = 12) => scheduleShareOn({ now: at(iso, h), index: INDEX });
+  for (const iso of ['2026-12-10', '2026-12-11', '2026-12-14', '2026-12-15', '2026-08-17']) {
+    assert.ok(share(iso) <= 0.0012, `${iso} came out ${share(iso)}`);
+    assert.equal(scheduleDarkOn({ now: at(iso), index: INDEX }), true, iso);
+  }
+  for (const iso of ['2026-09-03', '2026-10-15', '2026-11-11', '2026-12-09']) {
+    assert.ok(share(iso) >= 0.9, `${iso} came out ${share(iso)}`);
+    assert.equal(scheduleDarkOn({ now: at(iso), index: INDEX }), false, iso);
+  }
+  assert.ok(share('2026-08-24') > 0.017 && share('2026-08-24') < 0.019, `Aug 24 came out ${share('2026-08-24')}`);
+  assert.equal(scheduleDarkOn({ now: at('2026-08-24'), index: INDEX }), false);
+});
+
+test('finals week does not rank rooms even with no exam window in the data', () => {
+  // The mechanism the exam refusal needs is a calendar the harvest emits, and
+  // an index that has not got one yet must not fall through to "871 rooms free"
+  // with a 727 seat lecture hall at the top. It cannot name the reason, but it
+  // can see its own schedule has gone dark.
+  assert.equal(INDEX.exams, undefined, 'this test is about an index with no exam window');
+  for (const iso of ['2026-12-10', '2026-12-11']) {
+    assert.equal(resolveState({ now: at(iso), current: CURRENT, index: INDEX }).ranked, true, `${iso} still ranks`);
+    assert.equal(inScheduledHours({ now: at(iso), current: CURRENT, index: INDEX }), false, `${iso} is scheduled`);
+  }
+  // Midday on a real Thursday is untouched.
+  assert.equal(inScheduledHours({ now: at('2026-09-03', 12, 15), current: CURRENT, index: INDEX }), true);
+});
+
+test('the closed table reads in either shape the build might write it', () => {
+  // The harvest emits a list of {date, state}; a hand-written fixture is easier
+  // as a keyed object. Reading only the second one is how the campus-closed
+  // refusal ends up wired to nothing, with no error anywhere: indexing a date
+  // into an array gives undefined and the message never fires.
+  const asList = { closed: [{ date: '2026-09-07', state: 'offices-closed', name: 'Labor Day' }] };
+  const asMap = { closed: { '2026-09-07': { state: 'offices-closed', name: 'Labor Day' } } };
+  for (const shape of [asList, asMap]) {
+    assert.deepEqual(closedDayFor('2026-09-07', null, shape), { state: 'offices-closed', name: 'Labor Day' });
+    assert.equal(closedDayFor('2026-09-08', null, shape), null);
+    assert.equal(resolveState({ now: at('2026-09-07'), current: CUR, index: { ...CAL, ...shape } }).kind, 'CAMPUS_CLOSED');
+  }
+  // And the bare-string form the issue also allows.
+  assert.deepEqual(closedDayFor('2026-10-15', null, { closed: [{ date: '2026-10-15', state: 'no-classes' }] }), {
+    state: 'no-classes',
+    name: null,
+  });
+});
+
 test('buildings rank in three groups and unknown hours never sort among the open', () => {
   const counts = roomsPerBuilding(INDEX);
   const term = HOURS.terms['autumn-2026-classroom-pool-building-schedule'];
@@ -235,6 +293,46 @@ test('with no hours table at all every building reads unknown, never open', () =
   assert.equal(groups.unknown.length, Object.keys(counts).filter((c) => SLICE[c]).length);
 });
 
+test('a building published as closed today is not a building with no hours', () => {
+  // 43 of the 47 buildings in the Registrar pool publish at least one day as
+  // closed, so on a Saturday this is the majority of the closed group. Calling
+  // a published fact unknown throws away the one thing this screen carries.
+  const term = HOURS.terms['autumn-2026-classroom-pool-building-schedule'];
+  const hoursFor = (code, day) => term.buildings[code]?.hours[day];
+  assert.equal(hoursFor('087', 6), null, 'Townshend publishes Saturday closed');
+  const groups = rankBuildings({
+    origin: { lat: 39.99944, lon: -83.01502 },
+    buildings: SLICE,
+    counts: roomsPerBuilding(INDEX),
+    hoursFor,
+    day: 6,
+    nowMin: 20 * 60,
+  });
+  const townshend = groups.closed.find((b) => b.code === '087');
+  assert.equal(townshend.when, 'closed-today');
+  assert.ok(groups.closed.some((b) => b.when === 'closed-today'));
+  for (const row of groups.unknown) assert.equal(row.when, 'unknown');
+  for (const row of groups.open) assert.equal(row.when, 'open');
+});
+
+test('a closed building says which side of its window the clock is on', () => {
+  // The one shared line used to read "open till 6:00pm" at 9:40pm, three hours
+  // forty after the door locked.
+  const hoursFor = () => [420, 1080];
+  const grouped = (nowMin) =>
+    rankBuildings({
+      origin: { lat: 39.99944, lon: -83.01502 },
+      buildings: { 900: { name: 'Nowhere Hall', lat: 39.9995, lon: -83.013 } },
+      counts: { 900: 4 },
+      hoursFor,
+      day: 4,
+      nowMin,
+    });
+  assert.equal(grouped(6 * 60).closed[0].when, 'before');
+  assert.equal(grouped(12 * 60).open[0].when, 'open');
+  assert.equal(grouped(21 * 60 + 40).closed[0].when, 'after');
+});
+
 test('the all-week list comes out of the hours table, not out of the source', () => {
   const term = HOURS.terms['autumn-2026-classroom-pool-building-schedule'];
   const codes = allWeekCodes(term);
@@ -268,6 +366,52 @@ test('the app source assumes nothing about an unpublished door', () => {
     assert.doesNotMatch(readFileSync(join(dir, file), 'utf8'), /usually/i, `${file} hedges`);
   }
   assert.doesNotMatch(readFileSync(join(ROOT, 'index.html'), 'utf8'), /usually/i, 'index.html hedges');
+});
+
+// The two large-text rules, checked in the source because this suite has no
+// layout engine. What they are worth is measured in a browser: at 393px with
+// the root at 53px the buildings screen went from 53 of 53 rows clipped and
+// #near scrolling sideways at 454 against 393, to 0 clipped and no sideways
+// scroll, and the question screen's 30 minute button went from top -644 with
+// no way to reach it to top 493.
+
+test('every container-query rule sits below the plain rule it has to beat', () => {
+  // A container query adds no specificity of its own, so a plain rule further
+  // down the sheet wins on source order. This is the bug that shipped: .b-row
+  // was given the container name, and the only rule inside the query was for
+  // .row, which happens to be declared above it.
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const blocks = [...css.matchAll(/@container[^{]*\{([\s\S]*?)\n {2}\}/g)];
+  assert.ok(blocks.length >= 1, 'no container query in the sheet');
+  const seen = new Set();
+  for (const block of blocks) {
+    for (const rule of block[1].matchAll(/^ {4}(\.[\w-]+)/gm)) {
+      const selector = rule[1];
+      seen.add(selector);
+      const plain = new RegExp(`^ {2}\\${selector}[\\s,{]`, 'gm');
+      for (const hit of css.matchAll(plain)) {
+        assert.ok(
+          hit.index < block.index,
+          `${selector} is declared at ${hit.index}, below the container query at ${block.index}`,
+        );
+      }
+    }
+  }
+  for (const want of ['.row', '.b-row', '.pick-row']) {
+    assert.ok(seen.has(want), `${want} has no large-text rule`);
+  }
+});
+
+test('the question screen does not centre content it cannot scroll to', () => {
+  // justify-content: center on a scroll container puts overflow above the
+  // scroll origin, where scrollTop, scrollIntoView and Tab all cannot reach it.
+  // safe falls back to flex-start the moment the content stops fitting.
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const ask = css.slice(css.indexOf('  #ask {'), css.indexOf('  #ask h1 {'));
+  assert.match(ask, /justify-content: safe center;/);
+  assert.match(ask, /overflow-y: auto;/);
+  // The plain value has to stay above it for engines that drop the keyword.
+  assert.ok(ask.indexOf('justify-content: center') < ask.indexOf('justify-content: safe center'));
 });
 
 // ---------------------------------------------------------------- #18 the row
@@ -318,6 +462,57 @@ test('the 9h44 case: an unpublished door never gets a window', () => {
   assert.doesNotMatch(p.text, /\dh\d\d/);
 });
 
+test('clock wraps, so the string a row prints is not the thing to assert on', () => {
+  // The guard below used to parse the rendered text and check the minute came
+  // out under 1440. Measured across clock(0..2999) with that same parse, the
+  // highest value it can ever produce is 1439, from clock(1439) = 11:59pm.
+  // clock(1440) renders 12:00am and clock(1500) renders 1:00am, so every
+  // possible input passed and the assertion asserted nothing.
+  let highest = -1;
+  for (let m = 0; m < 3000; m += 1) {
+    const hit = /(\d+):(\d\d)(am|pm)/.exec(clock(m));
+    if (!hit) continue;
+    const minute = ((Number(hit[1]) % 12) + (hit[3] === 'pm' ? 12 : 0)) * 60 + Number(hit[2]);
+    highest = Math.max(highest, minute);
+  }
+  assert.equal(highest, 1439);
+  assert.equal(clock(1440), '12:00am');
+  assert.equal(clock(1500), '1:00am');
+});
+
+test('a window past the end of the day is refused, not wrapped into the morning', () => {
+  // The negative control the old guard did not have. This row would have
+  // printed "free till 1:00am" and passed.
+  const past = {
+    wait: 0, hoursKnown: true, availableAt: 700,
+    usableUntil: DAY_END + 50, nextClassAt: DAY_END + 60, usable: 60,
+  };
+  const p = windowPhrase(past, DAY_END + 60);
+  assert.equal(p.tier, 'unknown');
+  assert.doesNotMatch(p.text, /\d+:\d\d(am|pm)/);
+  assert.doesNotMatch(p.say, /\d+:\d\d (am|pm)/);
+
+  // The same row one minute inside the day still answers.
+  const ok = {
+    wait: 0, hoursKnown: true, availableAt: 700,
+    usableUntil: DAY_END - 10, nextClassAt: DAY_END, usable: 60,
+  };
+  assert.equal(windowPhrase(ok, DAY_END).tier, 'medium');
+});
+
+test('a strong row names the class time it is talking about, not a made up one', () => {
+  // usableUntil is PACKUP before the class, so the old accessible name said
+  // "free until 3:20 pm when a class starts" for a room whose class is at 3:30,
+  // while the room screen for the same room said 3:30. Nothing starts at 3:20.
+  const row = { wait: 0, hoursKnown: true, availableAt: 700, nextClassAt: 930, usableUntil: 930 - PACKUP, usable: 200 };
+  const p = windowPhrase(row, 1140);
+  assert.equal(p.tier, 'strong');
+  assert.equal(p.text, 'free till 3:20pm');
+  assert.match(p.say, /3:20 pm/);
+  assert.match(p.say, /3:30 pm/);
+  assert.doesNotMatch(p.say, /3:20 pm when a class starts/);
+});
+
 test('no row phrase ever names a time past the end of the day', () => {
   const counts = roomsPerBuilding(INDEX);
   const term = HOURS.terms['autumn-2026-classroom-pool-building-schedule'];
@@ -338,14 +533,95 @@ test('no row phrase ever names a time past the end of the day', () => {
   assert.ok(rows.length > 100, `expected a busy Thursday, got ${rows.length} rows`);
   assert.ok(Object.keys(counts).length > 0);
   for (const row of rows) {
+    // The numbers, not the rendered string. Any of these past DAY_END is what
+    // clock() would quietly wrap, and it is the only thing that can go wrong.
+    for (const [what, minute] of [
+      ['availableAt', row.availableAt],
+      ['usableUntil', row.usableUntil],
+      ['nextClassAt', row.nextClassAt],
+    ]) {
+      if (minute == null) continue;
+      assert.ok(minute >= 0 && minute <= DAY_END, `${row.id} ${what} is ${minute}`);
+    }
     const hours = hoursFor(row.building, 4);
-    const p = windowPhrase(row, Array.isArray(hours) ? hours[1] : null);
-    const clockHit = p.text.match(/(\d+):(\d\d)(am|pm)/);
-    if (!clockHit) continue;
-    const [, h, m, ap] = clockHit;
-    const minute = ((Number(h) % 12) + (ap === 'pm' ? 12 : 0)) * 60 + Number(m);
-    assert.ok(minute < 1440, `${row.id} printed ${p.text}`);
+    // 'window unknown' is the refusal the guard above produces. A real Thursday
+    // must not reach it, or the guard is hiding a wrong window rather than
+    // catching one.
+    assert.notEqual(windowPhrase(row, Array.isArray(hours) ? hours[1] : null).text, 'window unknown', row.id);
   }
+});
+
+// The room screen at 12:15 on a Thursday, in a building open 7:00 to 19:30
+// with one class from 15:30 to 17:00. This is the shape timelineRows() hands
+// roomClaim(), written out rather than built, so the arithmetic under test is
+// the only thing that can move.
+const TIMELINE = {
+  open: 420,
+  close: 1170,
+  blocks: [[930, 1020]],
+  rows: [
+    { kind: 'edge', t: 420, text: 'Nowhere Hall opens' },
+    { kind: 'free', t: 420, end: 930, len: 510, now: true },
+    { kind: 'busy', t: 930 },
+    { kind: 'free', t: 1020, end: 1170, len: 150, now: false },
+    { kind: 'edge', t: 1170, text: 'Nowhere Hall closes' },
+  ],
+};
+
+test('the room screen subtracts the walk, the way the engine says to', () => {
+  // `gapEnd - PACKUP - now` is the expression engine.js documents as the bug it
+  // exists to fix. It shipped here anyway and overstated every claim by exactly
+  // the walk: measured headlessly on a Thursday at 12:15, all 23 rooms in the
+  // top 40 that carried a claim were 5 minutes long.
+  const nowMin = 735;
+  const metres = 147;
+  const engine = usableMinutes({ now: nowMin, gapStart: 420, gapEnd: 930, metres });
+  const naive = 930 - PACKUP - nowMin;
+  assert.equal(naive - engine, 3, 'the walk is 3 minutes, so the old formula was 3 minutes long');
+
+  const claim = roomClaim(TIMELINE, nowMin, 'Nowhere Hall', metres);
+  assert.equal(claim.head, 'Free till 3:30pm');
+  assert.equal(claim.sub, `Yours for ${Math.floor(engine / 60)}h${String(engine % 60).padStart(2, '0')} once you get there`);
+  assert.doesNotMatch(claim.sub, /3h05/);
+});
+
+test('the room screen prints no duration when it does not know the walk', () => {
+  // A shared link and the buildings screen both land here with no ranked row
+  // behind them. A duration that assumes you are already at the door is the
+  // same lie in a different place.
+  const claim = roomClaim(TIMELINE, 735, 'Nowhere Hall', null);
+  assert.equal(claim.head, 'Free till 3:30pm');
+  assert.equal(claim.sub, '');
+});
+
+test('a walk that outlasts the window says so instead of printing zero', () => {
+  const claim = roomClaim(TIMELINE, 925, 'Nowhere Hall', 4000);
+  assert.equal(claim.sub, 'It closes before you could walk there');
+});
+
+test('the before-open and in-class claims go through the same formula', () => {
+  const early = roomClaim(TIMELINE, 300, 'Nowhere Hall', 147);
+  assert.equal(early.head, 'Nowhere Hall opens at 7:00am');
+  const firstGap = usableMinutes({ now: 300, gapStart: 420, gapEnd: 930, metres: 147 });
+  assert.equal(early.sub, `Free from 7:00am for ${Math.floor(firstGap / 60)}h${String(firstGap % 60).padStart(2, '0')}`);
+
+  const during = roomClaim(TIMELINE, 950, 'Nowhere Hall', 147);
+  assert.equal(during.head, 'In use till 5:00pm');
+  const nextGap = usableMinutes({ now: 950, gapStart: 1020, gapEnd: 1170, metres: 147 });
+  assert.equal(during.sub, `Next free 5:00pm, for ${Math.floor(nextGap / 60)}h${String(nextGap % 60).padStart(2, '0')}`);
+});
+
+test('the room deep link is gated on scheduled hours, not only on rankable', () => {
+  // There is no DOM in this suite, so this reads the branch. What it guards:
+  // boot() opened the ranked list behind a ?room= link at 3am on a Saturday,
+  // leaving 40 rows one back press from a link, on a screen the front door
+  // refuses to show at all.
+  const src = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
+  const branch = src.slice(src.indexOf('const wanted = new URLSearchParams'));
+  assert.ok(branch.length > 0, 'the deep link branch moved');
+  const head = branch.slice(0, 700);
+  assert.match(head, /if \(state\.scheduled\)/);
+  assert.match(head, /showNear\(\)/);
 });
 
 // ------------------------------------------------------------ #17 the picker
@@ -427,6 +703,7 @@ const DIAG = {
     gapEnd: 970,
     session: 0,
     usable: 123,
+    nowMin: 842,
   },
   dayName: 'Thu',
   busy: [[480, 535], [550, 605], [780, 835], [970, 1025]],
@@ -436,10 +713,32 @@ test('the block prints what a maintainer needs to reproduce a wrong answer', () 
   const block = diagnosticsBlock(DIAG);
   for (const want of ['a3f9c21', '1268', 'Autumn 2026', '5 days old', '871 rooms', '96 buildings', '10 sessions',
     'gps', '+/-32 m', 'age 14 s', 'America/New_York', 'vacant-data-1268', 'DL0357', 'type 1B', 'cap 46',
-    'bldg 279', '412 m -> 7 min', 'sess 0', 'usable 2h03']) {
+    'bldg 279', '412 m -> 7 min', 'sess 0', 'usable 2h03', 'leaveBy']) {
     assert.ok(block.includes(want), `block is missing ${want}`);
   }
   assert.match(block, /busy Thu\s+8:00am-8:55am/);
+});
+
+test('leaveBy is the last minute you could have set off and still got that usable', () => {
+  // usable = gapEnd - PACKUP - max(now + walk, gapStart). Leave any later than
+  // this and the arrival, not the gap, sets the start, so the figure on the
+  // same line shrinks minute for minute. Once the gap has already opened, that
+  // deadline is simply the minute the row was tapped.
+  const started = diagnosticsBlock(DIAG);
+  assert.match(started, /usable 2h03, leaveBy 2:02pm/);
+
+  // Same room, tapped at 12:30 for a gap that does not open until 13:55: the
+  // deadline is the gap start less the seven minute walk.
+  const waiting = diagnosticsBlock({ ...DIAG, room: { ...DIAG.room, nowMin: 750 } });
+  assert.match(waiting, /leaveBy 1:48pm/);
+
+  // A pick stored before this line existed carries no clock, and the line stops
+  // rather than inventing one.
+  const { nowMin, ...older } = DIAG.room;
+  assert.equal(nowMin, 842);
+  const old = diagnosticsBlock({ ...DIAG, room: older });
+  assert.ok(old.includes('usable 2h03'));
+  assert.ok(!old.includes('leaveBy'));
 });
 
 test('no coordinate leaves the device unless it is ticked, and then only to 4 places', () => {

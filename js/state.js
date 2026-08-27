@@ -7,7 +7,7 @@
 //
 // Runs in the browser and under node, and imports nothing that touches the DOM.
 
-import { distanceMetres, walkMinutes } from './engine.js';
+import { PACKUP, activeSessions, distanceMetres, usableMinutes, walkMinutes } from './engine.js';
 
 // ---------------------------------------------------------------- formatting
 
@@ -92,9 +92,16 @@ function windowOf(raw) {
   return start && end ? { start, end } : null;
 }
 
+// Two shapes reach this. The harvest writes a list of {date, state} rows,
+// which is what the issue specifies and what the build actually emits; a
+// date-keyed object is the shape that is easier to hand-write in a fixture.
+// Reading only the second one is how the refusal ends up wired to nothing:
+// `list['2026-09-07']` on an array is undefined and the campus-closed message
+// never fires, with no error anywhere.
 export function closedDayFor(today, current, index) {
   const closed = calendar('closed', current, index);
-  const hit = closed?.[today];
+  if (!closed) return null;
+  const hit = Array.isArray(closed) ? closed.find((c) => c?.date === today) : closed[today];
   if (!hit) return null;
   return typeof hit === 'string' ? { state: hit, name: null } : { state: hit.state, name: hit.name ?? null };
 }
@@ -290,6 +297,19 @@ const DAY_SHARE = 0.01;
 // end of the shipped index lands on 8:00 and 21:30.
 const TAIL = 0.005;
 
+// A day whose sessions have all ended is not a day the schedule covers, and
+// the weekday mask above cannot see that: it is week-shaped, so 2026-12-10
+// reads as an ordinary Thursday while the sessions running that date hold one
+// block out of the 2,661 the weekly Thursday pattern carries.
+//
+// Measured over the 95 weekdays of the shipped Autumn 1268 index: every day
+// where the sessions have all finished or not yet begun sits at 0.11% of its
+// weekday's blocks or below (the nine finals-week and between-term weekdays
+// come out 0.00% to 0.11%), and the thinnest real teaching day, Mon Aug 24,
+// comes out 1.80%. There is nothing in between, so this line has a 16x margin
+// under it and a 3.6x margin over it.
+const DARK_SHARE = 0.005;
+
 const quantile = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
 
 // The bounds the class schedule actually covers. current.json carries them when
@@ -328,6 +348,33 @@ export function busyDayOf(current, index) {
   };
 }
 
+// How much of this weekday's schedule is actually running on this date, as a
+// share of the blocks the weekly pattern carries for that weekday. 1 means a
+// full teaching day, 0 means the term's classes have all ended or none has
+// started.
+export function scheduleShareOn({ now, index }) {
+  const active = activeSessions(index?.sessions, isoDate(now));
+  const day = now.getDay();
+  let total = 0;
+  let running = 0;
+  for (const room of Object.values(index?.rooms ?? {})) {
+    for (const b of room.busy ?? []) {
+      if (Number(b[0]) !== day) continue;
+      total += 1;
+      if (b[3] !== undefined && active[b[3]] === false) continue;
+      running += 1;
+    }
+  }
+  return total ? running / total : 0;
+}
+
+// True when today is one of those days. One caller decides whether to rank on
+// it, another picks which sentence explains why not, and a second copy of the
+// number is how those two drift apart.
+export function scheduleDarkOn({ now, index }) {
+  return scheduleShareOn({ now, index }) < DARK_SHARE;
+}
+
 // True when the class schedule constrains this minute at all. Outside it every
 // room in the index reads free and the ranked list quietly becomes a distance
 // sort wearing the clothes of a schedule answer.
@@ -341,6 +388,12 @@ export function inScheduledHours({ now, current, index }) {
   // resolveState has already refused by the time that reaches here.
   if (closedDayFor(today, current, index)?.state === 'offices-closed') return false;
   if (!busyDay.weekdays[now.getDay()]) return false;
+  // Finals week is the case this catches without needing a calendar. Ohio State
+  // stops publishing rooms once exams start, so every busy list empties out and
+  // the ranked list reads 871 rooms free, a 727 seat lecture hall first. An
+  // index with no exam window cannot name the reason, but it can see that its
+  // own schedule has gone dark, and that is enough to stop it answering.
+  if (scheduleDarkOn({ now, index })) return false;
   const minute = now.getHours() * 60 + now.getMinutes();
   return minute >= busyDay.earliestStart && minute < busyDay.latestEnd;
 }
@@ -378,18 +431,32 @@ export function rankBuildings({ origin, buildings, counts, hoursFor, day, nowMin
     const metres = distanceMetres(origin, b);
     if (!Number.isFinite(metres)) continue;
     const hours = hoursFor ? hoursFor(code, day) : undefined;
+    // Five states, not two. 43 of the 47 buildings in the Registrar pool
+    // publish at least one day as closed, so on a weekend "the Registrar says
+    // this is shut today" is the majority of the closed group, and rendering it
+    // the same as "nobody publishes anything" throws away the one published
+    // fact the screen exists to carry.
+    const when = !Array.isArray(hours)
+      ? hours === null
+        ? 'closed-today'
+        : 'unknown'
+      : nowMin < hours[0]
+        ? 'before'
+        : nowMin >= hours[1]
+          ? 'after'
+          : 'open';
     const row = {
       code,
       name: b.name,
       rooms: count,
       metres: Math.round(metres),
       walk: walkMinutes(metres),
+      when,
       opensAt: Array.isArray(hours) ? hours[0] : null,
       closesAt: Array.isArray(hours) ? hours[1] : null,
     };
-    if (hours === null) closed.push(row);
-    else if (!Array.isArray(hours)) unknown.push(row);
-    else if (nowMin >= hours[0] && nowMin < hours[1]) open.push(row);
+    if (when === 'unknown') unknown.push(row);
+    else if (when === 'open') open.push(row);
     else closed.push(row);
   }
 
@@ -406,7 +473,20 @@ export function rankBuildings({ origin, buildings, counts, hoursFor, day, nowMin
 // branch here prints a duration for a building nobody publishes hours for. That
 // is the path that once printed "9h44", by capping an unknown window at
 // midnight and calling the remainder free.
+// clock() wraps modulo 24 hours, so a window that ran past midnight would
+// print as an innocent morning time rather than as an error. Nothing in the
+// engine can produce one today, and this is the check that keeps it that way.
+export const DAY_END = 1440;
+const inDay = (m) => m == null || (Number.isFinite(m) && m >= 0 && m <= DAY_END);
+
 export function windowPhrase(row, close) {
+  if (![row.availableAt, row.usableUntil, row.nextClassAt, close].every(inDay)) {
+    return {
+      tier: 'unknown',
+      text: 'window unknown',
+      say: 'Vacant worked out a window that does not fit inside today, so it is not saying when this room frees up',
+    };
+  }
   if (row.wait > 0) {
     return {
       tier: 'wait',
@@ -428,7 +508,11 @@ export function windowPhrase(row, close) {
     return {
       tier: 'strong',
       text: `free till ${clock(row.usableUntil)}`,
-      say: `free until ${spokenClock(row.usableUntil)} when a class starts`,
+      // usableUntil is PACKUP before the class, so "when a class starts" named a
+      // cause the data contradicts: nothing starts at 3:20 when the class is at
+      // 3:30, and the room screen says 3:30 for the same room. Both numbers and
+      // the relation between them, or the two screens disagree out loud.
+      say: `free until ${spokenClock(row.usableUntil)}, which is ${spokenDur(PACKUP)} before the next class at ${spokenClock(row.nextClassAt)}`,
     };
   }
   return {
@@ -439,6 +523,64 @@ export function windowPhrase(row, close) {
         ? 'no class in it for the rest of today'
         : `no class in it for the rest of today, and the building locks at ${spokenClock(close)}`,
   };
+}
+
+// ------------------------------------------------------------ the room claim
+
+// The one line at the top that makes a claim, and the only place on the room
+// screen that talks about now.
+//
+// Every duration here goes through the engine's formula, walk included. The
+// version that shipped first was `gapEnd - packup - now`, which is the exact
+// expression engine.js documents as the bug it exists to fix: it counts the
+// walk as study time and overstates by it. Measured on a Thursday at 12:15 it
+// was wrong on all 23 rooms in the top 40 that carried a claim, by 5 minutes
+// each.
+export function roomClaim({ rows, blocks, open, close }, nowMin, bname, metres) {
+  const yours = (gapStart, gapEnd) => {
+    if (!Number.isFinite(metres)) return null;
+    return usableMinutes({ now: nowMin, gapStart, gapEnd, metres });
+  };
+
+  if (nowMin < open) {
+    const first = rows.find((r) => r.kind === 'free');
+    const got = first ? yours(first.t, first.end) : null;
+    return {
+      head: `${bname} opens at ${clock(open)}`,
+      sub: got > 0 ? `Free from ${clock(first.t)} for ${dur(got)}` : '',
+    };
+  }
+  if (nowMin >= close) return { head: `${bname} is closed for the day`, sub: '' };
+
+  const inClass = blocks.find(([s, e]) => nowMin >= s && nowMin < e);
+  if (inClass) {
+    const next = rows.find((r) => r.kind === 'free' && r.t >= inClass[1]);
+    const got = next ? yours(next.t, next.end) : null;
+    return {
+      head: `In use till ${clock(inClass[1])}`,
+      sub: next
+        ? got > 0
+          ? `Next free ${clock(next.t)}, for ${dur(got)}`
+          : `Next free ${clock(next.t)}`
+        : 'Nothing free after it today',
+    };
+  }
+  const here = rows.find((r) => r.kind === 'free' && r.now);
+  if (!blocks.length) return { head: 'No class in here all day', sub: '' };
+  if (here) {
+    const later = blocks.find(([s]) => s >= nowMin);
+    const got = yours(here.t, here.end ?? close);
+    return {
+      head: later ? `Free till ${clock(later[0])}` : 'No class in here for the rest of today',
+      sub:
+        got == null
+          ? ''
+          : got > 0
+            ? `Yours for ${dur(got)} once you get there`
+            : 'It closes before you could walk there',
+    };
+  }
+  return { head: 'Nothing free in here right now', sub: '' };
 }
 
 // ---------------------------------------------------------------- diagnostics
@@ -475,7 +617,15 @@ export function diagnosticsBlock(d) {
     if (Number.isFinite(r.metres)) rows.push(line('walk', `${r.metres} m -> ${r.walk} min   (WALK_MPM 78, DETOUR 1.30)`));
     if (Number.isFinite(r.gapStart)) {
       const usable = r.usable == null ? 'unknown' : dur(r.usable);
-      rows.push(line('gap', `${clock(r.gapStart)}-${clock(r.gapEnd)} sess ${r.session ?? '?'}  ->  usable ${usable}`));
+      // The last minute you could have set off and still got the usable figure
+      // on this line. Any later and the arrival, not the gap, sets the start,
+      // so usable shrinks minute for minute. Once the gap has already opened
+      // that is simply the minute the row was tapped.
+      const leaveBy =
+        Number.isFinite(r.nowMin) && Number.isFinite(r.walk)
+          ? `, leaveBy ${clock(Math.max(r.nowMin, r.gapStart - r.walk))}`
+          : '';
+      rows.push(line('gap', `${clock(r.gapStart)}-${clock(r.gapEnd)} sess ${r.session ?? '?'}  ->  usable ${usable}${leaveBy}`));
     }
   }
   if (d.caches?.length) rows.push(line('caches', d.caches.join(', ')));

@@ -13,7 +13,8 @@
 // screen while you read a schedule.
 
 import { toGrid } from './campus.js';
-import { activeSessions, PACKUP, rank } from './engine.js';
+import { roomClaim } from './claim.js';
+import { activeSessions, calendarOn, mark, measure, PACKUP, rank, refusalFor } from './engine.js';
 import {
   FLYOVER_SPAN,
   SETTLED_SPAN,
@@ -102,6 +103,7 @@ const state = {
   total: 0,
   day: new Date().getDay(),
   soonest: null,
+  refusal: null,
   selected: null,
   settled: false,
   ready: false,
@@ -446,8 +448,34 @@ function answer() {
   const now = new Date();
   const minutes = now.getHours() * 60 + now.getMinutes();
   state.day = now.getDay();
+  const rooms = Object.entries(state.rooms.rooms).map(([id, r]) => ({ id, ...r }));
+  const date = isoDate(now);
+  // The closed days and the exam window ride in the room index, and current.json
+  // is read as well so a rollover that moves them cannot switch the refusal off.
+  const calendar = calendarOn(date, state.rooms, state.current);
+
+  // Ranking is not always the honest thing to do. During finals the busy grid
+  // is empty for every room while exams run in them, and the engine holds the
+  // whole verdict so the ladder and this screen cannot disagree about it.
+  state.refusal = refusalFor({
+    now: minutes, rooms, sessions: state.rooms.sessions, date, calendar,
+  });
+  if (state.refusal) {
+    state.results = [];
+    state.total = 0;
+    state.soonest = null;
+    state.selected = null;
+    state.listScroll = 0;
+    paintList();
+    settle();
+    // The strip and the live region carry the same two sentences, because the
+    // reason on its own is a fact with no verdict attached to it.
+    say(`Vacant is not answering. ${state.refusal.reason}`);
+    return;
+  }
+
   const results = rank(
-    Object.entries(state.rooms.rooms).map(([id, r]) => ({ id, ...r })),
+    rooms,
     {
       origin: state.origin,
       now: minutes,
@@ -456,7 +484,10 @@ function answer() {
       buildings: state.buildings,
       hoursFor,
       sessions: state.rooms.sessions,
-      date: isoDate(now),
+      date,
+      // A day with no classes is a day the busy grid describes nobody. 788 of
+      // 863 sampled Wednesday rows are still active on Veterans Day.
+      classesSuspended: !!calendar?.noClasses,
     },
   );
 
@@ -534,6 +565,14 @@ const WALK_ICON = '<svg class="ico" aria-hidden="true"><use href="#i-walk"/></sv
 
 function paintList() {
   const list = $('list');
+
+  if (state.refusal) {
+    list.innerHTML =
+      '<p class="strip">Vacant is not answering.</p>' +
+      `<p class="empty">${esc(state.refusal.reason)}</p>`;
+    syncPaneTouch();
+    return;
+  }
 
   if (!state.results.length) {
     const next = state.soonest;
@@ -714,35 +753,45 @@ function timelineRows(room, bname, nowMin) {
 }
 
 // The one line at the top that makes a claim, and the only place on the room
-// screen that talks about now.
-function claimFor({ rows, blocks, open, close }, nowMin, bname) {
-  if (nowMin < open) {
-    const first = rows.find((r) => r.kind === 'free');
-    return {
-      head: `${bname} opens at ${clock(open)}`,
-      sub: first ? `Free from ${clock(first.t)} for ${dur(first.len - PACKUP)}` : '',
-    };
-  }
-  if (nowMin >= close) return { head: `${bname} is closed for the day`, sub: '' };
+// screen that talks about now. js/claim.js decides what is true; this turns the
+// verdict into a sentence.
+//
+// A building nobody publishes hours for gets sentences about CLASSES. The
+// screen used to print "Thompson Library opens at 12:45pm" off the start of the
+// first class, two lines above its own paragraph saying nobody knows when that
+// door unlocks.
+function claimFor(tl, nowMin, bname) {
+  const c = roomClaim({ ...tl, now: nowMin });
+  const noDoors = (word) => `Nobody publishes when ${bname} ${word}`;
+  const after = (len) => dur(len - PACKUP);
 
-  const inClass = blocks.find(([s, e]) => nowMin >= s && nowMin < e);
-  if (inClass) {
-    const next = rows.find((r) => r.kind === 'free' && r.t >= inClass[1]);
-    return {
-      head: `In use till ${clock(inClass[1])}`,
-      sub: next ? `Next free ${clock(next.t)}, for ${dur(next.len - PACKUP)}` : 'Nothing free after it today',
-    };
+  switch (c.kind) {
+    case 'opens':
+      return {
+        head: `${bname} opens at ${clock(c.at)}`,
+        sub: c.next != null ? `Free from ${clock(c.next)} for ${after(c.nextLen)}` : '',
+      };
+    case 'before-first-class':
+      return { head: `First class in here is at ${clock(c.at)}`, sub: noDoors('unlocks') };
+    case 'closed-for-day':
+      return { head: `${bname} is closed for the day`, sub: '' };
+    case 'after-last-class':
+      return { head: `Last class in here ended at ${clock(c.at)}`, sub: noDoors('locks') };
+    case 'in-class':
+      return {
+        head: `In use till ${clock(c.until)}`,
+        sub: c.next != null ? `Next free ${clock(c.next)}, for ${after(c.nextLen)}` : 'Nothing free after it today',
+      };
+    case 'no-class-today':
+      return { head: 'No class in here all day', sub: '' };
+    case 'free':
+      if (c.until == null) return { head: 'No class in here for the rest of today', sub: c.known ? '' : noDoors('locks') };
+      return c.known
+        ? { head: `Free till ${clock(c.until)}`, sub: '' }
+        : { head: `No class in here till ${clock(c.until)}`, sub: noDoors('locks') };
+    default:
+      return { head: 'Nothing free in here right now', sub: '' };
   }
-  const here = rows.find((r) => r.kind === 'free' && r.now);
-  if (!blocks.length) return { head: 'No class in here all day', sub: '' };
-  if (here) {
-    const later = blocks.find(([s]) => s >= nowMin);
-    return {
-      head: later ? `Free till ${clock(later[0])}` : 'No class in here for the rest of today',
-      sub: '',
-    };
-  }
-  return { head: 'Nothing free in here right now', sub: '' };
 }
 
 function roomHtml(id) {
@@ -956,6 +1005,19 @@ function provenance(current) {
   return true;
 }
 
+// The room index is 234 KB of the 284 KB of JSON the first answer waits on, so
+// it is the parse worth naming. `r.json()` hides it inside the fetch, and a
+// cold phone spends real time in there. The engine marks the answer and the
+// session mask with the same two calls.
+async function parsedIndex(url) {
+  const text = await fetch(url).then((r) => r.text());
+  mark('vacant:parse:start');
+  const out = JSON.parse(text);
+  mark('vacant:parse:end');
+  measure('vacant:parse', 'vacant:parse:start', 'vacant:parse:end');
+  return out;
+}
+
 async function boot() {
   const json = (f) => fetch(`${BASE}data/${f}`).then((r) => r.json());
 
@@ -986,7 +1048,7 @@ async function boot() {
   const gated = provenance(current);
 
   const [rooms, buildings, hours, located] = await Promise.all([
-    fetch(`${BASE}${current.rooms}`).then((r) => r.json()),
+    parsedIndex(`${BASE}${current.rooms}`),
     fetch(`${BASE}${current.buildings}`).then((r) => r.json()).then((d) => d.buildings),
     json('buildings-hours.json'),
     fix,

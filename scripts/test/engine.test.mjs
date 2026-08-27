@@ -2,16 +2,35 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
+
 import {
+  DAY_END,
+  DAY_START,
   DETOUR,
+  LADDER_QUORUM,
+  MAX_WALK,
+  MIN_RELAXED_USABLE,
   PACKUP,
+  RELAX_LADDER,
+  SILENT_SHARE,
+  SURPLUS_CAP,
+  SURPLUS_WEIGHT,
   WALK_MPM,
+  activeMask,
   activeSessions,
   bestGap,
+  calendarOn,
   distanceMetres,
   freeGaps,
+  leaveBy,
+  query,
   rank,
+  refusalFor,
+  scheduleCoverage,
+  scoreOf,
   tierOf,
+  typeRank,
   usableMinutes,
   walkMinutes,
 } from '../../js/engine.js';
@@ -435,4 +454,975 @@ test('cap 0 means unknown and must not render as a confident zero', () => {
     origin: ORIGIN, now: at(9), day: 1, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
   });
   assert.equal(real.seats, 46, 'a real capacity still comes through');
+});
+
+// --- issue #15: the twelve edge cases from docs/research/query-engine.md, section 4 ---
+//
+// Standing at the room, so the walk is zero. Tuesday, 12:00, asking for one
+// minute, so the only thing that can remove a room is the arithmetic itself.
+
+const TUE = 2;
+const NOON = at(12);
+const standingAt = (busy, opts = {}) =>
+  bestGap(
+    { busy },
+    { now: NOON, day: TUE, open: DAY_START, close: DAY_END, metres: 0, needed: 1, ...opts },
+  );
+const usableOf = ([start, end]) => end - PACKUP - Math.max(NOON, start);
+
+const EDGE_CASES = [
+  ['no classes today at all', [], [DAY_START, DAY_END]],
+  ['now is inside a class', [[TUE, at(11, 40), at(12, 40)]], [at(12, 40), DAY_END]],
+  ['a class that already ended', [[TUE, at(11), at(11, 55)]], [at(11, 55), DAY_END]],
+  ['now is before the first class', [[TUE, at(13), at(13, 55)]], [DAY_START, at(13)]],
+  ['now is after the last class', [[TUE, at(9), at(9, 55)]], [at(9, 55), DAY_END]],
+  [
+    'back to back with no gap between them',
+    [[TUE, at(11), at(11, 55)], [TUE, at(11, 55), at(12, 50)]],
+    [at(12, 50), DAY_END],
+  ],
+  [
+    'exact duplicate intervals',
+    [[TUE, at(11), at(11, 55)], [TUE, at(11), at(11, 55)]],
+    [at(11, 55), DAY_END],
+  ],
+  [
+    'overlapping combined sections',
+    [[TUE, at(11), at(12, 20)], [TUE, at(11), at(12)]],
+    [at(12, 20), DAY_END],
+  ],
+  [
+    'a contained interval',
+    [[TUE, at(10), at(13)], [TUE, at(11), at(11, 40)]],
+    [at(13), DAY_END],
+  ],
+  [
+    'unsorted input',
+    [[TUE, at(13), at(13, 55)], [TUE, at(10), at(10, 55)], [TUE, at(11, 30), at(12, 25)]],
+    [at(12, 25), at(13)],
+  ],
+];
+
+for (const [name, busy, expected] of EDGE_CASES) {
+  test(`edge case: ${name}`, () => {
+    const gap = standingAt(busy);
+    assert.deepEqual([gap.gapStart, gap.gapEnd], expected);
+    assert.equal(gap.usable, usableOf(expected));
+  });
+}
+
+test('edge case: an inactive session blocks nothing', () => {
+  // The 11:00 class belongs to the second half of the term, and today is in the
+  // first half, so the room is free all day.
+  const busy = [[TUE, at(11), at(11, 55), 1]];
+  const active = activeMask([['2026-08-25', '2026-10-12'], ['2026-10-19', '2026-12-09']], '2026-09-01');
+  const gap = standingAt(busy, { active });
+  assert.deepEqual([gap.gapStart, gap.gapEnd], [DAY_START, DAY_END]);
+  assert.equal(gap.usable, usableOf([DAY_START, DAY_END]));
+});
+
+test('edge case: the 15 minute passing period is not an answer', () => {
+  // OSU's standard passing period is 15 minutes and 69.3% of the 2711 measured
+  // inter-class gaps are exactly that. PACKUP is what makes them self-eliminate.
+  assert.equal(
+    usableMinutes({ now: at(11, 55), gapStart: at(11, 55), gapEnd: at(12, 10), metres: 0 }),
+    5,
+    'a 15 minute gap is 5 usable minutes, which is no duration a human asks for',
+  );
+  // A room whose only free window today is that passing period. Five minutes
+  // after the previous class lets out there is nothing left of it at all.
+  const corridor = [[TUE, at(11), at(11, 55)], [TUE, at(12, 10), DAY_END]];
+  assert.equal(standingAt(corridor), null);
+  // Standing at the door as the class lets out it still exists, and it is
+  // flagged as too short rather than hidden. The ladder is what refuses it: no
+  // rung goes below 20 minutes.
+  const gap = standingAt(corridor, { now: at(11, 55), needed: MIN_RELAXED_USABLE });
+  assert.equal(gap.usable, 5);
+  assert.equal(gap.meetsNeed, false);
+});
+
+test('the passing period never becomes the answer just because you are standing in it', () => {
+  // At 12:00 the room is inside a 15 minute gap that runs out before you could
+  // use it, and the next real window is at 13:05. The engine has to skip the
+  // one you are in rather than report 0 usable minutes.
+  const gap = standingAt([[TUE, at(11), at(11, 55)], [TUE, at(12, 10), at(13, 5)]]);
+  assert.equal(gap.gapStart, at(13, 5));
+  assert.equal(gap.wait, at(13, 5) - NOON);
+});
+
+// --- the walk subtraction, which the naive formula gets wrong in both directions ---
+
+test('a room that frees in 5 minutes and is a 6 minute walk away is free when you get there', () => {
+  const metres = 6 * WALK_MPM / DETOUR; // exactly a 6 minute walk
+  const now = at(10);
+  const room = { busy: [[TUE, DAY_START, now + 5]] };
+  const gap = bestGap(room, {
+    now, day: TUE, open: DAY_START, close: at(16), metres, needed: 60,
+  });
+  assert.equal(gap.wait, 0, 'the wait is spent walking, so there is no wait');
+  assert.equal(gap.usable, at(16) - PACKUP - (now + 6));
+});
+
+test('the naive formulas bracket the truth, one over and one under', () => {
+  // Gap 13:20-16:00, now 13:00, a 6 minute walk. You arrive at 13:06 and wait
+  // 14 minutes, so you get 160 minutes with no packup buffer.
+  const metres = 6 * WALK_MPM / DETOUR;
+  const now = at(13);
+  const gapStart = at(13, 20);
+  const gapEnd = at(16);
+  const truth = usableMinutes({ now, gapStart, gapEnd, metres, packup: 0 });
+  assert.equal(truth, 160);
+
+  const overstates = gapEnd - now - walkMinutes(metres); // the README's formula
+  assert.equal(overstates, 174, 'counts the 14 minutes in the corridor as study time');
+
+  const understates = gapEnd - gapStart - walkMinutes(metres); // window minus walk
+  assert.equal(understates, 154, 'charges you for a walk you did while waiting');
+
+  assert.ok(understates < truth && truth < overstates);
+});
+
+test('walk time rounds up, so a 61 metre walk is two minutes and not one', () => {
+  assert.equal(walkMinutes(60), 1);
+  assert.equal(walkMinutes(61), 2, 'every rounding in this engine breaks pessimistic');
+});
+
+test('leaveBy is now when the room is free and the gap start minus the walk when it is not', () => {
+  const metres = 6 * WALK_MPM / DETOUR;
+  assert.equal(leaveBy({ now: at(13), gapStart: at(12), metres }), at(13), 'already free, so go');
+  assert.equal(leaveBy({ now: at(13), gapStart: at(14), metres }), at(13, 54), 'no need to sprint');
+});
+
+test('every ranked row carries leaveBy', () => {
+  const rooms = [{ id: 'DL0357', b: '279', busy: [[1, at(9), at(13)]] }];
+  const [row] = rank(rooms, {
+    origin: ORIGIN, now: at(9), day: 1, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  });
+  assert.equal(row.availableAt, at(13));
+  assert.equal(row.leaveBy, at(13) - row.walk);
+  assert.ok(row.leaveBy < row.availableAt, 'you have to set off before the room frees');
+});
+
+// --- zero-length gaps, back to back, and the building's close time ---
+
+test('no arrangement of blocks ever produces a zero-length gap', () => {
+  const arrangements = [
+    [[1, at(9), at(10)], [1, at(10), at(11)]],
+    [[1, at(9), at(11)], [1, at(10), at(11)]],
+    [[1, at(8), at(9)], [1, at(9), at(9)]],
+    [[1, at(8), at(18)]],
+    [[1, at(8), at(9)], [1, at(9), at(10)], [1, at(10), at(18)]],
+  ];
+  for (const busy of arrangements) {
+    for (const [start, end] of freeGaps(busy, 1, at(8), at(18))) {
+      assert.ok(end > start, `${JSON.stringify(busy)} produced [${start}, ${end}]`);
+    }
+  }
+});
+
+test('a gap that would run past the building close is cut off at the door, not the class', () => {
+  const room = { busy: [[1, at(9), at(14)]] };
+  const gap = bestGap(room, { now: at(14), day: 1, open: at(8), close: at(17), metres: 0 });
+  assert.equal(gap.gapEnd, at(17), 'the window ends when the building locks');
+  assert.equal(gap.usable, at(17) - PACKUP - at(14));
+});
+
+test('a class running past the close time does not leave a phantom gap behind it', () => {
+  // The building publishes a 17:00 close and a class runs 16:00 to 19:00. The
+  // room is busy until the door locks and there is nothing left to offer.
+  const room = { busy: [[1, at(16), at(19)]] };
+  assert.equal(bestGap(room, { now: at(16, 30), day: 1, open: at(8), close: at(17), metres: 0 }), null);
+});
+
+test('an hours pair that does not run forwards is refused, not inverted', () => {
+  // An overnight building would arrive as close <= open, and the complement of
+  // nothing is a free day, which is the one answer this app must never give.
+  assert.deepEqual(freeGaps([], 1, at(20), at(2)), []);
+  assert.deepEqual(freeGaps([], 1, at(9), at(9)), []);
+  assert.deepEqual(freeGaps([], 1, NaN, at(17)), []);
+});
+
+test('a room is dropped once the building has closed, not offered until midnight', () => {
+  const rooms = [{ id: 'DL0357', b: '279', busy: [] }];
+  const base = { origin: ORIGIN, day: 1, buildings: BUILDINGS, hoursFor: () => [at(8), at(17)] };
+  assert.equal(rank(rooms, { ...base, now: at(16) }).length, 1);
+  assert.deepEqual(rank(rooms, { ...base, now: at(17) }), [], 'closed is closed');
+});
+
+test('before the building opens the room is offered with the wait, not as free now', () => {
+  const [row] = rank([{ id: 'DL0357', b: '279', busy: [] }], {
+    origin: ORIGIN, now: at(6), day: 1, buildings: BUILDINGS, hoursFor: () => [at(8), at(17)],
+  });
+  assert.equal(row.availableAt, at(8));
+  assert.ok(row.wait > 0);
+  assert.equal(row.tier, 2, 'known hours, but you would be waiting');
+});
+
+// --- hours: published, published closed, and not published at all ---
+
+test('the three hours answers never collapse into two', () => {
+  const rooms = [
+    { id: 'AA0001', b: '279', busy: [] },
+    { id: 'BB0001', b: '26', busy: [] },
+    { id: 'CC0001', b: '999', busy: [] },
+  ];
+  const out = rank(rooms, {
+    origin: ORIGIN,
+    now: at(12),
+    day: 6,
+    buildings: BUILDINGS,
+    hoursFor: (code) => (code === '279' ? [at(8), at(18)] : code === '26' ? null : undefined),
+  });
+  assert.deepEqual(out.map((r) => r.id), ['AA0001', 'CC0001']);
+  const [known, unknown] = out;
+  assert.equal(known.hoursKnown, true);
+  assert.ok(known.usable > 0, 'a published window is a number we can stand behind');
+  assert.equal(unknown.hoursKnown, false);
+  assert.equal(unknown.usable, null, 'not published is not a window');
+  assert.ok(known.tier < unknown.tier);
+});
+
+test('unknown hours are swept over the schedule bounds, not the whole 24 hours', () => {
+  // The old fallback was 0 to 1440, which is an assumed window and the most
+  // generous one available. "Free since midnight" is true and useless.
+  const room = [{ id: 'X', b: '279', busy: [] }];
+  const base = { origin: ORIGIN, day: 1, buildings: BUILDINGS, hoursFor: () => undefined };
+  const [daytime] = rank(room, { ...base, now: at(9) });
+  assert.equal(daytime.availableAt, DAY_START);
+  assert.equal(daytime.nextClassAt, DAY_END);
+  assert.equal(daytime.usable, null);
+});
+
+test('an unknown-hours room is never made to wait for an hour nobody published', () => {
+  // At 03:00 the schedule bound is 07:00, and a row that waits for it reads
+  // "from 7:00 AM". Nobody published 7:00 for that door. It is a bound on the
+  // class grid, so it can shorten what we offer and it can never become an
+  // opening time.
+  const [row] = rank([{ id: 'X', b: '279', busy: [] }], {
+    origin: ORIGIN, now: at(3), day: 1, buildings: BUILDINGS, hoursFor: () => undefined,
+  });
+  assert.equal(row.wait, 0);
+  assert.equal(row.availableAt, at(3));
+  assert.equal(row.usable, null, 'and still no window, because we still do not know');
+});
+
+test('a malformed hours pair reads as not published rather than as a window', () => {
+  const [row] = rank([{ id: 'X', b: '279', busy: [] }], {
+    origin: ORIGIN, now: at(9), day: 1, buildings: BUILDINGS, hoursFor: () => [NaN, at(17)],
+  });
+  assert.equal(row.hoursKnown, false, 'a parse failure must not become a door time');
+  assert.equal(row.usable, null);
+});
+
+// --- the session mask ---
+
+test('a Uint8Array mask is read as a mask, not as a row of falses', () => {
+  // `0 === false` is false, so an engine that tested for `false` would ignore a
+  // typed mask entirely and report every room booked solid.
+  const sessions = [['2026-08-25', '2026-10-12'], ['2026-10-19', '2026-12-09']];
+  const busy = [[1, 480, 540, 0], [1, 600, 660, 1]];
+  const sept = activeMask(sessions, '2026-09-01');
+  assert.ok(sept instanceof Uint8Array);
+  assert.deepEqual([...sept], [1, 0]);
+  assert.deepEqual(freeGaps(busy, 1, 420, 720, sept), [[420, 480], [540, 720]]);
+  assert.deepEqual(
+    freeGaps(busy, 1, 420, 720, sept),
+    freeGaps(busy, 1, 420, 720, activeSessions(sessions, '2026-09-01')),
+    'both mask shapes give the same answer',
+  );
+});
+
+test('a session index the mask does not cover stays busy', () => {
+  // Not knowing which half of the term a class belongs to is not a licence to
+  // call the room free.
+  const mask = activeMask([['2026-08-25', '2026-10-12']], '2026-09-01');
+  assert.deepEqual(freeGaps([[1, 480, 540, 7]], 1, 420, 720, mask), [[420, 480], [540, 720]]);
+});
+
+test('activeMask agrees with activeSessions on every boundary', () => {
+  const sessions = [['2026-08-25', '2026-10-12'], ['2026-10-19', '2026-12-09']];
+  for (const date of ['2026-08-24', '2026-08-25', '2026-10-12', '2026-10-13', '2026-10-19', '2026-12-10']) {
+    assert.deepEqual(
+      [...activeMask(sessions, date)],
+      activeSessions(sessions, date).map(Number),
+      date,
+    );
+  }
+  assert.deepEqual([...activeMask(undefined, '2026-09-01')], []);
+});
+
+// --- daylight saving, which Ohio observes ---
+
+test('the engine takes wall-clock minutes, which is what DST cannot break', () => {
+  // 2026-11-01 is the Sunday Ohio falls back. Local midnight is 04:00 UTC and
+  // local 03:00 is 08:00 UTC, so 240 real minutes pass while the clock moves
+  // 180. A `now` computed by subtracting midnight from the epoch is an hour
+  // ahead of the wall clock for the rest of that 25 hour day, and every busy
+  // interval in the index is wall clock.
+  const epochElapsed = (Date.UTC(2026, 10, 1, 13) - Date.UTC(2026, 10, 1, 4)) / 60000;
+  assert.equal(epochElapsed, 540, 'nine hours have really passed');
+  assert.equal(at(8), 480, 'and the clock on the wall says eight');
+
+  const room = { busy: [[0, at(8, 30), at(10)]] };
+  const opts = { day: 0, open: DAY_START, close: DAY_END, metres: 0 };
+  const wall = bestGap(room, { ...opts, now: at(8) });
+  const epoch = bestGap(room, { ...opts, now: epochElapsed });
+  assert.equal(wall.gapEnd, at(8, 30), 'half an hour before the class starts');
+  assert.equal(epoch.gapStart, at(10), 'the epoch clock has already walked past it');
+});
+
+test('a window spanning the spring-forward hour is short by that hour', () => {
+  // 2026-03-08. The clock jumps from 02:00 to 03:00, so a window the clock
+  // calls three hours long really holds two. This is the only place wall-clock
+  // arithmetic overstates, so it is the only place a correction is applied.
+  const window = { now: at(1), gapStart: at(1), gapEnd: at(4), metres: 0, packup: 0 };
+  const spring = { at: at(2), lost: 60 };
+  assert.equal(usableMinutes(window), 180, 'the clock alone overstates');
+  assert.equal(usableMinutes({ ...window, dst: spring }), 120);
+  assert.equal(
+    usableMinutes({ ...window, gapEnd: at(2), dst: spring }),
+    60,
+    'a window that ends at the jump loses nothing',
+  );
+  assert.equal(
+    usableMinutes({ ...window, now: at(3), gapStart: at(3), dst: spring }),
+    60,
+    'a window that starts after the jump loses nothing',
+  );
+});
+
+test('the extra hour in November is never handed back', () => {
+  // The clock repeats 01:00 to 02:00, so that window really holds 120 minutes.
+  // Reporting 120 would be the only optimistic rounding in the engine, so the
+  // engine reports what the clock says and under-promises by an hour.
+  const window = { now: at(1), gapStart: at(1), gapEnd: at(2), metres: 0, packup: 0 };
+  assert.equal(usableMinutes({ ...window, dst: { at: at(1, 30), lost: -60 } }), 60);
+});
+
+test('the engine never touches a Date, so it cannot be wrong about a timezone', () => {
+  const src = readFileSync(new URL('../../js/engine.js', import.meta.url), 'utf8');
+  assert.deepEqual(src.match(/new Date|Date\./g) ?? [], []);
+});
+
+// --- ranking ---
+
+test('a longer window buys a longer walk, but only up to the cap', () => {
+  const near = { walk: 3, usable: 60 };
+  const far = { walk: 4, usable: 120 };
+  assert.ok(scoreOf(far, 60) < scoreOf(near, 60), 'an extra hour is worth a minute of walking');
+
+  // Six minutes further needs a full hour of surplus to win, and no more than
+  // an hour ever counts.
+  const distant = { walk: 10, usable: 600 };
+  assert.ok(scoreOf(near, 60) < scoreOf(distant, 60), 'surplus past the cap does not drag you across campus');
+  assert.equal(
+    scoreOf({ walk: 5, usable: 60 + SURPLUS_CAP }, 60),
+    scoreOf({ walk: 5, usable: 60 + SURPLUS_CAP + 300 }, 60),
+    'the cap is a cap',
+  );
+  assert.equal(scoreOf({ walk: 4, usable: 60 }, 60), 4 - SURPLUS_WEIGHT * 0);
+});
+
+test('an unknown-hours room scores on distance alone, because it has no window to trade', () => {
+  assert.equal(scoreOf({ walk: 7, usable: null }, 60), 7);
+});
+
+test('the type tie-break is classroom, then lecture hall, then seminar room', () => {
+  assert.ok(typeRank('1B') < typeRank('1C'));
+  assert.ok(typeRank('1C') < typeRank('1A'));
+  assert.ok(typeRank('1A') < typeRank('2A'), 'a wet lab is not a study room');
+  assert.equal(typeRank('LCTR'), typeRank('1C'));
+  assert.equal(typeRank(null), typeRank('2A'), 'no type is treated like an unpreferred one');
+});
+
+test('rows tie-break down to the room id, so two identical queries cannot reshuffle', () => {
+  const rooms = ['DL0101', 'DL0102', 'DL0103'].map((id) => ({ id, b: '279', cap: 40, type: '1B', busy: [] }));
+  const opts = {
+    origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  };
+  const first = rank(rooms, opts);
+  const second = rank([...rooms].reverse(), opts);
+  assert.deepEqual(first.map((r) => r.id), ['DL0101', 'DL0102', 'DL0103']);
+  assert.deepEqual(first.map((r) => r.id), second.map((r) => r.id), 'input order cannot leak into output order');
+});
+
+test('capacity breaks a tie the type cannot, and it breaks it weakly', () => {
+  const rooms = [
+    { id: 'DL0101', b: '279', cap: 20, type: '1B', busy: [] },
+    { id: 'DL0102', b: '279', cap: 90, type: '1B', busy: [] },
+  ];
+  const out = rank(rooms, {
+    origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  });
+  assert.deepEqual(out.map((r) => r.id), ['DL0102', 'DL0101']);
+  // But a preferred type outranks any number of seats, because a 727 seat
+  // lecture hall is likelier to be locked or held for an event than a 34 seat
+  // classroom.
+  const mixed = rank([
+    { id: 'DL0201', b: '279', cap: 400, type: '2A', busy: [] },
+    { id: 'DL0202', b: '279', cap: 12, type: '1B', busy: [] },
+  ], {
+    origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  });
+  assert.equal(mixed[0].id, 'DL0202');
+});
+
+// --- the fallback ladder ---
+
+const METRES_PER_DEGREE_LAT = distanceMetres({ lat: 0, lon: 0 }, { lat: 1, lon: 0 });
+const hallAt = (metres, name) => ({
+  name,
+  lat: ORIGIN.lat + metres / METRES_PER_DEGREE_LAT,
+  lon: ORIGIN.lon,
+});
+
+// A campus laid out along one line north of the origin, so a room's walk time
+// is exactly ceil(metres / 60) minutes and every scenario below is readable.
+function campus(spec) {
+  const buildings = {};
+  const rooms = [];
+  for (const [code, metres, count, room] of spec) {
+    buildings[code] = hallAt(metres, `Hall ${code}`);
+    for (let i = 0; i < count; i++) {
+      rooms.push({ id: `${code}${String(i).padStart(4, '0')}`, b: code, cap: 30, type: '1B', busy: [], ...room });
+    }
+  }
+  return { buildings, rooms };
+}
+
+const OPEN_ALL_DAY = () => [DAY_START, DAY_END];
+const askFor = (needed, { buildings, rooms }, extra = {}) =>
+  query(rooms, {
+    origin: ORIGIN, now: at(12), day: TUE, needed, buildings, hoursFor: OPEN_ALL_DAY, ...extra,
+  });
+
+test('the ladder answers on the first rung when rooms are simply free', () => {
+  const out = askFor(60, campus([['A', 300, 5]]));
+  assert.equal(out.rung, 'asked');
+  assert.equal(out.relaxed, false);
+  assert.equal(out.rows.length, 5);
+  assert.ok(out.rows.every((r) => r.wait === 0 && r.usable >= 60));
+});
+
+test('the ladder stops at the first rung with three rooms and does not keep walking', () => {
+  const out = askFor(60, campus([['A', 300, LADDER_QUORUM]]));
+  assert.equal(out.rung, 'asked');
+  assert.equal(out.rows.length, LADDER_QUORUM);
+});
+
+test('two rooms is not a quorum, so the ladder keeps looking and takes the better rung', () => {
+  // Two classrooms and a computer lab, all free. The type filter answers with
+  // two, which is under quorum, so the next rung offers the lab as well.
+  const out = askFor(60, campus([
+    ['A', 300, 2],
+    ['B', 300, 1, { type: '2P' }],
+  ]));
+  assert.equal(out.rung, 'any-type');
+  assert.equal(out.rows.length, 3);
+  assert.equal(out.relaxed, true, 'a departmental room is not the room that was asked for');
+});
+
+test('the room-type filter comes off before the duration does', () => {
+  const out = askFor(60, campus([['B', 300, 4, { type: '2P' }]]));
+  assert.equal(out.rung, 'any-type');
+  assert.equal(out.need, 60, 'still the duration that was asked for');
+  assert.equal(out.askedNeed, 60);
+});
+
+test('an answer made of departmental rooms is labelled relaxed on every rung that can reach one', () => {
+  // The whole payload contract: if the rows are not the question the student
+  // asked, `relaxed` says so. Only the first rung may answer with false.
+  const spec = campus([['B', 300, 4, { type: '5K' }]]);
+  for (const [needed, extra] of [[60, {}], [120, {}], [60, { maxWalk: 1 }]]) {
+    const out = askFor(needed, spec, extra);
+    if (!out.rows.length) continue;
+    assert.notEqual(out.rung, 'asked');
+    assert.equal(out.relaxed, true, `rung ${out.rung} handed back a clinic without saying so`);
+  }
+});
+
+test('a wet lab is never offered, however far down the ladder the answer comes from', () => {
+  // docs/research/facility-types.md excludes 2A outright: dissection labs,
+  // wet labs and the rooms where the cost of guessing wrong is somebody
+  // sitting down in one. The last rung is the one to check, because it has no
+  // radius, no duration and no preference left to drop.
+  const spec = campus([['B', 300, 6, { type: '2A' }]]);
+  for (const needed of [20, 60, 120]) {
+    const out = askFor(needed, spec);
+    assert.deepEqual(out.rows, [], `a 2A room reached the answer at need ${needed}`);
+  }
+  assert.equal(askFor(60, spec).rung, null);
+});
+
+test('an unrecognised facility type is excluded, not shown', () => {
+  // The type space is not closed. A code nobody has decoded is not evidence
+  // that the room is a room you can sit in.
+  const unknown = campus([['B', 300, 5, { type: 'ZZ9' }]]);
+  assert.deepEqual(askFor(60, unknown).rows, []);
+  const untyped = campus([['B', 300, 5, { type: null }]]);
+  assert.deepEqual(askFor(60, untyped).rows, []);
+});
+
+test('a shorter duration is a relaxed answer and says so', () => {
+  // Every room closes at 13:00, so 60 minutes is impossible and 45 is not.
+  const spec = campus([['A', 300, 4, { busy: [[TUE, at(13), DAY_END]] }]]);
+  const out = askFor(60, spec);
+  assert.equal(out.rung, 'shorter:45');
+  assert.equal(out.relaxed, true);
+  assert.equal(out.need, 45);
+  assert.equal(out.askedNeed, 60);
+  assert.ok(out.rows.every((r) => r.usable >= 45));
+});
+
+test('the ladder walks its rungs in order and takes the longest one that fits', () => {
+  assert.deepEqual(RELAX_LADDER, [120, 90, 60, 45, 30, 20]);
+  // The rooms are a 5 minute walk, so a class at 13:45 leaves 90 usable minutes.
+  const spec = campus([['A', 300, 4, { busy: [[TUE, at(13, 45), DAY_END]] }]]);
+  const out = askFor(120, spec);
+  assert.equal(out.rung, 'shorter:90');
+});
+
+test('no relaxed row is ever a near miss under twenty minutes', () => {
+  // The rooms free up for 15 usable minutes, which is not an answer to any
+  // question, so the ladder returns nothing rather than something useless.
+  const spec = campus([['A', 300, 5, { busy: [[TUE, at(12, 25), DAY_END]] }]]);
+  const out = askFor(60, spec);
+  assert.equal(out.rows.length, 0);
+  assert.equal(out.rung, null);
+  assert.equal(out.refused, null, 'not a refusal, just nothing to offer');
+  assert.ok(out.reason, 'and it says why');
+  assert.equal(MIN_RELAXED_USABLE, 20);
+});
+
+test('when nothing is free now, the answer is when something opens', () => {
+  const spec = campus([['A', 300, 4, { busy: [[TUE, DAY_START, at(14)]] }]]);
+  const out = askFor(60, spec);
+  assert.equal(out.rung, 'opens-at');
+  assert.equal(out.relaxed, true);
+  assert.ok(out.rows.every((r) => r.wait > 0));
+  assert.ok(out.rows.every((r) => r.availableAt === at(14)));
+  assert.ok(out.rows.every((r) => r.leaveBy === at(14) - r.walk));
+});
+
+test('the opens-at rung ignores the lookahead horizon, because naming the hour is its job', () => {
+  // Nothing opens for eight hours, which is past LOOKAHEAD. A horizon here
+  // would hand back an empty screen instead of "the first one opens at 21:00".
+  const spec = campus([['A', 300, 4, { busy: [[TUE, DAY_START, at(21)]] }]]);
+  const out = askFor(60, spec);
+  assert.equal(out.rung, 'opens-at');
+  assert.ok(out.rows.every((r) => r.availableAt === at(21)));
+});
+
+test('a room further away is offered once nothing near is free', () => {
+  const spec = campus([
+    ['A', 300, 3, { busy: [[TUE, DAY_START, DAY_END]] }], // 5 minutes, booked solid
+    ['F', 1200, 4], // 20 minutes, free
+  ]);
+  const out = askFor(60, spec);
+  assert.equal(out.rung, 'further');
+  assert.equal(out.relaxed, true);
+  assert.ok(out.rows.every((r) => r.walk > MAX_WALK && r.walk <= MAX_WALK * 2));
+});
+
+test('the radius comes off entirely before the answer becomes nothing', () => {
+  const spec = campus([['Z', 1800, 4]]); // a 30 minute walk
+  const out = askFor(60, spec);
+  assert.equal(out.rung, 'anywhere');
+  assert.equal(out.relaxed, true);
+  assert.equal(out.rows[0].walk, 30);
+});
+
+test('the last resort is one room and an honest headline, not a list', () => {
+  // A single distant room that frees later for half an hour, against a request
+  // for two hours. Every rung above this one has a reason to refuse it.
+  const spec = campus([['Z', 1800, 2, { busy: [[TUE, DAY_START, at(14)], [TUE, at(14, 40), DAY_END]] }]]);
+  const out = askFor(120, spec);
+  assert.equal(out.rung, 'longest');
+  assert.equal(out.relaxed, true);
+  assert.equal(out.rows.length, 1);
+  assert.ok(out.rows[0].usable >= MIN_RELAXED_USABLE);
+});
+
+test('an empty campus is an empty answer with a reason, never a blank screen', () => {
+  const out = askFor(60, campus([]));
+  assert.deepEqual(out.rows, []);
+  assert.equal(out.rung, null);
+  assert.equal(out.relaxed, false);
+  assert.ok(out.reason);
+});
+
+test('the payload names the day bounds so the UI does not have to guess them', () => {
+  const out = askFor(60, campus([['A', 300, 3]]));
+  assert.equal(out.dayStart, DAY_START);
+  assert.equal(out.dayEnd, DAY_END);
+  assert.equal(out.maxWalk, MAX_WALK);
+});
+
+test('the payload counts what it dropped and why', () => {
+  const spec = campus([['A', 300, 2], ['B', 300, 2]]);
+  const out = query(spec.rooms, {
+    origin: ORIGIN,
+    now: at(12),
+    day: TUE,
+    needed: 60,
+    buildings: spec.buildings,
+    hoursFor: (code) => (code === 'B' ? null : OPEN_ALL_DAY()),
+  });
+  assert.equal(out.counts.rooms, 4);
+  assert.equal(out.counts.considered, 2);
+  assert.equal(out.counts.dropped.closed, 2, 'a published closure is a fact worth counting');
+  assert.equal(out.known, 2);
+  assert.equal(out.unknown, 0);
+});
+
+test('a screen full of unknown-hours rooms is countable, not disguised', () => {
+  const spec = campus([['A', 300, 3]]);
+  const out = query(spec.rooms, {
+    origin: ORIGIN, now: at(12), day: TUE, needed: 60, buildings: spec.buildings,
+    hoursFor: () => undefined,
+  });
+  assert.equal(out.known, 0);
+  assert.equal(out.unknown, 3);
+  assert.ok(out.rows.every((r) => r.usable === null && r.tier >= 3));
+});
+
+// --- the calendar, where the schedule is wrong in two opposite directions ---
+
+test('during the exam window the engine refuses instead of guessing', () => {
+  // From the last day of instruction to the end of finals the busy list is
+  // empty for every room on campus, so a schedule-only engine reports 100% of
+  // campus free during the week it matters most. OSU does not publish the exam
+  // room assignments anywhere the app can read, so there is nothing to compute.
+  const out = askFor(60, campus([['A', 300, 5]]), { calendar: { exams: true } });
+  assert.equal(out.refused, 'exams');
+  assert.deepEqual(out.rows, []);
+  assert.match(out.reason, /exam/i);
+});
+
+test('a closed university is a different refusal from an exam window', () => {
+  const out = askFor(60, campus([['A', 300, 5]]), {
+    calendar: { buildingsClosed: true, reason: 'Thanksgiving Day. The university is closed.' },
+  });
+  assert.equal(out.refused, 'closed');
+  assert.deepEqual(out.rows, []);
+  assert.equal(out.reason, 'Thanksgiving Day. The university is closed.');
+  assert.notEqual(out.refused, 'exams', 'the two never collapse into one answer');
+});
+
+test('on a no-class day the busy grid is ignored, and the doors still are not', () => {
+  // 788 of 863 sampled Wednesday rows are still active on Veterans Day, so
+  // trusting the grid hides 91% of campus on a day nobody is in class.
+  const spec = campus([['A', 300, 3, { busy: [[TUE, DAY_START, DAY_END]] }]]);
+  const busyDay = askFor(60, spec);
+  assert.deepEqual(busyDay.rows, [], 'booked solid on an ordinary Tuesday');
+
+  const holiday = askFor(60, spec, { calendar: { noClasses: true } });
+  assert.equal(holiday.rows.length, 3);
+  assert.ok(holiday.rows.every((r) => r.usable > 0));
+
+  // The building hours still decide. A holiday does not unlock a closed door.
+  const shut = query(spec.rooms, {
+    origin: ORIGIN, now: at(12), day: TUE, needed: 60, buildings: spec.buildings,
+    hoursFor: () => null, calendar: { noClasses: true },
+  });
+  assert.deepEqual(shut.rows, []);
+});
+
+// --- the real committed index ---
+
+const readData = (file) => JSON.parse(readFileSync(new URL(`../../data/${file}`, import.meta.url), 'utf8'));
+
+test('equirectangular distance matches haversine within a metre for every building on file', () => {
+  const buildings = Object.values(readData('buildings.json').buildings);
+  let worst = 0;
+  for (const b of buildings) {
+    worst = Math.max(worst, Math.abs(distanceMetres(ORIGIN, b) - haversineMetres(ORIGIN, b)));
+  }
+  assert.ok(buildings.length > 600, `${buildings.length} buildings checked`);
+  assert.ok(worst < 1, `worst disagreement was ${worst.toFixed(4)} m over ${buildings.length} buildings`);
+});
+
+test('a query against the committed index answers, and answers the same way twice', () => {
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const buildings = readData(`buildings-${term}.json`).buildings;
+  const hours = readData('buildings-hours.json').terms['autumn-2026-classroom-pool-building-schedule'];
+  const rooms = Object.entries(index.rooms).map(([id, r]) => ({ id, ...r }));
+  const hoursFor = (code, day) => hours.buildings[code]?.hours[day];
+
+  const opts = {
+    origin: ORIGIN,
+    now: at(14),
+    day: 2,
+    date: '2026-09-15',
+    needed: 60,
+    buildings,
+    hoursFor,
+    sessions: index.sessions,
+  };
+  const first = query(rooms, opts);
+  const second = query(rooms, opts);
+
+  assert.ok(rooms.length > 800, `${rooms.length} rooms in the index`);
+  assert.ok(first.rows.length > 0);
+  assert.equal(first.rung, 'asked');
+  assert.equal(
+    JSON.stringify(first.rows),
+    JSON.stringify(second.rows),
+    'the same index and the same clock must give byte-identical rows',
+  );
+  for (const row of first.rows) {
+    assert.ok(row.walk <= MAX_WALK, `${row.id} is a ${row.walk} minute walk`);
+    assert.ok(row.usable === null || row.usable >= 60, `${row.id} promises ${row.usable}`);
+    assert.ok(row.leaveBy >= at(14));
+    assert.ok(row.usableUntil === null || row.usableUntil === row.nextClassAt - PACKUP);
+  }
+});
+
+test('a Saturday on the real index is honest about what it does not know', () => {
+  // 7 of 12,168 committed intervals fall on a Saturday, so the class schedule
+  // says almost nothing and the building hours are carrying the whole answer.
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const buildings = readData(`buildings-${term}.json`).buildings;
+  const hours = readData('buildings-hours.json').terms['autumn-2026-classroom-pool-building-schedule'];
+  const rooms = Object.entries(index.rooms).map(([id, r]) => ({ id, ...r }));
+
+  const out = query(rooms, {
+    origin: ORIGIN,
+    now: at(11),
+    day: 6,
+    date: '2026-09-19',
+    needed: 60,
+    buildings,
+    hoursFor: (code, day) => hours.buildings[code]?.hours[day],
+    sessions: index.sessions,
+  });
+  assert.ok(out.rows.length > 0);
+  for (const row of out.rows) {
+    if (!row.hoursKnown) assert.equal(row.usable, null, `${row.id} claimed a window nobody published`);
+  }
+  assert.ok(out.known + out.unknown === out.rows.length);
+});
+
+test('the engine marks the answer it produced, so a cold launch can be measured', () => {
+  // The three things a cold launch spends time on are the fetch, the parse and
+  // the first answer. The engine owns the last one and the session mask, and
+  // exports mark and measure so the loader can name the other two the same way.
+  performance.clearMeasures();
+  const spec = campus([['A', 300, 3]]);
+  query(spec.rooms, {
+    origin: ORIGIN, now: at(12), day: TUE, needed: 60, buildings: spec.buildings,
+    hoursFor: OPEN_ALL_DAY, sessions: [['2026-08-25', '2026-12-09']], date: '2026-09-15',
+  });
+  const named = performance.getEntriesByType('measure').map((m) => m.name);
+  assert.ok(named.includes('vacant:query'), named.join(','));
+  assert.ok(named.includes('vacant:answer'));
+  assert.ok(named.includes('vacant:index'));
+
+  performance.clearMeasures();
+  rank(spec.rooms, {
+    origin: ORIGIN, now: at(12), day: TUE, needed: 60, buildings: spec.buildings,
+    hoursFor: OPEN_ALL_DAY,
+  });
+  assert.ok(performance.getEntriesByType('measure').map((m) => m.name).includes('vacant:answer'));
+});
+
+test('the payload reports how long it took, without a Date to do it', () => {
+  const spec = campus([['A', 300, 3]]);
+  const out = askFor(60, spec);
+  assert.equal(typeof out.ms, 'number');
+  assert.ok(out.ms >= 0);
+});
+
+test('a clock reading outside a wall-clock day is refused, not computed from', () => {
+  // 1500 is what an epoch subtraction gives on the Sunday Ohio falls back, and
+  // it is an hour wrong for the rest of that day. Every busy interval in the
+  // index is wall clock, so there is nothing honest to do with it.
+  const spec = campus([['A', 300, 3]]);
+  for (const now of [1500, -1, NaN, undefined]) {
+    const out = query(spec.rooms, {
+      origin: ORIGIN, now, day: TUE, needed: 60, buildings: spec.buildings, hoursFor: OPEN_ALL_DAY,
+    });
+    assert.equal(out.refused, 'clock', String(now));
+    assert.deepEqual(out.rows, []);
+  }
+  assert.equal(askFor(60, spec).refused, null, 'a real clock is fine');
+});
+
+test('not knowing where you are is a different answer from nothing being free', () => {
+  const spec = campus([['A', 300, 3]]);
+  const lost = query(spec.rooms, {
+    origin: { lat: NaN, lon: NaN }, now: at(12), day: TUE, needed: 60,
+    buildings: spec.buildings, hoursFor: OPEN_ALL_DAY,
+  });
+  assert.equal(lost.refused, 'location');
+  assert.match(lost.reason, /where you are/);
+  assert.deepEqual(lost.rows, []);
+
+  // A campus that is genuinely booked solid says something else entirely.
+  const busy = campus([['A', 300, 3, { busy: [[TUE, DAY_START, DAY_END]] }]]);
+  const nothing = askFor(60, busy);
+  assert.equal(nothing.refused, null);
+  assert.notEqual(nothing.reason, lost.reason);
+});
+
+// --- the week the schedule stops describing ---
+
+test('the committed index refuses the finals week it cannot see', () => {
+  // The worst answer this app can give, and it was live: a meeting's endDate is
+  // the last day of INSTRUCTION, so on December 10 the session mask empties the
+  // busy grid and a schedule-only engine reports all 871 rooms free for a week,
+  // while finals are running in them.
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const buildings = readData(`buildings-${term}.json`).buildings;
+  const hours = readData('buildings-hours.json').terms['autumn-2026-classroom-pool-building-schedule'];
+  const rooms = Object.entries(index.rooms).map(([id, r]) => ({ id, ...r }));
+  const opts = {
+    origin: ORIGIN, now: at(14), day: 4, needed: 60, buildings,
+    hoursFor: (code, day) => hours.buildings[code]?.hours[day],
+    sessions: index.sessions,
+  };
+
+  const finals = query(rooms, { ...opts, date: '2026-12-10' });
+  assert.equal(finals.refused, 'no-schedule');
+  assert.deepEqual(finals.rows, []);
+  assert.match(finals.reason, /finals week/i);
+
+  // And an ordinary Thursday in the middle of term still answers.
+  const teaching = query(rooms, { ...opts, date: '2026-09-17' });
+  assert.equal(teaching.refused, null);
+  assert.ok(teaching.rows.length > 0);
+});
+
+test('the two clusters the silence threshold sits between are three orders apart', () => {
+  // The measurement the constant is set from. Every date classes meet, against
+  // every date they do not, over the committed index.
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const rooms = Object.values(index.rooms);
+
+  const share = (date) => scheduleCoverage(rooms, activeMask(index.sessions, date)).share;
+  const teaching = ['2026-08-25', '2026-09-17', '2026-10-14', '2026-11-11', '2026-12-09'].map(share);
+  const silent = ['2026-08-01', '2026-08-24', '2026-12-10', '2026-12-11', '2026-12-15'].map(share);
+
+  assert.ok(Math.min(...teaching) > 0.94, `lowest teaching day was ${Math.min(...teaching)}`);
+  assert.ok(Math.max(...silent) < 0.02, `highest silent day was ${Math.max(...silent)}`);
+  assert.ok(SILENT_SHARE > Math.max(...silent) && SILENT_SHARE < Math.min(...teaching));
+});
+
+test('a small healthy index is not mistaken for a silent one', () => {
+  // Share is null, not zero, when there is nothing to measure. An index with no
+  // busy blocks at all, or a caller that passed no session mask, is missing
+  // evidence rather than carrying evidence of an empty campus.
+  const spec = campus([['A', 300, 3]]);
+  assert.equal(scheduleCoverage(spec.rooms, undefined).share, null);
+  assert.equal(scheduleCoverage(spec.rooms, new Uint8Array([1])).share, null);
+  assert.equal(askFor(60, spec, { sessions: [['2026-08-25', '2026-12-09']], date: '2026-12-15' }).refused, null);
+
+  // One room, one class, one dead session is still a real answer.
+  const one = campus([['A', 300, 1, { busy: [[TUE, at(9), at(10), 0]] }]]);
+  const out = askFor(60, one, { sessions: [['2026-08-25', '2026-09-30']], date: '2026-09-15' });
+  assert.equal(out.refused, null);
+  assert.equal(out.rows.length, 1);
+});
+
+test('a no-class day is answered, not refused, even when the mask is empty', () => {
+  // Autumn Break is the best day of the term: no classes and the doors open.
+  // The registrar saying so outranks the grid, so the silence check stands down.
+  const spec = campus([['A', 300, 3, { busy: [[TUE, at(9), at(10), 0]] }]]);
+  const extra = { sessions: [['2026-08-25', '2026-10-12']], date: '2026-10-15' };
+  assert.equal(askFor(60, spec, extra).refused, 'no-schedule');
+  const holiday = askFor(60, spec, { ...extra, calendar: { noClasses: true } });
+  assert.equal(holiday.refused, null);
+  assert.equal(holiday.rows.length, 3);
+});
+
+test('refusalFor is the same verdict the ladder uses, so a caller outside it agrees', () => {
+  // js/app.js ranks without the ladder, so the refusal has to be reachable on
+  // its own. A screen that asks this and a query that runs it must never
+  // disagree about whether today can be answered.
+  const spec = campus([['A', 300, 3, { busy: [[TUE, at(9), at(10), 0]] }]]);
+  const args = { now: at(12), rooms: spec.rooms, sessions: [['2026-08-25', '2026-10-12']], date: '2026-12-15' };
+  assert.equal(refusalFor(args).refused, 'no-schedule');
+  assert.equal(askFor(60, spec, { sessions: args.sessions, date: args.date }).refused, 'no-schedule');
+
+  assert.equal(refusalFor({ ...args, now: 1500 }).refused, 'clock');
+  assert.equal(refusalFor({ ...args, calendar: { exams: true } }).refused, 'exams');
+  assert.equal(refusalFor({ ...args, calendar: { buildingsClosed: true } }).refused, 'closed');
+  assert.equal(refusalFor({ ...args, date: '2026-09-15' }), null);
+
+  // The exam window is named ahead of the silence it causes, because "finals
+  // are running" is a fact and "the schedule stopped" is only the symptom.
+  assert.equal(refusalFor({ ...args, calendar: { exams: true } }).refused, 'exams');
+});
+
+test('rank refuses nothing on its own, which is why the caller has to ask', () => {
+  // Kept deliberately: rank is the ordering primitive and returns rows. The
+  // guard against shipping it raw is this test plus the one in the app.
+  const spec = campus([['A', 300, 3, { busy: [[TUE, at(9), at(10), 0]] }]]);
+  const rows = rank(spec.rooms, {
+    origin: ORIGIN, now: at(12), day: TUE, needed: 60, buildings: spec.buildings,
+    hoursFor: OPEN_ALL_DAY, sessions: [['2026-08-25', '2026-10-12']], date: '2026-12-15',
+  });
+  assert.equal(rows.length, 3);
+  assert.equal(refusalFor({ now: at(12), rooms: spec.rooms, sessions: [['2026-08-25', '2026-10-12']], date: '2026-12-15' }).refused, 'no-schedule');
+});
+
+test('the calendar reads whatever shape the build put in the index', () => {
+  // The pipeline emits [{date, state}] and {start, end}. The screens lane reads
+  // a date-keyed object. Both have to work, because the refusal failing open is
+  // the one outcome that puts a wrong answer on the screen.
+  const asArray = {
+    closed: [{ date: '2026-09-07', state: 'offices-closed', name: 'Labor Day' }, { date: '2026-10-15', state: 'no-classes' }],
+    exams: { start: '2026-12-11', end: '2026-12-17' },
+  };
+  const asMap = {
+    closed: { '2026-09-07': { state: 'offices-closed', name: 'Labor Day' }, '2026-10-15': 'no-classes' },
+    exams: ['2026-12-11', '2026-12-17'],
+  };
+
+  for (const src of [asArray, asMap]) {
+    assert.deepEqual(calendarOn('2026-12-15', src), { exams: true });
+    assert.deepEqual(calendarOn('2026-09-07', src), { buildingsClosed: true, name: 'Labor Day' });
+    assert.equal(calendarOn('2026-10-15', src).noClasses, true);
+    assert.equal(calendarOn('2026-09-16', src), null, 'an ordinary day is an ordinary day');
+    assert.equal(calendarOn('2026-12-10', src), null, 'the day before finals is not finals');
+  }
+
+  // A date with no state survives as the cautious half, and current.json is
+  // read when the index carries nothing.
+  assert.deepEqual(calendarOn('2026-11-11', { closed: ['2026-11-11'] }), { buildingsClosed: true, name: null });
+  assert.deepEqual(calendarOn('2026-12-15', {}, { exams: { start: '2026-12-11', end: '2026-12-17' } }), { exams: true });
+  assert.equal(calendarOn('2026-12-15', {}, {}), null);
+});
+
+test('a closed campus says which holiday it is when the build knows', () => {
+  const named = refusalFor({ now: 600, calendar: calendarOn('2026-11-11', { closed: [{ date: '2026-11-11', state: 'offices-closed', name: 'Veterans Day' }] }) });
+  assert.equal(named.refused, 'closed');
+  assert.match(named.reason, /^Veterans Day\. /);
+  assert.match(named.reason, /cannot get into/);
+});
+
+test('the day bounds still cover the committed index, including the late rooms', () => {
+  // DAY_END is 23:00 because the harvest says so, and the research note's 22:00
+  // would clip real classes. This pins both halves of that: the latest end in
+  // the index, and exactly which rooms run past 22:00, so a rebuild that pushes
+  // a class later cannot quietly lose it. Day 0 is Sunday, so 1 to 5 is Monday
+  // to Friday.
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const blocks = Object.entries(index.rooms).flatMap(([id, r]) => (r.busy ?? []).map((b) => [id, ...b]));
+
+  assert.equal(Math.max(...blocks.map((b) => b[3])), DAY_END, 'the latest class end');
+  assert.equal(Math.min(...blocks.map((b) => b[2])), 330, 'the earliest class start, 05:30');
+
+  const late = blocks.filter((b) => b[3] > 1320);
+  assert.equal(late.length, 18, 'intervals a 22:00 bound would have clipped');
+  const nights = (id) => late.filter((b) => b[0] === id).map((b) => b[1]).sort();
+  assert.deepEqual(nights('TFM0350'), [1, 2, 3, 4, 5], 'five nights, not four');
+  assert.deepEqual(nights('TFM0360'), [1, 2, 3, 4, 5], 'and it is two rooms, not one');
+  assert.deepEqual(nights('TFM0120A'), [0, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(nights('JE0274'), [2]);
 });

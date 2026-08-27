@@ -31,14 +31,21 @@ Two consequences worth knowing before you are surprised by them.
 sensitive. `/vacant/` is a hard 404. Survivable in a link, fatal in a
 `start_url`, because it fails only after somebody has installed the app to their
 home screen, on a device where they cannot see the address bar to work out why.
-Every absolute path in the repository uses the capital V and a test greps for
-`/vacant/`.
+Every absolute path in the pages the site serves and in the top-level docs uses
+the capital V, and `scripts/test/docs.test.mjs` fails if a lowercase one appears
+in any of them. The one deliberate exception is `docs/research/`, which is an
+archive of options that were considered and includes a proposal to rename the
+repository to lowercase; the test skips that directory on purpose.
 
 **Extensionless URLs do not work.** With `.nojekyll` there is no Jekyll to map
 `/privacy` onto `privacy.html`. The privacy page's real URL is
 `https://enesyilmazcode.github.io/Vacant/privacy.html` and every link to it has
 to say `privacy.html`. Verified locally against the Pages-mirroring server:
 `/Vacant/privacy.html` is 200 and `/Vacant/privacy` is 404.
+
+That URL is a 404 on the live site until `privacy.html` merges to `main`, and
+even then nothing in `index.html` links to it. Adding that link is tracked in
+`README-CORRECTIONS.md` and gated in `LAUNCH.md`.
 
 ## Rolling back
 
@@ -78,9 +85,18 @@ wrong at the edges. A missing one is wrong everywhere.
 
 ## Why there is no backend
 
-The app opens and answers with no signal, in a stairwell or a basement. That is
-the one thing Vacant does that nothing else in this category does, and it is only
-possible because every byte it needs is a static file a service worker can hold.
+Everything the app needs is a static file, small enough that a service worker
+could hold the whole thing. That is what makes answering with no signal possible
+at all, and it is the one thing nothing else in this category could copy without
+a rewrite.
+
+**It is possible, not done.** There is no `sw.js` in the repository and
+`index.html` registers nothing, so today the app needs the network every time it
+is opened. Measured on the local Pages mirror after a full load:
+`navigator.serviceWorker.getRegistrations()` is empty, `caches.keys()` is `[]`,
+and reloading with the network off gives the browser's error page. Anybody
+writing "works offline" into a post, a README or the privacy page before that
+changes is writing something false.
 
 Measured, on the shipped files:
 

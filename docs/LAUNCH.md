@@ -36,6 +36,16 @@ somebody to a locked door is worse than posting it two weeks late.
       before anybody reads it.
 - [ ] The install path works: manifest, icons, service worker, install hint.
       The post drives installs and the origin is baked in at install time.
+- [ ] **The privacy page is reachable from the app.** `privacy.html` ships, but
+      nothing in `index.html` links to it, so today a student cannot get there
+      from inside the app. Posting a link that promises a privacy page nobody can
+      open is worse than not mentioning one. See `README-CORRECTIONS.md`.
+- [ ] **Nothing in the post says "offline" until `sw.js` exists.** There is no
+      service worker today: `getRegistrations()` is empty, `caches.keys()` is
+      empty, and an offline reload is the browser's error page. The posts below
+      have had the offline line removed. If the service worker lands before the
+      post goes out, put it back and say "after the first load". If it does not,
+      leave it out. Do not soften it to "works almost offline".
 - [ ] `og.png` exists at 1200x630 and the preview has been tested by pasting the
       link into iMessage **and** into a Reddit comment box. Both cache previews,
       so a corrected image will not refresh one somebody already generated.
@@ -70,8 +80,8 @@ does not know if the door is unlocked**
 > subtracted. If you need 90 minutes and a room frees up in 6 minutes of walking
 > but has a class in 80, it does not offer it.
 >
-> The whole thing is 102 KB and works offline after the first load. No account, no
-> ads, no tracking, and your location never leaves your phone.
+> The whole thing is 102 KB on first load. No account, no ads, no tracking, and
+> your location never leaves your phone.
 >
 > [Source and data notes.](https://github.com/EnesYilmazcode/Vacant)
 >
@@ -107,10 +117,12 @@ else goes in.
 >
 > It has no building hours. `hours.json` returns 404 and there is no equivalent
 > under another name. So on a Saturday it will offer you rooms in buildings that
-> are locked. Only 5 of the Registrar's 47 pool buildings are open on Saturday,
-> and 795 of the 871 rooms Vacant lists are either in a building the table says is
-> closed or in one with no published hours at all. Vacant will not call any of
-> those free.
+> are locked. Only 5 of the Registrar's 47 pool buildings are open on Saturday. Of
+> the 871 rooms I list, 550 are in a building the table says is closed that day,
+> and I drop every one of them. Another 245 are in buildings that publish no hours
+> at all: I still list those, labelled "hours not published", with no free-until
+> time on them, because I do not know the door is open and I am not going to
+> pretend otherwise.
 >
 > First load is about 3.3 MB for Roomix against 470 KB for Vacant, or 102 KB
 > gzipped.
@@ -126,8 +138,8 @@ campus-wide ranking, walk time, and hours.
 
 > Made this: [Vacant](https://enesyilmazcode.github.io/Vacant/). Tell it how long
 > you need, it finds an empty classroom near you with the walk there already
-> subtracted. Free, no account, works offline. It says so when it does not know
-> if the door is unlocked.
+> subtracted. Free, no account, no tracking. It says so when it does not know if
+> the door is unlocked.
 
 ## Handing someone your phone
 

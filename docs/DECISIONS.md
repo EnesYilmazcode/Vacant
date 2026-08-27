@@ -448,3 +448,60 @@ across 96 buildings for Autumn 2026. **72% of those rooms sit in a building with
 published hours**, not the 88.8% the research estimated from 12 subjects, and 46
 of the 96 buildings are in the classroom pool. So the unknown-hours path is
 larger than the research suggests and matters more than it looks.
+## 2026-08-26  The room index, and a divisible-room shape the spec misses
+
+**Decided.** `data/rooms-1268.json`, 871 rooms, **234 KB raw and 26.8 KB
+gzipped**, which lands inside the research's 27 to 33 KB estimate. Built by
+`scripts/build-index.mjs` from the committed harvest.
+
+**Split from `fetch-rooms.mjs`, against the issue's "fetch-rooms writes two
+files".** A full harvest costs about 680 requests against a university's API,
+and every schema change to the index would otherwise mean paying that again just
+to see the result. Reading the harvest instead makes the inversion free to
+iterate on, and the input is identical either way.
+
+**A divisible-room shape the issue's spec cannot see.** It says to copy a
+`facilityGroup` parent's intervals onto "every room whose `facilityId` extends
+the parent's". That covers `MALC0100` to `MALC0100N` and `MALC0100S`. It does
+not cover the other shape:
+
+```
+MALC0100      -> MALC0100N, MALC0100S     a suffix EXTENDS the parent id
+BO0410/420    -> BO0410, BO0420           a slash NAMES both halves
+```
+
+`'BO0410'.startsWith('BO0410/420')` is false. Measured on term 1268,
+`BO0410/420` is a `facilityGroup` parent and **both `BO0410` (7 blocks) and
+`BO0420` (4 blocks) exist as separate rooms in the index**, so a combined
+booking left both halves reading FREE. That is precisely the failure this
+propagation exists to prevent. The digits after the slash replace the last N of
+the base number, which is how the Registrar writes them.
+
+Three of the five group parents on 1268 carry slash names. Only `BO0410/420`
+currently has both halves present, so the live impact today is two rooms, but
+the shape is not rare and a prefix test will never catch it.
+
+**Propagation runs both ways, decided rather than omitted.** The issue flags the
+upward direction as an open question. If `MALC0100N` has a class in it, then
+`MALC0100` is not available as a whole room either, and sending someone to it is
+the same wrong answer in the other direction. A sibling is NOT made busy by its
+twin; only the parent is.
+
+**The prefix trap is still respected.** `KH0333`/`KH0333C` and
+`HC0346`/`HC0346D` are both `facilityGroup: false` and genuinely separate rooms.
+Gating on `facilityGroup` rather than on a bare prefix scan is what keeps a real
+free room from being marked busy.
+
+**Verified on the built file.** 12,150 busy tuples, 0 malformed, 0 unmerged
+overlaps in any room, every room's `b` resolves in `buildings.json`, room keys
+sorted, and two consecutive builds produce a **byte-identical** file. 1,876
+exact duplicates dropped and 37 intervals merged out of 14,059 in.
+
+**`generated` appears only in `current.json`.** Inside the index it would make
+every weekly rebuild differ even when no schedule changed, so nothing could tell
+you whether the data actually moved. A guard fails the build if it appears.
+
+**`instruction` is the min and max of observed meeting dates**, never
+`searchableTermsV2`, whose dates are eleven-month search visibility windows:
+Autumn 2026 "starts" 2026-02-09 by that field. Measured: 2026-08-03 to
+2026-12-11 across 12 sessions.

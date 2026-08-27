@@ -140,13 +140,19 @@ These are real forks. Each carries a recommendation, but none should be settled 
 
 > Show them, labelled unknown, ranked below every building with published open hours, and never with an assumed or 'usually open' window. Hiding them loses real music, chemistry and art classroom space and makes the app useless at exactly the times it is most wanted. But the label has to be honest rather than hedged: 'hours not published' is a fact, 'usually open' is a guess dressed as one.
 
+**PARTLY ANSWERED 2026-08-27.** The gismaps@osu.edu note is drafted at [outreach/gismaps-email.md](outreach/gismaps-email.md) and is NOT sent. It goes out before the URL is shared. Nobody is emailed about the API.
+
 **Who at Ohio State do you contact, and about what? Three different asks are on the table: gismaps@osu.edu about the building layer's licence, the Registrar about the official room-type key, and OTDI about whether the weekly harvest is acceptable use.**
 
 > Email gismaps@osu.edu and the Registrar; do not email anyone about the API. The first two convert inferences into facts and cost nothing if ignored. The API question is asymmetric: there is no numeric safe harbor to ask for, only a discretionary reasonableness standard, and a written no is far worse than no answer. Ship the polite client, publish docs/DATA.md, keep the kill switch one commit away, and stay reachable.
 
+**ANSWERED 2026-08-27, see [DECISIONS.md](DECISIONS.md).** Building hours shipped, so the hold is lifted and the launch is set for Tuesday 15 September 2026. The posts are written in [LAUNCH.md](LAUNCH.md). It is not a hard date: the ground-truth walk has to happen first.
+
 **Do you share the URL before building hours land, or hold it? The walking skeleton will be live and working from issue 4 onward, months before the hours scrape.**
 
 > Hold it. Share the link with two or three people you can tell 'this is a prototype' in person, and do not post it anywhere public until building hours ship. Without them the app names free rooms in locked buildings, which is the precise failure the project's whole pitch is built on calling out, and a first user who walks to a locked door does not come back.
+
+**ANSWERED 2026-08-27, see [DECISIONS.md](DECISIONS.md) and [design/reports.md](design/reports.md).** The schema and privacy model are settled on paper with nothing built. The override is downward only, the suppression floor is 3 distinct reporters, and the usage counter that would have judged the gate is decided against, because it would cost the privacy page its strongest sentence.
 
 **Does Phase 4 get built at all, and if it does, may a crowd report override the published building-hours table?**
 

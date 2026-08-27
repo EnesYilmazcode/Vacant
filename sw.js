@@ -153,6 +153,12 @@ async function networkFirst(request) {
   } catch {
     // No network. Fall through to the cached pointer.
   }
+  // Except for a no-store request, which is the page asking whether the network
+  // is there at all. js/firstrun.js sends exactly one of those, and answering it
+  // from the cache turns the question into "is there a cache": measured with the
+  // server killed, the probe came back 200 from here and the offline card never
+  // rendered.
+  if (request.cache === 'no-store') return Response.error();
   return (await data.match(request)) || Response.error();
 }
 

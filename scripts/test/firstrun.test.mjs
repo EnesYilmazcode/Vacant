@@ -15,6 +15,17 @@ const source = readFileSync(join(ROOT, 'js', 'firstrun.js'), 'utf8');
 
 const POINTER = '/Vacant/data/current.json';
 const ROOMS = '/Vacant/data/rooms-1268.json';
+const BUILDINGS = '/Vacant/data/buildings-1268.json';
+const HOURS = '/Vacant/data/buildings-hours.json';
+
+// What a fully warmed data cache holds. Everything boot() awaits before it can
+// put a row on screen.
+const WARM = {
+  [POINTER]: { rooms: 'data/rooms-1268.json', buildings: 'data/buildings-1268.json' },
+  [ROOMS]: {},
+  [BUILDINGS]: {},
+  [HOURS]: {},
+};
 
 // A CacheStorage stub that records every lookup, so a test can prove what the
 // decision read as well as what it decided.
@@ -31,11 +42,30 @@ function store(held) {
   };
 }
 
-test('a cached pointer and a cached rooms file is tier 1', async () => {
-  const cache = store({ [POINTER]: { rooms: 'data/rooms-1268.json' }, [ROOMS]: {} });
+test('a whole cached term is tier 1', async () => {
+  const cache = store(WARM);
   assert.equal(await pickTier({ store: cache, online: true }), CACHED);
   assert.equal(await pickTier({ store: cache, online: false }), CACHED);
-  assert.deepEqual(cache.asked, [POINTER, ROOMS, POINTER, ROOMS]);
+  assert.deepEqual(cache.asked, [POINTER, ROOMS, BUILDINGS, HOURS, POINTER, ROOMS, BUILDINGS, HOURS]);
+});
+
+test('one file short of a whole term is not tier 1', async () => {
+  // Every one of these is a state a real cache reaches. The worker's warm skips
+  // a file that came back non-ok, so a single 503 on buildings-hours.json leaves
+  // exactly the third case. Saying CACHED there hid the offline card behind a
+  // screen with three disabled buttons: boot() awaits all three files together
+  // and rejects if any one of them is missing.
+  for (const gone of [ROOMS, BUILDINGS, HOURS]) {
+    const held = { ...WARM };
+    delete held[gone];
+    assert.equal(await pickTier({ store: store(held), online: true }), FETCHING, gone);
+    assert.equal(await pickTier({ store: store(held), online: false }), OFFLINE, gone);
+  }
+});
+
+test('a pointer that names no buildings file is not tier 1 either', async () => {
+  const held = { ...WARM, [POINTER]: { rooms: 'data/rooms-1268.json' } };
+  assert.equal(await pickTier({ store: store(held), online: false }), OFFLINE);
 });
 
 test('nothing cached is tier 2 online and tier 3 offline', async () => {
@@ -46,7 +76,7 @@ test('nothing cached is tier 2 online and tier 3 offline', async () => {
 test('a pointer with no rooms file behind it is not tier 1', async () => {
   // Exactly the state a term rollover leaves: the pointer revalidated, the file
   // it names was never fetched.
-  const held = { [POINTER]: { rooms: 'data/rooms-1272.json' } };
+  const held = { [POINTER]: { rooms: 'data/rooms-1272.json', buildings: 'data/buildings-1272.json' } };
   assert.equal(await pickTier({ store: store(held), online: true }), FETCHING);
   assert.equal(await pickTier({ store: store(held), online: false }), OFFLINE);
 });
@@ -60,7 +90,7 @@ test('the decision makes no network request', async () => {
   };
   try {
     await pickTier({ store: store({}), online: true });
-    await pickTier({ store: store({ [POINTER]: { rooms: 'data/rooms-1268.json' }, [ROOMS]: {} }), online: true });
+    await pickTier({ store: store(WARM), online: true });
   } finally {
     globalThis.fetch = real;
   }
@@ -125,4 +155,28 @@ test('storage.persist is asked once and nothing branches on the answer', () => {
   assert.match(persist, /nav\.storage\?\.persist\?\.\(\)/);
   assert.equal(/persist\(\)\s*\.then|await nav\.storage|if \(.*persist/.test(persist), false);
   assert.match(source, /onReady\(doc, \(\) => \{\s*ready = true;\s*close\(\);\s*persist\(nav\);/);
+});
+
+// Issue #23 asked for the cold start to fire geolocation in the same tick as the
+// data fetch, so the two waits overlap instead of queueing. They do, but boot()
+// in js/app.js is what does it, and until this test nothing held that in place.
+// Measured on a cold load at 393x852: geolocation at 60 ms, the first fetch at
+// 60 ms, the first response back at 71 ms.
+test('geolocation starts before any data fetch resolves, and only one module asks', () => {
+  const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const boot = app.slice(app.indexOf('async function boot()'), app.indexOf("window.addEventListener('DOMContentLoaded'"));
+  const started = boot.indexOf('const fix = locate();');
+  assert.ok(started > 0, 'boot() no longer starts geolocation');
+  // Anything awaited above this line makes the fix wait for a response.
+  assert.ok(started < boot.indexOf('await '), 'geolocation now queues behind an await');
+  // And it is collected with the data rather than ahead of it.
+  const all = boot.indexOf('await Promise.all([');
+  assert.match(boot.slice(all, boot.indexOf(']', all)), /\bfix,/);
+
+  // Two modules asking would prompt twice on the one visit where the app has
+  // nothing, which is the visit this whole file is about.
+  for (const file of ['firstrun.js', 'install.js', 'pwa.js']) {
+    const other = readFileSync(join(ROOT, 'js', file), 'utf8');
+    assert.equal(/geolocation|getCurrentPosition/.test(other), false, `js/${file} asks for a position too`);
+  }
 });

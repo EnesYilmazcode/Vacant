@@ -107,6 +107,19 @@ test('activate drops foreign caches and evicts last term', () => {
   assert.match(evict, /data\.delete\(request\)/);
 });
 
+test('a network probe is never answered out of the cache', () => {
+  // js/firstrun.js decides whether there is a network by asking for the term
+  // pointer with cache: 'no-store'. Falling that back to the cached pointer
+  // turns "is there a network" into "is there a cache": measured with the server
+  // killed, the probe came back 200 and the offline card never rendered.
+  const first = sw.slice(sw.indexOf('async function networkFirst'), sw.indexOf('async function staleWhileRevalidate'));
+  const guard = first.indexOf("request.cache === 'no-store'");
+  assert.ok(guard > 0, 'networkFirst answers a no-store request from the cache');
+  assert.ok(guard < first.indexOf('await data.match(request)'), 'the cache fallback runs first anyway');
+  const firstrun = readFileSync(join(ROOT, 'js', 'firstrun.js'), 'utf8');
+  assert.match(firstrun, /cache: 'no-store'/);
+});
+
 test('a navigation falls back to the cached shell', () => {
   const navigate = sw.slice(sw.indexOf('async function navigate'), sw.indexOf('async function cacheFirst'));
   assert.match(navigate, /event\.preloadResponse/);

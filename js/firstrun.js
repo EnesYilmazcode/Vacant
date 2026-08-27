@@ -25,21 +25,33 @@ async function cachedJson(store, url) {
   }
 }
 
-// The pointer names the term file, so both have to be present before the app can
-// answer with the network off. A cached pointer and a missing rooms file is
-// exactly the state a term rollover leaves behind.
+// The two files app.js needs that the pointer does not name. campus.json is not
+// one of them: it is the map, boot() catches it on its own, and losing it costs
+// the drawing and not the answer.
+const NEEDED = ['data/buildings-hours.json'];
+
+// Tier 1 means the app can answer with the network off, so the test is every
+// file the answer is built from. Measured with the rooms file cached and
+// buildings-hours.json missing: the old one-file test said CACHED, this card
+// stayed away, and boot() rejected. Three disabled buttons and no way out. That
+// state is what a term rollover leaves, and what one 503 during the worker's
+// warm leaves.
 export async function pickTier({ store, online, base = BASE }) {
-  if (!store) return online ? FETCHING : OFFLINE;
+  const miss = online ? FETCHING : OFFLINE;
+  if (!store) return miss;
   const current = await cachedJson(store, `${base}data/current.json`);
-  const rooms = current && current.rooms;
-  if (rooms) {
-    try {
-      if (await store.match(base + String(rooms).replace(/^\//, ''))) return CACHED;
-    } catch {
-      // CacheStorage can throw where site data is blocked. Treat it as a miss.
+  if (!current) return miss;
+  const files = [current.rooms, current.buildings, ...NEEDED];
+  if (!files.every(Boolean)) return miss;
+  try {
+    for (const file of files) {
+      if (!(await store.match(base + String(file).replace(/^\//, '')))) return miss;
     }
+  } catch {
+    // CacheStorage can throw where site data is blocked. Treat it as a miss.
+    return miss;
   }
-  return online ? FETCHING : OFFLINE;
+  return CACHED;
 }
 
 // No number in this copy, on purpose. The honest figure is the gzipped size of

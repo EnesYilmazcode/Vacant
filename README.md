@@ -2,13 +2,17 @@
 
 Find an empty classroom near you, free for as long as you need it.
 
-> **Status: spine landed, data layer next.** The shared HTTP client and the term
-> archive are in. Spring 2026 and Summer 2026 are snapshotted and committed,
-> which was the one irreversible item on the board. No app yet.
+**[enesyilmazcode.github.io/Vacant](https://enesyilmazcode.github.io/Vacant/)**
+
+> **Status: data layer done, app screen next.** The term archive, building
+> coordinates, Registrar opening hours, room index and ranking engine are all
+> built and live at the link above. There is no room-finding screen yet, so
+> there is nothing to use today.
+>
 > The design below is backed by live measurement, not guesses, and the work is
-> broken into 30 ordered issues. Read [docs/BACKLOG.md](docs/BACKLOG.md) for the
+> broken into ordered issues. Read [docs/BACKLOG.md](docs/BACKLOG.md) for the
 > plan and [docs/DECISIONS.md](docs/DECISIONS.md) for what has actually been
-> settled.
+> settled, including every place a measurement contradicted the plan.
 
 ---
 

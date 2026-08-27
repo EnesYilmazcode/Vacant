@@ -11,13 +11,16 @@ import {
   EMPTY_STATE,
   HINT_KEY,
   NAG_DAYS,
+  RAIL,
   initInstallHint,
   isIOS,
   isIOSSafari,
   isStandalone,
   needsSafari,
+  mountBar,
   readState,
   shouldShow,
+  unmountBar,
   writeState,
 } from '../../js/install.js';
 
@@ -163,4 +166,98 @@ test('no iOS code path waits for beforeinstallprompt', () => {
   const handler = listener.slice(0, listener.indexOf('});'));
   assert.match(handler, /event\.preventDefault\(\)/);
   assert.equal(/ios|isIOSSafari/.test(handler), false, 'the iOS branch is inside the Android event');
+});
+
+// Enough of a DOM to mount a bar into. Heights are fixed per element so the
+// stacking maths is checkable; the real ones are measured in a browser.
+function page() {
+  const make = (id = '') => {
+    const el = {
+      id,
+      height: 0,
+      children: [],
+      parent: null,
+      style: {
+        props: new Map(),
+        setProperty(key, value) { this.props.set(key, value); },
+        removeProperty(key) { this.props.delete(key); },
+      },
+      classes: new Set(),
+      append(child) {
+        child.parent = el;
+        el.children.push(child);
+      },
+      remove() {
+        if (!el.parent) return;
+        el.parent.children = el.parent.children.filter((c) => c !== el);
+        el.parent = null;
+      },
+      getBoundingClientRect() {
+        return { height: el.children.length ? el.children.reduce((n, c) => n + c.height, 0) : el.height };
+      },
+    };
+    el.classList = { add: (c) => el.classes.add(c), remove: (c) => el.classes.delete(c), contains: (c) => el.classes.has(c) };
+    return el;
+  };
+  const body = make('body');
+  const find = (node, id) => {
+    for (const child of node.children) {
+      if (child.id === id) return child;
+      const deeper = find(child, id);
+      if (deeper) return deeper;
+    }
+    return null;
+  };
+  return { make, doc: { body, createElement: () => make(), getElementById: (id) => find(body, id) } };
+}
+
+test('two bars stack instead of covering each other', () => {
+  // Showing the hint prefetches the term, and that fetch is what raises the
+  // refresh bar, so both up at once is a normal path. Fixed to bottom: 0 each,
+  // the refresh bar painted over the hint and the hint's 44px dismiss X stopped
+  // answering taps. Heights here are the ones measured at 393x852.
+  const { doc, make } = page();
+  const hint = make('hint');
+  hint.height = 79;
+  const refresh = make('refresh');
+  refresh.height = 67;
+
+  mountBar(doc, hint);
+  assert.equal(doc.body.style.props.get('--bar-h'), '79px');
+  mountBar(doc, refresh);
+  assert.equal(doc.body.style.props.get('--bar-h'), '146px');
+
+  const rail = doc.getElementById(RAIL);
+  assert.deepEqual(rail.children.map((c) => c.id), ['hint', 'refresh']);
+  assert.equal(hint.parent, rail);
+  assert.equal(refresh.parent, rail);
+
+  // Dismissing the newer one leaves the older one measured, not orphaned.
+  unmountBar(doc, refresh);
+  assert.equal(doc.body.style.props.get('--bar-h'), '79px');
+  assert.equal(doc.body.classes.has('has-bar'), true);
+  assert.equal(doc.getElementById('refresh'), null);
+
+  unmountBar(doc, hint);
+  assert.equal(doc.body.classes.has('has-bar'), false);
+  assert.equal(doc.body.style.props.get('--bar-h'), undefined);
+  assert.equal(doc.getElementById(RAIL), null, 'the empty rail is still in the page');
+});
+
+test('a bar has no fixed position of its own', () => {
+  // The rail owns the position and the safe-area inset. A .bar that goes back to
+  // claiming bottom: 0 puts the two on top of each other again.
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const rule = (selector) => {
+    const at = css.indexOf(selector);
+    assert.ok(at > 0, `no ${selector} rule`);
+    return css.slice(at, css.indexOf('}', at));
+  };
+  const bars = rule('#bars {');
+  assert.match(bars, /position: fixed/);
+  assert.match(bars, /bottom: 0/);
+  assert.match(bars, /flex-direction: column/);
+  assert.match(bars, /padding-bottom: var\(--safe-b\)/);
+  const bar = rule('\n  .bar {');
+  assert.equal(/position: fixed|bottom: 0|z-index/.test(bar), false, 'a .bar positions itself');
 });

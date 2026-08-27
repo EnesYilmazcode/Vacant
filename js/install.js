@@ -133,20 +133,49 @@ function bar(doc, { glyph, html, action }) {
   return { el, close };
 }
 
-// A bar fixed to the bottom sits over the last row or two of the ranked list.
-// The list gets that height back as padding rather than losing it, measured off
-// the bar itself because the copy wraps differently at different text sizes.
+export const RAIL = 'bars';
+
+// Both bars can be up at once. Showing the hint prefetches the term, that fetch
+// goes through the worker's stale-while-revalidate, and a moved file is what
+// raises the refresh bar, so it is a normal path rather than a rare one. Each
+// one fixed to bottom: 0 meant the newer bar painted over the older one:
+// measured on a 393x852 phone, the refresh bar covered all but 12px of the hint
+// and elementFromPoint at the centre of the hint's dismiss X returned an element
+// inside the refresh bar. They share one rail and stack instead.
 export function mountBar(doc, el) {
-  doc.body.append(el);
-  doc.body.style.setProperty('--bar-h', `${Math.ceil(el.getBoundingClientRect().height)}px`);
-  doc.body.classList.add('has-bar');
+  rail(doc).append(el);
+  measure(doc);
 }
 
 export function unmountBar(doc, el) {
   el.remove();
-  if (doc.getElementById('hint') || doc.getElementById('refresh')) return;
-  doc.body.classList.remove('has-bar');
-  doc.body.style.removeProperty('--bar-h');
+  const holder = doc.getElementById(RAIL);
+  if (holder && !holder.children.length) holder.remove();
+  measure(doc);
+}
+
+function rail(doc) {
+  const found = doc.getElementById(RAIL);
+  if (found) return found;
+  const holder = doc.createElement('div');
+  holder.id = RAIL;
+  doc.body.append(holder);
+  return holder;
+}
+
+// A fixed rail sits over the last row or two of the ranked list. The list gets
+// that height back as padding rather than losing it, measured off the rail
+// itself: the copy wraps differently at different text sizes, and two bars are
+// twice the debt of one.
+function measure(doc) {
+  const holder = doc.getElementById(RAIL);
+  if (!holder) {
+    doc.body.classList.remove('has-bar');
+    doc.body.style.removeProperty('--bar-h');
+    return;
+  }
+  doc.body.style.setProperty('--bar-h', `${Math.ceil(holder.getBoundingClientRect().height)}px`);
+  doc.body.classList.add('has-bar');
 }
 
 // Warms the shared HTTP cache, which is the one thing an installed icon on iOS

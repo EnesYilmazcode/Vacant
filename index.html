@@ -248,15 +248,24 @@
   }
   /* --- the install hint, the refresh notice and the cold-start card --- */
   /* Both bars are built in js/install.js and js/pwa.js rather than sitting in
-     the markup, because neither should exist for a user who never earns it. */
-  .bar {
+     the markup, because neither should exist for a user who never earns it.
+     They share one rail because both can be up at once: showing the install
+     hint prefetches the term, and that fetch is what raises the refresh bar.
+     Each fixed to bottom: 0 they landed on top of each other and the hint's
+     dismiss X stopped answering taps, measured with elementFromPoint. */
+  #bars {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
+    display: flex; flex-direction: column;
+    padding-bottom: var(--safe-b);
+    background: var(--card);
+    box-shadow: 0 -12px 32px rgba(0,0,0,.5);
+  }
+  .bar {
     display: flex; align-items: center; gap: .7rem;
-    padding: .7rem 1rem calc(.7rem + var(--safe-b));
+    padding: .7rem 1rem;
     padding-left: max(1rem, env(safe-area-inset-left, 0px));
     padding-right: max(1rem, env(safe-area-inset-right, 0px));
     background: var(--card); border-top: 1px solid var(--line);
-    box-shadow: 0 -12px 32px rgba(0,0,0,.5);
     animation: bar-up .2s ease-out;
   }
   @keyframes bar-up { from { transform: translateY(100%); } }
@@ -272,7 +281,7 @@
   .bar-go { background: var(--accent); border: 1px solid var(--accent); color: #fff; font-weight: 650; padding: 0 1rem; }
   .bar-x { background: transparent; border: 1px solid var(--line); color: var(--dim); }
   /* A fixed bar covers the last row or two of the list. js/install.js measures
-     the bar it just mounted and the list gets that height back. */
+     the whole rail, so two bars give back two bars worth rather than one. */
   body.has-bar #list, body.has-bar #room { padding-bottom: calc(1rem + var(--bar-h, 0px)); }
 
   /* The cold card sits above everything, including the note pill, because when

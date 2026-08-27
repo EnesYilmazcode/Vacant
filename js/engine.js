@@ -112,7 +112,7 @@ export const walkMinutes = (metres) => Math.ceil((metres * DETOUR) / WALK_MPM);
 // would be the only optimistic rounding in the engine.
 function dstLoss(dst, from, to) {
   if (!dst || !(dst.lost > 0)) return 0;
-  return from < dst.at && dst.at <= to ? dst.lost : 0;
+  return from < dst.at && dst.at < to ? dst.lost : 0;
 }
 
 // THE formula.
@@ -582,6 +582,8 @@ export function query(rooms, opts) {
     rows: [],
     total: 0,
     counts: { rooms: rooms.length, considered: 0, dropped: null },
+    known: 0,
+    unknown: 0,
     refused: null,
     reason: null,
     ms: 0,
@@ -620,15 +622,18 @@ export function query(rooms, opts) {
   });
   base.counts = { rooms: rooms.length, considered: candidates.length, dropped };
 
-  const rung = (need, { mode, types, radius, lookahead = LOOKAHEAD, floor = 0 } = {}) => {
+  const rung = (need, { mode, types, radius, lookahead = LOOKAHEAD, floor = 0, openNow } = {}) => {
     const out = [];
     for (const c of candidates) {
       if (radius !== undefined && c.walk > radius) continue;
       if (types && !types.has(c.room.type)) continue;
       const row = rowFrom(c, { now, need, packup, dst, mode, lookahead });
       if (!row) continue;
+      // Free when you get there is the question the app was opened to answer.
+      // A room you would wait for is a different answer and gets its own rung.
+      if (openNow && row.wait > 0) continue;
       // A room we cannot promise a window for is never a near miss, so the
-      // floor cannot be applied to it. It carries its own honesty in `tier`.
+      // floor cannot be applied to it. It carries its honesty in `hoursKnown`.
       if (row.usable != null && row.usable < floor) continue;
       if (need > 0 && row.hoursKnown && !row.meetsNeed) continue;
       out.push(row);
@@ -639,46 +644,63 @@ export function query(rooms, opts) {
 
   // Rungs in the order the research note settled on: drop the room-type filter
   // before shortening the time, shorten the time before offering a room that is
-  // not free yet, and only then walk further.
+  // not free yet, and only then walk further. The first four all mean "free when
+  // you get there", which is the question the app was opened to answer.
   const shorter = RELAX_LADDER.filter((n) => n < needed);
   const rungs = [
-    ['asked', needed, false, () => rung(needed, { types: PREFERRED, radius: maxWalk })],
-    ['any-type', needed, false, () => rung(needed, { radius: maxWalk })],
+    ['asked', needed, false, () => rung(needed, { types: PREFERRED, radius: maxWalk, openNow: true })],
+    ['any-type', needed, false, () => rung(needed, { radius: maxWalk, openNow: true })],
     ...shorter.map((n) => [
       `shorter:${n}`,
       n,
       true,
-      () => rung(n, { radius: maxWalk, floor: MIN_RELAXED_USABLE }),
+      () => rung(n, { radius: maxWalk, openNow: true, floor: MIN_RELAXED_USABLE }),
     ]),
+    // The README's "the room that frees up in twelve minutes". No horizon on
+    // this one: naming when something opens is the whole point of the rung.
     ['opens-at', needed, true, () => rung(needed, {
       mode: 'soon', radius: maxWalk, floor: MIN_RELAXED_USABLE, lookahead: Infinity,
     })],
-    ['further', needed, true, () => rung(needed, { radius: maxWalk * 2 })],
-    ['anywhere', needed, true, () => rung(needed, {})],
+    ['further', needed, true, () => rung(needed, { radius: maxWalk * 2, openNow: true })],
+    ['anywhere', needed, true, () => rung(needed, { lookahead: Infinity })],
     // Last resort: one room, and the UI is expected to lead with "nothing near
     // you is free" rather than presenting it as an answer.
     ['longest', 0, true, () => rung(0, { floor: MIN_RELAXED_USABLE, lookahead: Infinity }).slice(0, 1)],
   ];
 
+  // The first rung that reaches quorum wins. A rung that finds one or two rooms
+  // is not nothing, so it is held as the fallback, but the ladder keeps going to
+  // see whether relaxing something turns it into a real list. Holding the FIRST
+  // such rung matters: the rungs get worse as they go, so overwriting it would
+  // answer a three-room question with the last resort.
   let answer = null;
   for (const [name, need, relaxed, run] of rungs) {
     const found = run();
     if (!found.length) continue;
-    answer = { name, need, relaxed, found };
-    if (found.length >= LADDER_QUORUM) break;
+    if (!answer) answer = { name, need, relaxed, found };
+    if (found.length >= LADDER_QUORUM) {
+      answer = { name, need, relaxed, found };
+      break;
+    }
   }
 
   if (!answer) {
     return finish({ ...base, reason: 'Nothing on campus is free for long enough today.' }, started);
   }
 
+  const rows = answer.found.slice(0, limit);
   return finish({
     ...base,
     rung: answer.name,
     relaxed: answer.relaxed,
     need: answer.need,
     total: answer.found.length,
-    rows: answer.found.slice(0, limit),
+    rows,
+    // Shown rooms whose building publishes hours, against those it does not.
+    // 565 of 612 buildings publish nothing, so a screen can be all unknowns and
+    // the caller has to be able to see that without walking the rows.
+    known: rows.filter((r) => r.hoursKnown).length,
+    unknown: rows.filter((r) => !r.hoursKnown).length,
   }, started);
 }
 

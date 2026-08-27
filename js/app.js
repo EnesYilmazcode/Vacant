@@ -13,6 +13,7 @@
 // screen while you read a schedule.
 
 import { toGrid } from './campus.js';
+import { roomClaim } from './claim.js';
 import { activeSessions, PACKUP, rank } from './engine.js';
 import {
   FLYOVER_SPAN,
@@ -714,35 +715,45 @@ function timelineRows(room, bname, nowMin) {
 }
 
 // The one line at the top that makes a claim, and the only place on the room
-// screen that talks about now.
-function claimFor({ rows, blocks, open, close }, nowMin, bname) {
-  if (nowMin < open) {
-    const first = rows.find((r) => r.kind === 'free');
-    return {
-      head: `${bname} opens at ${clock(open)}`,
-      sub: first ? `Free from ${clock(first.t)} for ${dur(first.len - PACKUP)}` : '',
-    };
-  }
-  if (nowMin >= close) return { head: `${bname} is closed for the day`, sub: '' };
+// screen that talks about now. js/claim.js decides what is true; this turns the
+// verdict into a sentence.
+//
+// A building nobody publishes hours for gets sentences about CLASSES. The
+// screen used to print "Thompson Library opens at 12:45pm" off the start of the
+// first class, two lines above its own paragraph saying nobody knows when that
+// door unlocks.
+function claimFor(tl, nowMin, bname) {
+  const c = roomClaim({ ...tl, now: nowMin });
+  const noDoors = (word) => `Nobody publishes when ${bname} ${word}`;
+  const after = (len) => dur(len - PACKUP);
 
-  const inClass = blocks.find(([s, e]) => nowMin >= s && nowMin < e);
-  if (inClass) {
-    const next = rows.find((r) => r.kind === 'free' && r.t >= inClass[1]);
-    return {
-      head: `In use till ${clock(inClass[1])}`,
-      sub: next ? `Next free ${clock(next.t)}, for ${dur(next.len - PACKUP)}` : 'Nothing free after it today',
-    };
+  switch (c.kind) {
+    case 'opens':
+      return {
+        head: `${bname} opens at ${clock(c.at)}`,
+        sub: c.next != null ? `Free from ${clock(c.next)} for ${after(c.nextLen)}` : '',
+      };
+    case 'before-first-class':
+      return { head: `First class in here is at ${clock(c.at)}`, sub: noDoors('unlocks') };
+    case 'closed-for-day':
+      return { head: `${bname} is closed for the day`, sub: '' };
+    case 'after-last-class':
+      return { head: `Last class in here ended at ${clock(c.at)}`, sub: noDoors('locks') };
+    case 'in-class':
+      return {
+        head: `In use till ${clock(c.until)}`,
+        sub: c.next != null ? `Next free ${clock(c.next)}, for ${after(c.nextLen)}` : 'Nothing free after it today',
+      };
+    case 'no-class-today':
+      return { head: 'No class in here all day', sub: '' };
+    case 'free':
+      if (c.until == null) return { head: 'No class in here for the rest of today', sub: c.known ? '' : noDoors('locks') };
+      return c.known
+        ? { head: `Free till ${clock(c.until)}`, sub: '' }
+        : { head: `No class in here till ${clock(c.until)}`, sub: noDoors('locks') };
+    default:
+      return { head: 'Nothing free in here right now', sub: '' };
   }
-  const here = rows.find((r) => r.kind === 'free' && r.now);
-  if (!blocks.length) return { head: 'No class in here all day', sub: '' };
-  if (here) {
-    const later = blocks.find(([s]) => s >= nowMin);
-    return {
-      head: later ? `Free till ${clock(later[0])}` : 'No class in here for the rest of today',
-      sub: '',
-    };
-  }
-  return { head: 'Nothing free in here right now', sub: '' };
 }
 
 function roomHtml(id) {

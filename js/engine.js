@@ -552,7 +552,7 @@ function rowFrom(c, { now, need, packup, dst, mode, lookahead }) {
 export function rank(rooms, opts) {
   const {
     now, needed = 0, packup = PACKUP, dst, sessions, date, active: given,
-    lookahead = Infinity, mode,
+    lookahead = Infinity,
   } = opts;
   mark('vacant:answer:start');
   // The index's sessions array and today's ISO date. Without both, every block
@@ -565,7 +565,7 @@ export function rank(rooms, opts) {
   const { candidates } = sweep(rooms, { ...opts, active });
   const out = [];
   for (const c of candidates) {
-    const row = rowFrom(c, { now, need: needed, packup, dst, mode, lookahead });
+    const row = rowFrom(c, { now, need: needed, packup, dst, lookahead });
     if (row) out.push(row);
   }
   out.sort(compareRows);

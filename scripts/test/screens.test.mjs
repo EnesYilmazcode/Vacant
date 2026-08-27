@@ -261,11 +261,13 @@ test('no building name is typed into the app source', () => {
 });
 
 test('the app source assumes nothing about an unpublished door', () => {
+  // The whole word, not just "usually open". A hedge anywhere in this app is
+  // one edit away from being a hedge about a door.
   const dir = join(ROOT, 'js');
   for (const file of readdirSync(dir).filter((f) => f.endsWith('.js'))) {
-    const text = readFileSync(join(dir, file), 'utf8');
-    assert.doesNotMatch(text, /usually open/i, `${file} guesses at hours`);
+    assert.doesNotMatch(readFileSync(join(dir, file), 'utf8'), /usually/i, `${file} hedges`);
   }
+  assert.doesNotMatch(readFileSync(join(ROOT, 'index.html'), 'utf8'), /usually/i, 'index.html hedges');
 });
 
 // ---------------------------------------------------------------- #18 the row

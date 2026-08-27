@@ -145,7 +145,7 @@ export function staleness({ now, current }) {
     return {
       level: 'banner',
       days,
-      text: `Vacant last read the class schedule ${days} days ago. A build this old usually means the weekly job is broken, so treat everything below as a guess.`,
+      text: `Vacant last read the class schedule ${days} days ago. A build this old means the weekly job has stopped running, so treat everything below as a guess.`,
     };
   }
   if (days >= 14) return { level: 'line', days, text: `Schedule read ${days} days ago.` };

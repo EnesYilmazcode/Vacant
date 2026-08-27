@@ -34,7 +34,6 @@ import {
   resolveState,
   roomsPerBuilding,
   spokenClock,
-  spokenDur,
   staleness,
   windowPhrase,
 } from './state.js';

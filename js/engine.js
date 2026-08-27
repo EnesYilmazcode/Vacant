@@ -43,14 +43,30 @@ export function usableMinutes({ now, gapStart, gapEnd, metres, packup = PACKUP }
   return gapEnd - packup - usableStart;
 }
 
-// Busy blocks for one room on one weekday, as [dayIndex, startMinute, endMinute].
+// Which sessions are running on a given date. `sessions` is the array from
+// rooms-<term>.json, each entry [startDate, endDate] as ISO days.
+//
+// A term is not one continuous block. Autumn 2026 carries 12 sessions, and the
+// seven-week ones do not overlap: the second half sessions start 2026-10-19.
+// Measured on the shipped index, 287 busy tuples on a November date belong to a
+// session that has already ENDED, and 3 rooms have their entire busy list drawn
+// from a session that is not running. Without this mask those rooms read fully
+// booked while they are free all day.
+export function activeSessions(sessions, isoDate) {
+  return (sessions ?? []).map(([start, end]) => isoDate >= start && isoDate <= end);
+}
+
+// Busy blocks for one room on one weekday, as
+// [dayIndex, startMinute, endMinute, sessionIndex].
+//
 // Returns the free gaps between them inside [open, close], plus a count of
-// blocks that arrived malformed.
+// blocks that arrived malformed. `active` is the mask from activeSessions; when
+// omitted every session counts, which is only correct if the index has one.
 //
 // Blocks are neither sorted nor disjoint in the source: a room can hold two
 // sections booked over each other, and back-to-back classes must not produce a
 // zero-length gap between them.
-export function freeGaps(busy, day, open, close) {
+export function freeGaps(busy, day, open, close, active) {
   // `day` reaches this from a <select> value or a query string, where it is a
   // string. A strict === against a number then matches nothing, every block is
   // filtered out, and the room reports the whole day free with no error.
@@ -60,6 +76,8 @@ export function freeGaps(busy, day, open, close) {
   const blocks = [];
   for (const b of busy) {
     if (Number(b[0]) !== d) continue;
+    // A block from a session that is not running today is not a booking today.
+    if (active && b[3] !== undefined && active[b[3]] === false) continue;
     let [, start, end] = b;
     if (!Number.isFinite(start) || !Number.isFinite(end)) {
       malformed++;
@@ -110,9 +128,12 @@ export function freeGaps(busy, day, open, close) {
 // longer than the gap the room next door has free right now. So a gap you can
 // walk into wins over a longer one you would have to wait for, and the wait is
 // reported either way.
-export function bestGap(room, { now, day, open, close, metres, needed = 0, packup = PACKUP }) {
+export function bestGap(
+  room,
+  { now, day, open, close, metres, needed = 0, packup = PACKUP, active },
+) {
   const arrival = now + walkMinutes(metres);
-  const gaps = freeGaps(room.busy ?? [], day, open, close);
+  const gaps = freeGaps(room.busy ?? [], day, open, close, active);
   let best = null;
 
   for (const [gapStart, gapEnd] of gaps) {
@@ -166,7 +187,13 @@ export function tierOf(row) {
 // `undefined` is an absence, and the room is shown, tiered below every
 // published-hours room, and never given an assumed window.
 export function rank(rooms, opts) {
-  const { origin, now, day, needed = 0, buildings, hoursFor, packup = PACKUP } = opts;
+  const {
+    origin, now, day, needed = 0, buildings, hoursFor, packup = PACKUP,
+    // The index's sessions array and today's ISO date. Without both, every
+    // block counts regardless of whether its session is running.
+    sessions, date,
+  } = opts;
+  const active = sessions && date ? activeSessions(sessions, date) : undefined;
   const out = [];
 
   for (const room of rooms) {
@@ -193,14 +220,17 @@ export function rank(rooms, opts) {
     // an assumed window wearing a different hat.
     const [open, close] = hoursKnown ? hours : [0, 1440];
 
-    const gap = bestGap(room, { now, day, open, close, metres, needed, packup });
+    const gap = bestGap(room, { now, day, open, close, metres, needed, packup, active });
     if (!gap) continue;
 
     out.push({
       id: room.id,
       building: room.b,
       name: building.name,
-      seats: room.cap ?? null,
+      // cap 0 is the index's sentinel for UNKNOWN, not a room with no seats,
+      // and 44 of 871 rooms carry it. `?? null` passes 0 straight through, so
+      // those rooms would render a confident "0 seats".
+      seats: room.cap === 0 || room.cap == null ? null : room.cap,
       metres: Math.round(metres),
       walk: walkMinutes(metres),
       // Minutes you actually get, once you have walked there and left the

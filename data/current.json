@@ -1,10 +1,10 @@
 {
  "term": "1268",
  "termName": "Autumn 2026",
- "generated": "2026-08-27T03:17:29Z",
+ "generated": "2026-08-27T03:37:03Z",
  "rooms": "data/rooms-1268.json",
  "instruction": [
-  "2026-08-03",
+  "2026-08-10",
   "2026-12-11"
  ]
 }

@@ -6,6 +6,7 @@ import {
   DETOUR,
   PACKUP,
   WALK_MPM,
+  activeSessions,
   bestGap,
   distanceMetres,
   freeGaps,
@@ -373,4 +374,65 @@ test('the tier order encodes both decisions the project already made', () => {
   // Published hours beat unknown hours even when the unknown room is free now
   // and the published one is not.
   assert.ok(t(true, 60, true) < t(false, 0, null));
+});
+
+// --- regressions found by the PR #38 review ---
+
+test('a block from a session that is not running today is not busy today', () => {
+  // Measured on the shipped index: 287 busy tuples on a November date belong to
+  // a session that has already ended, and 3 rooms have their ENTIRE busy list
+  // drawn from a session that is not running, so they read fully booked while
+  // free all day.
+  const sessions = [['2026-08-25', '2026-10-12'], ['2026-10-19', '2026-12-09']];
+  const busy = [[1, 480, 540, 0], [1, 600, 660, 1]];
+
+  const sept = activeSessions(sessions, '2026-09-01');
+  assert.deepEqual(sept, [true, false]);
+  assert.deepEqual(freeGaps(busy, 1, 420, 720, sept), [[420, 480], [540, 720]]);
+
+  const nov = activeSessions(sessions, '2026-11-15');
+  assert.deepEqual(nov, [false, true]);
+  assert.deepEqual(freeGaps(busy, 1, 420, 720, nov), [[420, 600], [660, 720]]);
+});
+
+test('with no mask every session counts, which is the old behaviour', () => {
+  const busy = [[1, 480, 540, 0], [1, 600, 660, 1]];
+  assert.deepEqual(freeGaps(busy, 1, 420, 720), [[420, 480], [540, 600], [660, 720]]);
+});
+
+test('activeSessions is inclusive at both ends', () => {
+  const s = [['2026-08-25', '2026-10-12']];
+  assert.deepEqual(activeSessions(s, '2026-08-25'), [true], 'first day counts');
+  assert.deepEqual(activeSessions(s, '2026-10-12'), [true], 'last day counts');
+  assert.deepEqual(activeSessions(s, '2026-08-24'), [false]);
+  assert.deepEqual(activeSessions(s, '2026-10-13'), [false]);
+  assert.deepEqual(activeSessions(undefined, '2026-09-01'), []);
+});
+
+test('rank applies the session mask when given sessions and a date', () => {
+  const sessions = [['2026-08-25', '2026-10-12'], ['2026-10-19', '2026-12-09']];
+  const rooms = [{ id: 'DL0357', b: '279', busy: [[1, 0, 1440, 1]] }];
+  const base = { origin: ORIGIN, now: at(9), day: 1, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)] };
+
+  // In September, session 1 has not started, so the room is free all day.
+  const sept = rank(rooms, { ...base, sessions, date: '2026-09-01' });
+  assert.equal(sept.length, 1);
+  assert.ok(sept[0].usable > 400, 'free, because the block belongs to a later session');
+
+  // In November it is running, so the room is booked solid.
+  const nov = rank(rooms, { ...base, sessions, date: '2026-11-15' });
+  assert.deepEqual(nov, [], 'no gap at all');
+});
+
+test('cap 0 means unknown and must not render as a confident zero', () => {
+  // 44 of 871 rooms carry it, and `?? null` passes 0 straight through.
+  const [zero] = rank([{ id: 'X', b: '279', cap: 0, busy: [] }], {
+    origin: ORIGIN, now: at(9), day: 1, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  });
+  assert.equal(zero.seats, null, '0 is the index sentinel for unknown, not a seat count');
+
+  const [real] = rank([{ id: 'Y', b: '279', cap: 46, busy: [] }], {
+    origin: ORIGIN, now: at(9), day: 1, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  });
+  assert.equal(real.seats, 46, 'a real capacity still comes through');
 });

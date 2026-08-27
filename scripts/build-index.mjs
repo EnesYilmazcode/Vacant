@@ -49,8 +49,9 @@ async function writeAtomic(path, text) {
 async function main() {
   const term = process.argv[2];
   const dryRun = process.argv.includes('--dry-run');
+  const noPointer = process.argv.includes('--no-pointer');
   if (!/^\d{4}$/.test(term ?? '')) {
-    console.error('usage: node scripts/build-index.mjs <term> [--dry-run]');
+    console.error('usage: node scripts/build-index.mjs <term> [--dry-run] [--no-pointer]');
     process.exit(2);
   }
 
@@ -65,21 +66,36 @@ async function main() {
   const buildings = JSON.parse(readFileSync(buildingsPath, 'utf8')).buildings;
   const isKnownBuilding = (code) => Object.prototype.hasOwnProperty.call(buildings, code);
 
-  const sessions = buildSessions(harvest.meetings);
+  // Sessions are built from the rows that SURVIVE the funnel, not from all
+  // 27,074 harvested meetings. Building them from everything emitted 12
+  // sessions of which only 10 were referenced by any busy tuple: two came from
+  // online and room-less sections and carried zero blocks. Since `instruction`
+  // is min/max over sessions, current.json then claimed the term starts
+  // 2026-08-03 when the earliest real classroom booking is 2026-08-10, a week
+  // of "in term" with no room in the index holding a single block.
+  const counter = newCounter();
+  const kept = harvest.meetings.filter((r) => isRealRoom(r.m, r, counter, { isKnownBuilding }));
+  const sessions = buildSessions(kept);
   const sessionIndex = new Map(sessions.map(([s, e], i) => [`${s}|${e}`, i]));
 
-  const counter = newCounter();
   const rooms = {};
   let intervalsIn = 0;
 
-  for (const record of harvest.meetings) {
-    const m = record.m;
-    if (!isRealRoom(m, record, counter, { isKnownBuilding })) continue;
+  let noSession = 0;
 
+  for (const record of kept) {
+    const m = record.m;
     const start = toMinutes(m.startTime);
     const end = toMinutes(m.endTime);
     const si = sessionIndex.get(`${m.startDate ?? record.startDate}|${m.endDate ?? record.endDate}`);
-    if (si === undefined) continue;
+    // The one silent drop in an otherwise fully instrumented pipeline. A row
+    // that passed the funnel and then vanishes has to move a number, or a
+    // partial upstream drift empties whole rooms while the funnel still prints
+    // a healthy usable count.
+    if (si === undefined) {
+      noSession++;
+      continue;
+    }
 
     const id = m.facilityId;
     if (!rooms[id]) {
@@ -124,6 +140,9 @@ async function main() {
       `${down} propagated to facilityGroup halves, ${up} back to parents`,
   );
   console.log(`${sessions.length} sessions from observed date pairs`);
+  if (noSession) console.warn(`  warn  ${noSession} meeting(s) passed the funnel but matched no session`);
+  // `own` is scaffolding for idempotent propagation and must not ship.
+  for (const room of Object.values(rooms)) delete room.own;
 
   if (roomCount < MIN_ROOMS) die(`only ${roomCount} rooms, under the ${MIN_ROOMS} floor.`);
 

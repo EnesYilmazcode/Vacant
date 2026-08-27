@@ -505,3 +505,61 @@ you whether the data actually moved. A guard fails the build if it appears.
 `searchableTermsV2`, whose dates are eleven-month search visibility windows:
 Autumn 2026 "starts" 2026-02-09 by that field. Measured: 2026-08-03 to
 2026-12-11 across 12 sessions.
+
+---
+
+## 2026-08-26  Session filtering, and six defects the room-index review caught
+
+**The biggest one was in already-merged code.** `freeGaps` filtered busy blocks
+by weekday and never looked at `sessionIndex`, so a block belonging to a session
+that has not started, or has already ended, still read as occupied.
+
+A term is not one continuous block. Autumn 2026 has 10 sessions and the
+seven-week ones do not overlap: the second-half sessions start 2026-10-19.
+Measured on the shipped index:
+
+```
+on 2026-08-25   324 of 12,168 busy tuples belong to a session not running
+on 2026-11-15   287 of 12,168, and 3 rooms have their ENTIRE busy list
+                drawn from a session that is not running
+```
+
+Those three rooms read fully booked while they are free all day. The engine now
+takes the index's `sessions` array plus today's date, builds an active mask, and
+skips blocks whose session is not running. Without both it falls back to
+counting every block, which is only correct for a single-session index.
+
+**`propagateGroups` was not idempotent with two halves, and the test I wrote
+certified a property the code did not have.** Snapshotting `busy` at the top of
+the call is not enough: on a second call the parent has already absorbed both
+halves, so each half's blocks flow down into the other and `MALC0100S` ends up
+busy purely because `MALC0100N` is, which the module comment says must never
+happen. The old idempotence test used a **single** half, exactly the shape that
+hides it. Propagation now reads from an `own` snapshot taken before any
+mutation, which is idempotent by construction, and `own` is stripped before the
+index is written.
+
+**Sessions were built from rows the funnel throws away.** Running
+`buildSessions` over all 27,074 harvested meetings emitted 12 sessions of which
+only 10 were referenced by any busy tuple; the other two came from online and
+room-less sections. Since `instruction` is min/max over sessions,
+`current.json` claimed the term started **2026-08-03** when the earliest real
+classroom booking is **2026-08-10**: a week of "in term" during which no room in
+the index holds a single block. Sessions are now built from the rows that
+survive `isRealRoom`.
+
+**Rebuilding an archived term silently repointed the live app at it.** The whole
+reason this script was split from `fetch-rooms.mjs` is that re-inverting is
+cheap, which makes it an easy accident: `build-index.mjs 1262` would have
+overwritten `current.json` with Spring 2026. It now refuses to move the pointer
+when today falls outside the term's own instruction window, with `--pointer` to
+override and `--no-pointer` to skip it entirely.
+
+**`cap: 0` is the index's sentinel for unknown, and the engine shipped it as a
+seat count.** `room.cap ?? null` passes `0` straight through, so 44 of 871 rooms
+would have rendered a confident "0 seats". Checked explicitly now.
+
+**One silent drop got a counter.** A meeting that passed the funnel and then
+matched no session was dropped with nothing recorded, in an otherwise fully
+instrumented pipeline. Zero occurrences today, but a partial upstream drift
+would empty whole rooms while the funnel still printed a healthy usable count.

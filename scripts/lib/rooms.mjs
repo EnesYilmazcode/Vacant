@@ -122,26 +122,33 @@ export function halvesOf(parentId, allIds) {
 // MALC0100N is booked, MALC0100 is not available as a whole room either, since
 // half of it has a class in it. Sending someone to the whole room in that state
 // is the same wrong answer in the other direction.
+// Idempotent by construction: every propagation reads from `own`, the blocks a
+// room got from its own meetings, and writes to `busy`. Snapshotting `busy` at
+// the top of the call was not enough. With TWO halves, a second call reads a
+// parent that has already absorbed both of them and sends each half's blocks
+// down into the other, so MALC0100S ends up busy purely because MALC0100N is,
+// which is the one thing the comment below says must never happen. The old
+// idempotence test used a single half, which is exactly the shape that hides it.
 export function propagateGroups(rooms) {
   let down = 0;
   let up = 0;
+
+  for (const room of Object.values(rooms)) {
+    if (!room.own) room.own = room.busy.map((iv) => [...iv]);
+    room.busy = room.own.map((iv) => [...iv]);
+  }
+
   const parents = Object.keys(rooms).filter((id) => rooms[id].group === true);
 
   for (const parentId of parents) {
     const parent = rooms[parentId];
-    const halves = halvesOf(parentId, rooms);
-    // Snapshot the parent's own blocks before any child pushes into it, so an
-    // upward-propagated block is not immediately sent back down.
-    const parentOwn = parent.busy.map((iv) => [...iv]);
-
-    for (const childId of halves) {
+    for (const childId of halvesOf(parentId, rooms)) {
       const child = rooms[childId];
-      const childOwn = child.busy.map((iv) => [...iv]);
-      for (const iv of parentOwn) {
+      for (const iv of parent.own) {
         child.busy.push([...iv]);
         down++;
       }
-      for (const iv of childOwn) {
+      for (const iv of child.own) {
         parent.busy.push([...iv]);
         up++;
       }

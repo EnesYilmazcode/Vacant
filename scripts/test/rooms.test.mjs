@@ -252,3 +252,69 @@ test('every room in the committed index resolves against buildings.json', () => 
     assert.ok(buildings[room.b], `${id} references building ${room.b}, which is not in buildings.json`);
   }
 });
+
+// --- regressions found by the PR #38 review ---
+
+test('propagation is idempotent with TWO halves, which is where it broke', () => {
+  // The old idempotence test used ONE half, exactly the shape that hides this.
+  // With two, a second call read a parent that had already absorbed both and
+  // sent each half's blocks down into the other, so MALC0100S ended up busy
+  // purely because MALC0100N is.
+  const build = () => ({
+    MALC0100: { group: true, busy: [] },
+    MALC0100N: { group: false, busy: [iv(1, 480, 540)] },
+    MALC0100S: { group: false, busy: [] },
+  });
+  const once = build();
+  propagateGroups(once);
+  assert.deepEqual(once.MALC0100S.busy, [], 'one call: the twin is not made busy');
+
+  const twice = build();
+  propagateGroups(twice);
+  propagateGroups(twice);
+  assert.deepEqual(twice.MALC0100S.busy, [], 'two calls: STILL not made busy');
+  assert.deepEqual(twice.MALC0100N.busy, once.MALC0100N.busy);
+  assert.deepEqual(twice.MALC0100.busy, once.MALC0100.busy);
+});
+
+test('a third call changes nothing either', () => {
+  const rooms = {
+    MALC0100: { group: true, busy: [iv(1, 600, 660)] },
+    MALC0100N: { group: false, busy: [iv(1, 480, 540)] },
+    MALC0100S: { group: false, busy: [iv(2, 480, 540)] },
+  };
+  propagateGroups(rooms);
+  const after1 = JSON.stringify(rooms);
+  propagateGroups(rooms);
+  propagateGroups(rooms);
+  assert.equal(JSON.stringify(rooms), after1);
+});
+
+test('every session in the committed index is referenced by a busy tuple', () => {
+  // Building sessions from all harvested rows rather than the ones that survive
+  // the funnel emitted two phantom sessions from online and room-less sections,
+  // and since instruction is min/max over sessions, current.json claimed the
+  // term started a week before the first real classroom booking.
+  const d = readIndex();
+  if (!d) return;
+  const used = new Set();
+  for (const room of Object.values(d.rooms)) for (const b of room.busy) used.add(b[3]);
+  for (let i = 0; i < d.sessions.length; i++) {
+    assert.ok(used.has(i), `session ${i} ${d.sessions[i].join(' to ')} has no busy tuple`);
+  }
+});
+
+test('the index carries no own scaffolding', () => {
+  const d = readIndex();
+  if (!d) return;
+  assert.equal(JSON.stringify(d).match(/"own"/), null);
+});
+
+test('current.json starts no earlier than the first real booking', () => {
+  const d = readIndex();
+  const path = new URL('../../data/current.json', import.meta.url);
+  if (!d || !existsSync(path)) return;
+  const current = JSON.parse(readFileSync(path, 'utf8'));
+  const earliest = d.sessions.map(([s]) => s).sort()[0];
+  assert.equal(current.instruction[0], earliest);
+});

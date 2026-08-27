@@ -27,8 +27,12 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Ten days, not seven. rooms.yml runs weekly and GitHub starts scheduled jobs 31
 // to 62 minutes late on this account (n=10, median 48, measured in
 // docs/research/ops-freshness.md), so one skipped build plus an hour of slop
-// must not cry wolf. Two missed builds must.
+// must not cry wolf. Ten is one missed Sunday plus three days, so a single
+// silent week is still caught four days before the next build is due.
 export const MAX_DAYS = 10;
+
+// rooms.yml's cron. Only used to count how many builds an age has swallowed.
+const WEEKLY_DAYS = 7;
 
 // A stamp from the future is a broken clock or a bad build, not freshness. An
 // hour of tolerance covers runner clock skew and nothing else.
@@ -65,14 +69,16 @@ export function freshness(current, now = new Date(), maxDays = MAX_DAYS) {
     };
   }
   if (days > maxDays) {
+    // Counted, not assumed. At the 10 day limit exactly one Sunday has gone by
+    // without a write, and saying two would be a wrong number in a workflow log
+    // that a human reads once and acts on.
+    const missed = Math.floor(days / WEEKLY_DAYS);
     return {
       ok: false,
       days,
       reason:
         `current.json was generated ${rounded} days ago, past the ${maxDays} day limit.` +
-        // Only true of the default limit. A hand-picked --max-days says nothing
-        // about how many builds were missed.
-        (maxDays === MAX_DAYS ? ' The weekly build has missed at least two runs, so it is not running.' : ''),
+        (missed >= 1 ? ` The weekly build has missed ${missed} run${missed === 1 ? '' : 's'}.` : ''),
     };
   }
   return { ok: true, days, reason: `current.json was generated ${rounded} days ago.` };

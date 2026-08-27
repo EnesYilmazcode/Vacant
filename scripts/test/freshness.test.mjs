@@ -11,8 +11,25 @@ const stamped = (n) => ({ term: '1268', termName: 'Autumn 2026', generated: days
 
 test('the limit is ten days, not seven', () => {
   // Seven would fire on one skipped build plus GitHub's measured 31 to 62
-  // minutes of cron slop. Ten needs two missed builds.
+  // minutes of cron slop. Ten is that missed Sunday plus three days.
   assert.equal(MAX_DAYS, 10);
+});
+
+test('the message counts missed builds instead of assuming two', () => {
+  // The weekly cron makes this arithmetic, and it used to say "at least two
+  // runs" at every age past the limit. At 10.5 days only one Sunday has passed.
+  assert.match(freshness(stamped(10.5), NOW).reason, /has missed 1 run\./);
+  assert.match(freshness(stamped(13.9), NOW).reason, /has missed 1 run\./);
+  assert.match(freshness(stamped(14.1), NOW).reason, /has missed 2 runs\./);
+  assert.match(freshness(stamped(30), NOW).reason, /has missed 4 runs\./);
+});
+
+test('a short hand-picked limit does not claim a missed build', () => {
+  // node scripts/check-freshness.mjs --max-days 1 on a two day old index is
+  // past its limit but has not missed a Sunday, and must not say it has.
+  const r = freshness(stamped(2), NOW, 1);
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /past the 1 day limit\.$/);
 });
 
 test('exactly ten days old passes', () => {

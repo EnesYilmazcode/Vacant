@@ -85,7 +85,9 @@ Vacant: the Autumn 2026 index on the live site is 0.8 days old     exit 1   (thr
 ```
 
 Ten days matches `check-freshness.mjs` on purpose. One skipped build plus an hour
-of cron slop must not fire; two missed builds must.
+of cron slop must not fire. Ten days is that missed Sunday plus three, so a week
+of silence is caught four days before the next build is due. The alert counts the
+missed runs from the age rather than assuming a number.
 
 ## Two settings that must not change
 

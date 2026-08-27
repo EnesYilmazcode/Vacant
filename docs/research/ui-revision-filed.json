@@ -1,0 +1,45 @@
+{
+  "new": [
+    {
+      "number": 50,
+      "title": "Key campus.json building polygons by buildingCode so the highlight lights the right building",
+      "url": "https://github.com/EnesYilmazcode/Vacant/issues/50"
+    },
+    {
+      "number": 51,
+      "title": "Tap a result to highlight its building and draw the line, and move the camera to show both ends",
+      "url": "https://github.com/EnesYilmazcode/Vacant/issues/51"
+    },
+    {
+      "number": 52,
+      "title": "Build the room screen: a second view inside the sheet, with today's timeline",
+      "url": "https://github.com/EnesYilmazcode/Vacant/issues/52"
+    },
+    {
+      "number": 53,
+      "title": "Make a missing campus.json cost the map and nothing else, and take it off the critical path",
+      "url": "https://github.com/EnesYilmazcode/Vacant/issues/53"
+    },
+    {
+      "number": 54,
+      "title": "Split buildings.json so 21 KB of unread fields is off every launch",
+      "url": "https://github.com/EnesYilmazcode/Vacant/issues/54"
+    },
+    {
+      "number": 55,
+      "title": "Store course.subject, not section.subject, so a course label fits a row",
+      "url": "https://github.com/EnesYilmazcode/Vacant/issues/55"
+    }
+  ],
+  "amended": [
+    18,
+    9,
+    11,
+    19,
+    17,
+    22,
+    29,
+    20,
+    26
+  ]
+}

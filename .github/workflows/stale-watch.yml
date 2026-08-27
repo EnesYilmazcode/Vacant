@@ -6,10 +6,11 @@ name: Freshness watch
 # YAML edit kills the trigger without a word, or the cron line gets deleted.
 #
 # Be honest about the limit of this file. It is itself a scheduled workflow, so
-# the 60-day disable would silence the build and its watchdog together. Two
-# things cover that. rooms.yml commits current.json every week, which keeps the
-# repository from ever going quiet, and the out-of-band check written down in
-# .github/OPS.md runs outside GitHub entirely.
+# the 60-day disable would silence the build and its watchdog together. Only one
+# of the two halves is covered: rooms.yml commits current.json every week, which
+# keeps the repository from ever going quiet. The other half needs a check that
+# runs outside GitHub against the deployed site, and the one written down in
+# .github/OPS.md has no host. Nothing here would see a Pages deploy that stopped.
 #
 # Daily and cheap: one repo read and one request to Ohio State.
 on:

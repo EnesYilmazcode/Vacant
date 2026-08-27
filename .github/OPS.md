@@ -4,8 +4,8 @@ A stale course index looks stale. A stale room grid looks like good news, becaus
 81% of campus reads free even on a healthy harvest, so nobody finds out until
 someone walks into an occupied lecture hall.
 
-That is the whole reason this directory exists. Four workflows, one alerter, and
-one monitor that lives outside GitHub entirely.
+That is the whole reason this directory exists. Four workflows and one alerter,
+plus one gap that none of them can close and nobody has closed yet.
 
 ## What runs
 
@@ -52,20 +52,28 @@ to correct:
 The `ops` label already exists. `gh issue create` fails on an unknown label, so
 if you ever recreate the repository, create it before the first failure.
 
-## The monitor that is not on GitHub
+## The monitor that is not on GitHub, and is not running
 
 Every workflow above is a scheduled workflow, and GitHub disables scheduled
 workflows in a repository with 60 days of no activity. That would silence the
-build and its watchdog together. Two things cover it.
+build and its watchdog together.
 
-The cheap half: `rooms.yml` commits `current.json` every week, so the repository
-is never quiet for 60 days. That is one of the reasons `generated` lives in
-`current.json` and not inside `rooms-<term>.json`.
+The cheap half is covered. `rooms.yml` commits `current.json` every week, so the
+repository is never quiet for 60 days. That is one of the reasons `generated`
+lives in `current.json` and not inside `rooms-<term>.json`.
 
-The half that actually survives: **Enes's existing two-hourly Claude cloud agent
-runs this check.** It is not a workflow and it does not read the repository. It
-reads the deployed site, which is the only thing that catches a Pages deployment
-that stopped publishing while git looks perfectly healthy.
+**The other half is not covered, and nothing in this repository can cover it.**
+Every watch here reads the repository. A Pages deployment that stopped publishing
+leaves the repository perfect and the site a week behind, and no workflow in this
+directory would see it. Catching that needs a check that runs somewhere else, on
+a schedule this repository does not own, against the deployed URL.
+
+Nobody has set one up. The obvious host is the two-hourly Claude cloud agent Enes
+already runs for the OSS issue window: it is already scheduled, already outside
+GitHub, and this is one more line in its prompt. Until someone adds it there, a
+site serving last week's data with every signal green goes unnoticed.
+
+The check itself is written and it works. It is a snippet, not a service:
 
 ```bash
 node -e 'const r = await fetch("https://enesyilmazcode.github.io/Vacant/data/current.json");
@@ -76,7 +84,7 @@ console.log(`Vacant: the ${c.termName} index on the live site is ${days.toFixed(
 process.exit(days > 10 ? 1 : 0);'
 ```
 
-Run 2026-08-27, all three branches:
+Run by hand 2026-08-27, all three branches:
 
 ```
 Vacant: the Autumn 2026 index on the live site is 0.8 days old     exit 0
@@ -103,8 +111,8 @@ produce a `pages build and deployment` run with event `dynamic`. So branch-sourc
 Pages picks up the weekly data commit and an Actions-source Pages setup would
 not. That failure serves last week's data with the workflow green, the commit
 landed, and nothing red anywhere, and neither the alerter nor the freshness watch
-would see it, because both read the repository rather than the site. The
-out-of-band check above is what catches it.
+would see it, because both read the repository rather than the site. Only the
+out-of-band check above catches that, and it is not hosted anywhere yet.
 
 **`main` stays unprotected.** Verified 2026-08-27:
 
@@ -164,6 +172,9 @@ Honest list, because a workflow that parses is not a workflow that runs.
   GitHub API, and it has never filed a real issue.
 - The 60-day inactivity disable is untested. Nothing here has ever been quiet for
   60 days.
+- The out-of-band check above is not scheduled anywhere. It has only ever been
+  run by hand. Until it is hosted, a Pages deployment that stops publishing is
+  invisible to everything in this directory.
 - `FORCE_WRITE` and `ALLOW_TERM_DROP` are passed to the build, but no script
   reads them yet. That is issue #10. Until it lands, `rooms.yml` refuses a
   dispatch that sets `force` or `dropTerms` rather than running as if the flag

@@ -15,8 +15,9 @@
 //
 // Read the limit of this honestly. stale-watch.yml is itself a scheduled
 // workflow, so the 60-day disable silences the build and this watch together.
-// The only monitor that survives that is the out-of-band one written down in
-// .github/OPS.md, which fetches the deployed current.json from outside GitHub.
+// It also reads the committed file, not the deployed one, so a Pages deployment
+// that stopped publishing looks fine from here. The check that would survive
+// both is written down in .github/OPS.md and is not running anywhere yet.
 
 import { appendFileSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

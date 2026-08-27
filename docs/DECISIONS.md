@@ -114,3 +114,81 @@ be refetched is worse than no archive.
 **Still open.** `data/raw/` sits inside the published Pages site. It contains no
 PII, but it is 4.7 MB of files no visitor needs. Either exclude it from the
 publish or say so in `docs/DATA.md`, and record the answer here.
+
+---
+
+## 2026-08-26  buildings.json, and why the distance cap moved from 10 km to 20
+
+**Decided.** `data/buildings.json` is built by one request to OSU's own ArcGIS
+server, `Data/FacilitiesStreets_RO/MapServer/11`. 612 buildings, 159 KB. The
+join is exact string equality between the class API's `meetings[].buildingCode`
+and the GIS layer's `buildingNumber`. No normalising, no padding, no fuzzy name
+match.
+
+Verified against every meeting in the two committed term snapshots rather than
+against a sample: **97 distinct building codes host classes, and all 91 that sit
+in the Columbus area resolve.** The 6 that do not are the five Wooster buildings
+and Stone Laboratory, which the cap removes on purpose.
+
+Every number in the research's Part II reproduces exactly against a live pull:
+1347 features, 1334 with a building number, 1331 distinct, `246` duplicated
+twice and `1243` three times with identical attributes, 14 features with no
+coordinate of which only `1072` has a building number.
+
+**The cap moved to 20 km, and the reasoning in the research is wrong.**
+
+The research recommends 10 km on the grounds that it "drops exactly the three
+Wooster buildings and nothing else" and is therefore "a stable choice rather
+than a tuned one". That holds only for the 88 buildings its sample saw hosting
+classes. Across the full layer there is no gap at 10 km at all:
+
+```
+   9.94 km  1019  Knowlton Executive Terminal      <- furthest SCHEDULED building
+   9.95 km   236  Hangar 1-3
+   9.99 km  1049  Aerospace Research Center Storage 3
+  10.01 km  1047  Aerospace Research Center Storage 1   <- cap fell here
+  10.03 km   199  Aerospace Research Center
+  10.17 km   982  Sheep Barn Annex
+```
+
+A 10 km cap splits two storage buildings in the same complex, and it clears the
+furthest building that actually hosts classes by **60 metres**. One class
+scheduled at the airport or on the agricultural campus and a real building
+disappears from the app with no error anywhere.
+
+Among buildings that host classes the gap is real, and it is enormous:
+
+```
+   furthest scheduled Columbus-area building     9.94 km   Knowlton Exec Terminal
+   nearest scheduled satellite building        126.40 km   Wooster Science Building
+```
+
+20 km sits inside that 116 km gap with about 10 km of headroom on both sides.
+It is still a chosen bound rather than a natural one, and the file says so.
+
+**Section `campus` does not tell you where a room is.** Wooster Science
+Building, Selby Hall, Gourley Hall and Stone Laboratory all carry sections whose
+`campus` is `Columbus`, while the buildings sit 126 km and 185 km away. A
+`campus=col` harvest pulls them in. The coordinate join is the only thing that
+catches this, which makes the cap load-bearing rather than cosmetic, and it is
+direct evidence for the funnel in
+[#7](https://github.com/EnesYilmazcode/Vacant/issues/7).
+
+**`Latitude` and `Longitude` arrive as strings.** `"39.995985"`, not
+`39.995985`. Undocumented in the research. A naive arithmetic read yields `NaN`,
+every distance becomes `NaN`, every comparison is false and the output is an
+empty or silently wrong map rather than an error. Parsed through a checked
+`Number()` and rejected if not finite.
+
+**Duplicate keys are deduped explicitly, not incidentally.** Both duplicate sets
+carry identical coordinates, so `index[code] = row` in a loop is harmless, and
+that is precisely why it is dangerous: it works silently until a
+`features.length === index.size` guard fails for a reason nobody can reproduce.
+The build also fails loudly if two rows sharing a code ever disagree about
+position.
+
+**Not used as filters.** `Campus` and `InstType` are administrative, not
+geographic. `InstType = "Academic"` includes Refuse Vehicle Storage. Nothing in
+the GIS layer identifies a classroom, and the only filter that works is the
+harvest itself, which lands in
+[#9](https://github.com/EnesYilmazcode/Vacant/issues/9).

@@ -1,0 +1,35 @@
+name: Tests
+
+# There is no install step because there are no dependencies, and there is not
+# going to be one.
+#
+# Worth knowing when a green Tests badge sits next to a data commit: a push made
+# with GITHUB_TOKEN does not fire `on: push`. Measured on the sibling Finder
+# repo, three github-actions[bot] pushes produced zero Tests runs. The weekly
+# data commit changes no code so nothing is lost, but "the tests ran on that
+# commit" is never true of a bot push.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # VACANT_LIVE is deliberately not set. The live rot detector skips itself
+      # without it, so nothing here touches Ohio State's servers and the API
+      # having a bad morning cannot turn a pull request red.
+      - name: node --test
+        run: node --test

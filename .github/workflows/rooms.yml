@@ -1,0 +1,191 @@
+name: Room index
+
+# Sunday, not Monday. The grid has to be right for the teaching week that starts
+# the next morning, and scheduled runs on this account land 31 to 62 minutes
+# late (n=10, median 48, measured in docs/research/ops-freshness.md), so a
+# Monday slot can land after the first class of the week. 07:25 UTC is about
+# 3:25am Eastern and lands near 4:10am with the measured delay, which is a place
+# where an hour of slop costs nothing.
+#
+# Do not tune the minute. Minutes 10, 20, 30 and 40 all drew the same 31 to 62
+# minutes of delay, so it is not a queue you can dodge.
+#
+# main is deliberately unprotected, and that is a mechanical requirement rather
+# than a preference. GITHUB_TOKEN is not exempt from a required-PR or
+# required-status-check rule, so adding branch protection without putting
+# github-actions[bot] on the bypass list turns this job red on the push step
+# forever while the harvest itself was perfect. Verified 2026-08-27:
+# GET /repos/EnesYilmazcode/Vacant/branches/main/protection returns 404.
+#
+# Pages must stay branch-source main at / (verified 2026-08-27: build_type
+# "legacy", source branch main path /). A bot push does not fire `on: push`
+# workflows, but it does produce a "pages build and deployment" run with event
+# "dynamic", so branch-source Pages picks the commit up and an Actions-source
+# Pages setup would not. That failure serves last week's data with every signal
+# green, and neither the alerter nor the freshness watch would see it, because
+# both read the repo rather than the deployed site.
+on:
+  schedule:
+    - cron: '25 7 * * 0'
+  workflow_dispatch:
+    inputs:
+      term:
+        description: 'Term code to rebuild, e.g. 1268. Empty means whichever term data/current.json names. Only a term whose data/buildings-<term>.json is already committed can be built here, and the next step refuses the rest.'
+        type: string
+        default: ''
+      force:
+        description: 'Write even when a term comes back far short of what is committed. A forced write over a collapsed harvest is UNRECOVERABLE: a term that has left searchableTermsV2 returns zero sections forever, so the committed file is the only copy of that grid anywhere.'
+        type: boolean
+        default: false
+      dropTerms:
+        description: 'Accept a term that has left the searchable list.'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  issues: write
+
+# A scheduled run and a hand dispatch can overlap. Cancelling the in-flight one
+# is how you get a half-written file, so the second one waits.
+concurrency:
+  group: rooms
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history, because the last step rebases before pushing and a
+          # depth-1 clone makes that a coin flip. Ten years of weekly commits
+          # were measured at 0.36 MB of history, so this costs nothing.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Pick the term
+        id: pick
+        env:
+          REQUESTED: ${{ inputs.term }}
+        run: |
+          set -euo pipefail
+          term="${REQUESTED:-}"
+          if [ -z "$term" ]; then
+            term=$(node -e 'const fs = await import("node:fs"); process.stdout.write(String(JSON.parse(fs.readFileSync("data/current.json", "utf8")).term))')
+          fi
+          # One term a week, on purpose. A whole term is about 680 requests
+          # against a university API and only the term in session can change an
+          # answer. Rolling to a new term is a human decision, prompted by
+          # stale-watch.yml noticing the searchable list moved.
+          if ! printf '%s' "$term" | grep -Eq '^[0-9]{4}$'; then
+            echo "Refusing to harvest: '$term' is not a four digit term code."
+            exit 1
+          fi
+          echo "term=$term" >> "$GITHUB_OUTPUT"
+          echo "Rebuilding term $term."
+
+      # build-index.mjs names data/buildings-<term>.json in current.json for
+      # whatever term it is given, and nothing in this job produces that file:
+      # fetch-buildings.mjs reads the term back out of current.json and needs
+      # the room index to already exist, so a new term is two local runs in
+      # order. Committing a current.json that names a missing file does not
+      # degrade the site, it stops it. The app loads everything current.json
+      # names in one Promise.all, so the 404 rejects the boot and the three
+      # duration buttons never come alive.
+      - name: The term's buildings subset has to be committed
+        run: node scripts/check-term-assets.mjs "${{ steps.pick.outputs.term }}"
+
+      - name: A force flag has to reach something
+        if: ${{ inputs.force || inputs.dropTerms }}
+        env:
+          FORCE: ${{ inputs.force }}
+          DROP: ${{ inputs.dropTerms }}
+        run: |
+          set -euo pipefail
+          # A dispatch input that nothing reads is worse than no input at all:
+          # the run looks forced, behaves exactly like an unforced one, and the
+          # person who clicked it believes the guard was overridden.
+          fail=0
+          if [ "$FORCE" = "true" ] && ! grep -rqs FORCE_WRITE scripts/; then
+            echo "You asked for a forced write, but nothing under scripts/ reads FORCE_WRITE."
+            fail=1
+          fi
+          if [ "$DROP" = "true" ] && ! grep -rqs ALLOW_TERM_DROP scripts/; then
+            echo "You asked to accept a dropped term, but nothing under scripts/ reads ALLOW_TERM_DROP."
+            fail=1
+          fi
+          if [ "$fail" -ne 0 ]; then
+            echo "The flag would have done nothing. Refusing rather than pretending it was honoured."
+            exit 1
+          fi
+
+      # The refusal guards live inside these two scripts rather than in a step
+      # of their own, and that is the only correct place for them: build-index
+      # writes with a rename, so a guard step running afterwards would be
+      # checking a file it has already replaced.
+      - name: Harvest the term
+        env:
+          FORCE_WRITE: ${{ inputs.force && '1' || '' }}
+          ALLOW_TERM_DROP: ${{ inputs.dropTerms && '1' || '' }}
+        run: node scripts/fetch-rooms.mjs "${{ steps.pick.outputs.term }}"
+
+      - name: Build the room index
+        env:
+          FORCE_WRITE: ${{ inputs.force && '1' || '' }}
+          ALLOW_TERM_DROP: ${{ inputs.dropTerms && '1' || '' }}
+        run: node scripts/build-index.mjs "${{ steps.pick.outputs.term }}"
+
+      # !cancelled() is success or failure, so a term that cleared its guards
+      # still lands when a later step goes red. Nothing half-written can be
+      # picked up here: both scripts write to a temp file and rename.
+      - name: Commit if anything changed
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          # git add is fatal on a pathspec matching nothing, which this hits the
+          # first time a term rolls over and its file does not exist yet. Ask
+          # git which of these actually exist and stage only those. -c covers a
+          # tracked file that was deleted, so a removal still gets staged.
+          mapfile -t paths < <(git ls-files -co --exclude-standard -- \
+            data/current.json \
+            'data/rooms-*.json' \
+            'data/harvest-*.manifest.json' \
+            data/terms.json)
+          if [ "${#paths[@]}" -eq 0 ]; then
+            echo "No data file exists to stage. The build wrote nothing."
+            exit 0
+          fi
+          git add -A -- "${paths[@]}"
+          # Checked before anything else, because -A stages a removal as
+          # happily as a change and this job must never delete a data file.
+          # Term 1258 already returns zero sections, so once a term leaves
+          # searchableTermsV2 the committed file is the only copy of that grid
+          # in existence and a pushed deletion is recoverable from nowhere.
+          deleted=$(git diff --cached --name-status --diff-filter=D)
+          if [ -n "$deleted" ]; then
+            echo "$deleted"
+            echo "This run would delete a committed data file. Refusing."
+            echo "Delete it by hand if you really mean to."
+            git reset -q
+            exit 1
+          fi
+          if git diff --cached --quiet; then
+            echo "Nothing moved. The schedule is the same as last week."
+            exit 0
+          fi
+          git diff --cached --name-status
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update the room index"
+          git pull --rebase origin ${{ github.ref_name }}
+          git push origin HEAD:${{ github.ref_name }}
+
+      - name: Say so, loudly
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/alert.sh "Room index build failed"

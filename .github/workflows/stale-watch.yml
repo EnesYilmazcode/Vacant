@@ -1,0 +1,73 @@
+name: Freshness watch
+
+# The dead man's switch. rooms.yml can tell you it failed. It cannot tell you it
+# never ran, and a scheduled workflow stops running for three ordinary reasons:
+# GitHub disables schedules in a repository with 60 days of no activity, a bad
+# YAML edit kills the trigger without a word, or the cron line gets deleted.
+#
+# Be honest about the limit of this file. It is itself a scheduled workflow, so
+# the 60-day disable would silence the build and its watchdog together. Only one
+# of the two halves is covered: rooms.yml commits current.json every week, which
+# keeps the repository from ever going quiet. The other half needs a check that
+# runs outside GitHub against the deployed site, and the one written down in
+# .github/OPS.md has no host. Nothing here would see a Pages deploy that stopped.
+#
+# Daily and cheap: one repo read and one request to Ohio State.
+on:
+  schedule:
+    - cron: '15 13 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: stale-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Is the committed index still fresh?
+        id: freshness
+        run: node scripts/check-freshness.mjs
+
+      # !cancelled() rather than always(), so a stale index does not hide a term
+      # that moved on the same morning. They are different failures with
+      # different answers and each gets its own issue.
+      - name: Has the searchable term list moved?
+        id: terms
+        if: ${{ !cancelled() }}
+        run: node scripts/check-terms.mjs
+
+      # Both scripts name their own alert, because the title becomes an issue
+      # title and each of them can fail in more than one way. "Room index has
+      # gone stale" about a current.json that will not parse, or "Searchable
+      # term list changed" on a morning Ohio State was simply down, is a wrong
+      # claim filed somewhere nobody goes back to correct it. The fallbacks are
+      # for a script that died before it could say which.
+      #
+      # 144 hours, six days. This job runs daily and both conditions persist
+      # until a human does something, so without a quiet window a term that left
+      # the list is one comment a day forever, which is exactly how an alert
+      # gets muted. Six days means a standing problem nags about weekly.
+      - name: Say the index went stale
+        if: ${{ failure() && steps.freshness.outcome == 'failure' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ steps.freshness.outputs.alert || 'Freshness check failed' }}
+        run: bash .github/alert.sh "$TITLE" 144
+
+      - name: Say the term list moved
+        if: ${{ failure() && steps.terms.outcome == 'failure' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ steps.terms.outputs.alert || 'Term watch failed' }}
+        run: bash .github/alert.sh "$TITLE" 144

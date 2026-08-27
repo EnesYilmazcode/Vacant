@@ -256,3 +256,94 @@ a UTC date, stamping the file a day ahead of the local one.
 resume and rerun path, which the happy-path first run never touches. The script
 header claimed "re-running is safe and cheap" and it was neither. On a dataset
 that cannot be refetched, the second run deserves more scrutiny than the first.
+
+---
+
+## 2026-08-26  Building hours, and the parser trap that would have shipped wrong hours for 19% of the pool
+
+**Decided.** `data/buildings-hours.json`, scraped from the Registrar's classroom
+pool building schedule. Both published terms, 47 buildings for Autumn 2026 and
+46 for Summer 2026, 39 KB, 3 requests.
+
+Measured from the shipped file, Autumn 2026, against the flat 7am-10pm
+assumption every other app in this category makes:
+
+```
+day   buildings open   real open-minutes   flat 7am-10pm   overstated by
+Mon        47/47              37050            42300             14%
+Fri        47/47              33450            42300             26%
+Sun        11/47               5820            42300            627%
+Sat         5/47               3600            42300           1075%
+
+Mon-Fri  overstated by 16%      Sat-Sun  overstated by 798%
+```
+
+That is the entire premise of the project, now backed by shipped data rather
+than a claim in the README.
+
+**The trap the research would have walked into.** It recommends parsing with a
+regex for each day name run across the whole panel body. **A panel can hold more
+than one full week**, and 9 of the 47 Autumn 2026 buildings do: Ag. Admin.,
+Arps, Biological Sciences, Caldwell, Derby, Journalism, Knowlton, Orton and
+Sullivant all publish a second week for a library or a lab. A last-match-wins
+regex ships Ag. Admin.'s **library** hours, 8am-6pm, as the building's, when the
+building is open 7am-8pm.
+
+Orton Hall is worse than wrong hours. It publishes three blocks and its Lab
+block runs Monday to Friday only, so a last-wins parse splices lab weekdays onto
+the building's own weekend and produces a week that appears nowhere on the page.
+
+The fix is to take the **first** list after the DAY HOURS heading. Sullivant
+puts a note paragraph between the two, which is why paragraphs are skipped.
+46 of 47 panels have all seven days in that first list; Sullivant is the
+exception and the paragraph skip covers it.
+
+**The 47-row hand-maintained join table is not needed.** The issue asks for one,
+with five rows (AE, AS, BK, KH, TFM) hand-checked before shipping. The GIS
+layer already carries `SchedulingAbbreviation`, and **all 47 registrar
+abbreviations resolve through it with zero ambiguous and zero missing**.
+Verified against real meeting objects: AE resolves to 298 with rooms AE0100,
+AS to 156 with AS0210, KH to 340 with KH0333C, TFM to **1025** with TFM0290,
+confirming that nothing may assume three digits. Only BK (Bricker Hall, 001)
+has no scheduled rooms in either archive and so cannot be confirmed that way.
+A derived join cannot go stale; a committed table can.
+
+**The four malformed Caldwell cells, and why the override is evidence and not a
+guess.** Autumn publishes Caldwell Mon-Thu as `7am-10`, with no am/pm. The
+research says Summer shows Caldwell as 7am-5pm and infers 10pm. Summer is
+**also malformed**: it publishes `7am-5` for the same four days. What resolves
+it is the Friday cell in each panel, which is well formed and uses the pm
+suffix: Summer's Friday is `7am-5pm` against its `7am-5`, proving the missing
+token is the suffix rather than a different hour. Autumn's Friday is `7am-9pm`
+and its Sunday `12pm-10pm`, so a 10pm close is the building's own evening
+pattern. Both are recorded in `data/registrar-hours-overrides.json` with that
+reasoning, and the emitted record's `hoursSource` becomes `override`.
+
+An unparseable cell with no override **stops the build** and names the building
+and the raw text. A parser that quietly picks a meaning is how an app starts
+lying.
+
+**Classes that run past the published close are warned about, never used to
+rewrite the hours.** 17 overruns in Summer 2026, 4 of them Hopkins Hall, which
+is on a documented allowlist because its own Registrar comment explains that art
+students have swipe card access outside building hours. A late class proves
+badge access, not an open door. Hitchcock closes 5pm and runs classes to 7:15pm.
+
+**565 of 612 buildings have no published hours at all** and are listed
+explicitly in `unknownHours`. That is the majority path and it must be shown as
+"hours not published", never as assumed or "usually open".
+
+---
+
+## 2026-08-26  Known honesty gap: 9 timed bookings we cannot place
+
+Nine meetings across the two archives carry a real room and real start and end
+times but **no weekday flag, a null `standingMeetingPattern`, and no
+`meetingDays`**. Dreese Lab 280 has four distinct Summer 2026 lab slots this way
+(9:10-10:05, 10:20-11:15, 11:30-12:25, 12:40-1:35) and Derby 368 a Spring
+seminar at 12:15-3:00.
+
+The day is not recoverable from anything in the payload, so the funnel drops
+them. **Dreese 280 will therefore read free during those lab hours.** That is a
+real wrong answer, it is small, and it is written down here rather than hidden
+in a counter. If the day ever becomes derivable, this is the first thing to fix.

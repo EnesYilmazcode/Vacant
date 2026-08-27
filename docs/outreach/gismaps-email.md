@@ -36,10 +36,11 @@ when something moves, not on a schedule. Total load on your server since I
 started is under twenty requests.
 
 I credit it as: **Building locations (c) 2025 The Ohio State University,
-Facilities Information and Technology Services.** That line renders at the bottom
-of the app's results screen, in its About panel, and in the repository. If you
-would like it worded differently, or linked somewhere specific, tell me and I
-will change it the same day.
+Facilities Information and Technology Services.** That line is in the repository
+and on the app's privacy page, and it goes in the footer of the app's own screen
+before I share the link with any students. If you would like it worded
+differently, or linked somewhere specific, tell me and I will change it the same
+day.
 
 The one question: the licence text on the GIS Hub says "For use by anyone
 interested in OSU data," but `FacilitiesStreets_RO` is not one of the items
@@ -55,6 +56,29 @@ Thanks for publishing this. It is the reason the map looks like Ohio State
 instead of like everyone else's map.
 
 Enes Yilmaz
+
+---
+
+## Before you paste this into an email client
+
+The body above states where the credit line appears. Check that each place is
+true on the day you send it, because an email to the office that granted the
+layer is the worst place to be caught claiming a courtesy that is not there.
+
+```sh
+grep -rn "Facilities Information" privacy.html README.md data/README.md index.html
+```
+
+As of 2026-08-27 that finds the privacy page and the data notes, and finds
+nothing in `index.html` or `README.md`. The results-screen footer does not exist
+yet and there is no About panel, which is why the sentence above says the footer
+is coming rather than that it is there.
+
+**If you send this before the footer ships, the sentence has to change**, not the
+plan. Cut "and it goes in the footer of the app's own screen before I share the
+link with any students" down to what is actually rendering. The whole point of
+the note is that it converts an inference into a fact, and it cannot do that
+while carrying an inference of its own.
 
 ---
 

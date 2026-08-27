@@ -7,6 +7,22 @@
 <meta name="description" content="Find an empty classroom near you at Ohio State, free for as long as you need it.">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0b0d10">
+<link rel="manifest" href="/Vacant/manifest.webmanifest">
+<!-- With no icon link a browser asks the ORIGIN root for /favicon.ico, and
+     enesyilmazcode.github.io/favicon.ico belongs to the portfolio repo, not
+     this one. That was a 404 on every single page load. -->
+<link rel="icon" href="/Vacant/favicon.ico" sizes="48x48 32x32 16x16">
+<link rel="apple-touch-icon" href="/Vacant/apple-touch-icon.png">
+<!-- Called deprecated everywhere and it costs a Lighthouse warning, but it is
+     still the only thing that puts old iOS into standalone mode at all, and a
+     campus runs on hand-me-down iPhones. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Vacant">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- No apple-touch-startup-image tags, on purpose. iOS ignores the manifest
+     background_color, so owning the splash means about fifteen PNGs covering
+     every current iPhone size and orientation, and that set breaks the day
+     Apple ships a new screen. Without them iOS draws a splash from the icon. -->
 <style>
   :root {
     --bg: #0b0d10;
@@ -215,6 +231,21 @@
     background: var(--card); border: 1px solid var(--line); color: var(--dim);
     font-size: .8rem; padding: .5rem .85rem; border-radius: 999px; text-align: center;
   }
+  /* --- the display cutout, in landscape --- */
+  /* viewport-fit=cover plus black-translucent draws the page under the status
+     bar, which the top and bottom rows already answer with --safe-t and
+     --safe-b. Rotate the phone and the cutout moves to a side, where nothing
+     was reading an inset. These resolve to 0px on every device without one and
+     in portrait, so they cost nothing anywhere else. */
+  #ask {
+    padding-left: max(1.5rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1.5rem, env(safe-area-inset-right, 0px));
+  }
+  #back { left: max(.6rem, env(safe-area-inset-left, 0px)); }
+  #sheet {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
 </style>
 </head>
 <body>
@@ -259,7 +290,7 @@
   <section id="room" hidden></section>
 </section>
 
-<script type="module" src="js/app.js"></script>
+<script type="module" src="/Vacant/js/app.js"></script>
 <noscript>
   <p style="padding:2rem;color:#8b94a2">Vacant needs JavaScript to rank rooms. The data it uses is at
   <a href="https://github.com/EnesYilmazcode/Vacant" style="color:#eef1f5">github.com/EnesYilmazcode/Vacant</a>.</p>

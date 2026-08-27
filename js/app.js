@@ -108,13 +108,18 @@ function render(now) {
   if (!state.settled) {
     // Slow drift over campus. Nothing here is on the critical path: it is what
     // the unavoidable wait looks like.
+    // Close enough that you can see streets and buildings. It opened at 1.05,
+    // the whole 2.7 km box, where a building is a few pixels across and the
+    // vector map nobody else has is invisible on the one screen everybody sees.
     const t = reduceMotion ? 0 : (now - flyoverStart) / 1000;
     const g = state.campus.grid;
     state.view = makeView({
-      cx: g * (0.5 + Math.sin(t * 0.08) * 0.1),
-      cy: g * (0.5 + Math.cos(t * 0.06) * 0.08),
-      span: 1.05 + Math.sin(t * 0.05) * 0.05,
-      rotation: reduceMotion ? 0 : Math.sin(t * 0.03) * 0.08,
+      // Drifting over the academic core rather than the geometric centre of the
+      // bounding box, which is half river and half parking.
+      cx: g * (0.56 + Math.sin(t * 0.055) * 0.05),
+      cy: g * (0.5 + Math.cos(t * 0.043) * 0.045),
+      span: 0.3 + Math.sin(t * 0.05) * 0.02,
+      rotation: reduceMotion ? 0 : Math.sin(t * 0.028) * 0.05,
     });
   }
 
@@ -376,7 +381,6 @@ async function boot() {
   state.campus = campus;
   state.current = current;
   state.basemap = buildBasemap(campus, 0.014);
-  $('term').textContent = current.termName;
 
   const [rooms, buildings, hours, located] = await Promise.all([
     fetch(`${BASE}${current.rooms}`).then((r) => r.json()),

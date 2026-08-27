@@ -11,11 +11,11 @@ import { aspect, decodeShape } from './campus.js';
 // is the surface of the app rather than a panel inside it.
 export const PALETTE = {
   bg: '#0b0d10',
-  landscape: '#111a15',
+  landscape: '#131e18',
   water: '#0c1f2b',
-  street: '#1a2028',
-  building: '#222932',
-  buildingEdge: '#2f3945',
+  street: '#1d2530',
+  building: '#28313d',
+  buildingEdge: '#3a4653',
   target: '#ff4d3d',
   targetGlow: 'rgba(255, 77, 61, 0.22)',
   you: '#4cc2ff',

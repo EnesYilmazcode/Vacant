@@ -2,10 +2,13 @@
 
 Find an empty classroom near you, free for as long as you need it.
 
-> **Status: blueprint, with a filed plan.** No code yet. The design below is backed
-> by live measurement, not guesses, and the work is broken into 30 ordered issues.
-> Start at [#1](https://github.com/EnesYilmazcode/Vacant/issues/1), or read
-> [docs/BACKLOG.md](docs/BACKLOG.md).
+> **Status: spine landed, data layer next.** The shared HTTP client and the term
+> archive are in. Spring 2026 and Summer 2026 are snapshotted and committed,
+> which was the one irreversible item on the board. No app yet.
+> The design below is backed by live measurement, not guesses, and the work is
+> broken into 30 ordered issues. Read [docs/BACKLOG.md](docs/BACKLOG.md) for the
+> plan and [docs/DECISIONS.md](docs/DECISIONS.md) for what has actually been
+> settled.
 
 ---
 

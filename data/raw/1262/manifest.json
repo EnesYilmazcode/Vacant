@@ -1,0 +1,77 @@
+{
+  "term": "1262",
+  "source": "https://content.osu.edu/v2/classes/search",
+  "campus": "col",
+  "sort": "catalogNumber",
+  "facetTotal": 25274,
+  "sectionsWritten": 25274,
+  "pagesOnDisk": 130,
+  "instructorRecordsRemoved": 28664,
+  "requests": 131,
+  "buckets": [
+    {
+      "bucket": "1xxx",
+      "facetCount": 2043,
+      "bucketItems": 2043,
+      "pages": 11,
+      "written": 2043,
+      "status": "ok"
+    },
+    {
+      "bucket": "2xxx",
+      "facetCount": 2323,
+      "bucketItems": 2323,
+      "pages": 12,
+      "written": 2323,
+      "status": "ok"
+    },
+    {
+      "bucket": "3xxx",
+      "facetCount": 1846,
+      "bucketItems": 1846,
+      "pages": 10,
+      "written": 1846,
+      "status": "ok"
+    },
+    {
+      "bucket": "4xxx",
+      "facetCount": 6272,
+      "bucketItems": 6272,
+      "pages": 32,
+      "written": 6272,
+      "status": "ok"
+    },
+    {
+      "bucket": "5xxx",
+      "facetCount": 2558,
+      "bucketItems": 2558,
+      "pages": 13,
+      "written": 2558,
+      "status": "ok"
+    },
+    {
+      "bucket": "6xxx",
+      "facetCount": 2077,
+      "bucketItems": 2077,
+      "pages": 11,
+      "written": 2077,
+      "status": "ok"
+    },
+    {
+      "bucket": "7xxx",
+      "facetCount": 2979,
+      "bucketItems": 2979,
+      "pages": 15,
+      "written": 2979,
+      "status": "ok"
+    },
+    {
+      "bucket": "8xxx",
+      "facetCount": 5176,
+      "bucketItems": 5176,
+      "pages": 26,
+      "written": 5176,
+      "status": "ok"
+    }
+  ]
+}

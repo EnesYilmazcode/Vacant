@@ -19,7 +19,7 @@
 // survives once the next is posted. Every page fetched is cached in-repo, and a
 // failed fetch falls back to the cached copy rather than failing the build.
 
-import { mkdir, readdir, rename, writeFile } from 'node:fs/promises';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

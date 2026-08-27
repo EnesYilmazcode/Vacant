@@ -246,6 +246,46 @@
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
   }
+  /* --- the install hint, the refresh notice and the cold-start card --- */
+  /* Both bars are built in js/install.js and js/pwa.js rather than sitting in
+     the markup, because neither should exist for a user who never earns it. */
+  .bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 4;
+    display: flex; align-items: center; gap: .7rem;
+    padding: .7rem 1rem calc(.7rem + var(--safe-b));
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
+    background: var(--card); border-top: 1px solid var(--line);
+    box-shadow: 0 -12px 32px rgba(0,0,0,.5);
+    animation: bar-up .2s ease-out;
+  }
+  @keyframes bar-up { from { transform: translateY(100%); } }
+  @media (prefers-reduced-motion: reduce) { .bar { animation: none; } }
+  .bar p { margin: 0; flex: 1 1 auto; font-size: .86rem; line-height: 1.35; }
+  .bar b { color: var(--fg); font-weight: 700; }
+  .bar > .ico { width: 1.5em; height: 1.5em; color: var(--accent); }
+  .bar-go, .bar-x {
+    appearance: none; font: inherit; cursor: pointer; flex: none;
+    min-width: 44px; min-height: 44px; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .bar-go { background: var(--accent); border: 1px solid var(--accent); color: #fff; font-weight: 650; padding: 0 1rem; }
+  .bar-x { background: transparent; border: 1px solid var(--line); color: var(--dim); }
+
+  /* The cold card sits above everything, including the note pill, because when
+     it is up there is nothing underneath it worth reading. */
+  #cold {
+    position: fixed; inset: 0; z-index: 5;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: .9rem; text-align: center; background: var(--bg);
+    padding: 1.5rem calc(1.5rem + env(safe-area-inset-right, 0px))
+             calc(1.5rem + var(--safe-b)) calc(1.5rem + env(safe-area-inset-left, 0px));
+  }
+  #cold h2 { margin: 0; font-size: 1.2rem; letter-spacing: -.02em; max-width: 20rem; }
+  #cold p { margin: 0; color: var(--dim); font-size: .92rem; max-width: 22rem; }
+  #cold .opt { flex: none; width: min(16rem, 100%); }
+  .cold-say:empty { display: none; }
+  .cold-say { color: var(--warn) !important; }
 </style>
 </head>
 <body>
@@ -290,6 +330,7 @@
   <section id="room" hidden></section>
 </section>
 
+<script type="module" src="/Vacant/js/pwa.js"></script>
 <script type="module" src="/Vacant/js/app.js"></script>
 <noscript>
   <p style="padding:2rem;color:#8b94a2">Vacant needs JavaScript to rank rooms. The data it uses is at

@@ -99,8 +99,17 @@
     background: radial-gradient(90% 55% at 50% 46%, rgba(11,13,16,.78), rgba(11,13,16,.55) 62%, rgba(11,13,16,.9));
     overflow-y: auto;
   }
+  /* The clamp floor is in rem, so at a large root it wins and the wordmark grows
+     past the screen: measured with device emulation at 393px and root 53px it
+     rendered 127.2px and 433px wide inside a 234px content box, and #ask
+     scrolled sideways at 492 against 393. "Vacant." measures 3.40 times its own
+     font size at every size tried (51.09px -> 174px, 76.8px -> 261px, 127.2px
+     -> 433px), so the last term caps it at what fits with a little to spare.
+     Below AX5 it never binds: at 393px and root 16px it works out to 98.6px
+     against the 51.09px the clamp already picked. */
   #ask h1 {
-    margin: 0; font-size: clamp(2.4rem, 13vw, 3.4rem); font-weight: 800;
+    margin: 0; font-weight: 800;
+    font-size: min(clamp(2.4rem, 13vw, 3.4rem), calc((100vw - 3rem) / 3.5));
     letter-spacing: -.04em; line-height: 1;
     text-shadow: 0 2px 22px rgba(0,0,0,.75);
   }
@@ -116,9 +125,15 @@
     display: flex; gap: .55rem; flex-wrap: wrap; justify-content: center;
     width: 100%; max-width: 24rem;
   }
+  /* The side padding is capped in vw because rem grows with the root and the
+     screen does not. At 393px with root 53px a 1rem pad put the button's
+     smallest possible width at 249px inside a 234px content box, which is
+     8px of sideways scroll on the question screen. At every ordinary size the
+     rem is the smaller of the two and nothing moves: 15.7px against 16px at
+     393px and root 16px. */
   .opt {
     appearance: none; border: 1px solid var(--line); background: var(--card); color: var(--fg);
-    font: inherit; font-weight: 650; padding: .95rem 1rem; border-radius: 999px;
+    font: inherit; font-weight: 650; padding: .95rem min(1rem, 4vw); border-radius: 999px;
     min-height: 52px; flex: 1 1 6rem; cursor: pointer;
   }
   /* White on this red measures 3.29:1, under the 4.5 floor, on the one control
@@ -226,7 +241,7 @@
   .r-chev { grid-area: chev; color: var(--dim); display: flex; align-items: center; justify-content: flex-end; }
   /* rem inside a media query resolves against 16px forever, so the large-text
      reflow has to be a container query in em or it never fires. */
-  #list, #near, #pick { container-type: inline-size; container-name: list; }
+  #list, #near, #pick, #room { container-type: inline-size; container-name: list; }
   @container list (max-width: 18em) {
     .row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "walk" "win" "chev"; }
     .row .r-walk, .row .r-chev { justify-self: start; }
@@ -348,6 +363,18 @@
   .tl .busy, .tl .edge { color: var(--dim); font-size: .85rem; padding-left: 4.6rem; }
   .tl .seam { height: 2px; padding: 0; margin: .12rem 0 .12rem 4.6rem; background: var(--line); }
   .tl .t { min-width: 4.2rem; }
+  /* Below .tl on purpose: a container query wins on order, not specificity. The
+     timeline's whole layout is in rem, so at 393px with root 53px the 4.2rem
+     time column alone was 222px and the 4.6rem class indent was 244px, and the
+     room pane scrolled sideways at 671 against 393. At large text the time
+     stops reserving a column, the rows wrap and the indent goes. */
+  @container list (max-width: 18em) {
+    .tl li { flex-wrap: wrap; gap: .2rem .8rem; }
+    .tl .t { min-width: 0; }
+    .tl .free .len { margin-left: 0; }
+    .tl .busy, .tl .edge { padding-left: 1.1rem; }
+    .tl .seam { margin-left: 1.1rem; }
+  }
   .unknown {
     margin: .5rem 1.1rem 0; padding: .6rem .8rem; border: 1px solid var(--warn);
     border-radius: 10px; color: var(--dim); font-size: .84rem;

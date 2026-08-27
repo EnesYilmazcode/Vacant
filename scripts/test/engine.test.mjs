@@ -20,6 +20,7 @@ import {
   activeMask,
   activeSessions,
   bestGap,
+  calendarOn,
   distanceMetres,
   freeGaps,
   leaveBy,
@@ -1367,4 +1368,39 @@ test('rank refuses nothing on its own, which is why the caller has to ask', () =
   });
   assert.equal(rows.length, 3);
   assert.equal(refusalFor({ now: at(12), rooms: spec.rooms, sessions: [['2026-08-25', '2026-10-12']], date: '2026-12-15' }).refused, 'no-schedule');
+});
+
+test('the calendar reads whatever shape the build put in the index', () => {
+  // The pipeline emits [{date, state}] and {start, end}. The screens lane reads
+  // a date-keyed object. Both have to work, because the refusal failing open is
+  // the one outcome that puts a wrong answer on the screen.
+  const asArray = {
+    closed: [{ date: '2026-09-07', state: 'offices-closed', name: 'Labor Day' }, { date: '2026-10-15', state: 'no-classes' }],
+    exams: { start: '2026-12-11', end: '2026-12-17' },
+  };
+  const asMap = {
+    closed: { '2026-09-07': { state: 'offices-closed', name: 'Labor Day' }, '2026-10-15': 'no-classes' },
+    exams: ['2026-12-11', '2026-12-17'],
+  };
+
+  for (const src of [asArray, asMap]) {
+    assert.deepEqual(calendarOn('2026-12-15', src), { exams: true });
+    assert.deepEqual(calendarOn('2026-09-07', src), { buildingsClosed: true, name: 'Labor Day' });
+    assert.equal(calendarOn('2026-10-15', src).noClasses, true);
+    assert.equal(calendarOn('2026-09-16', src), null, 'an ordinary day is an ordinary day');
+    assert.equal(calendarOn('2026-12-10', src), null, 'the day before finals is not finals');
+  }
+
+  // A date with no state survives as the cautious half, and current.json is
+  // read when the index carries nothing.
+  assert.deepEqual(calendarOn('2026-11-11', { closed: ['2026-11-11'] }), { buildingsClosed: true, name: null });
+  assert.deepEqual(calendarOn('2026-12-15', {}, { exams: { start: '2026-12-11', end: '2026-12-17' } }), { exams: true });
+  assert.equal(calendarOn('2026-12-15', {}, {}), null);
+});
+
+test('a closed campus says which holiday it is when the build knows', () => {
+  const named = refusalFor({ now: 600, calendar: calendarOn('2026-11-11', { closed: [{ date: '2026-11-11', state: 'offices-closed', name: 'Veterans Day' }] }) });
+  assert.equal(named.refused, 'closed');
+  assert.match(named.reason, /^Veterans Day\. /);
+  assert.match(named.reason, /cannot get into/);
 });

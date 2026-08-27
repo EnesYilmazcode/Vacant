@@ -623,6 +623,44 @@ export function scheduleCoverage(rooms, active) {
 // of the wrong week, measures 0.066%.
 export const SILENT_SHARE = 0.1;
 
+// The calendar the class API does not publish, read off whatever the build put
+// in the index.
+//
+// `closed` ships as [{date, state}] and `exams` as {start, end}, but a bare
+// date string, a date-keyed object and a [start, end] pair all read too. The
+// shape is another lane's to settle, and a rollover that changes it must not
+// silently switch the refusal off. Sources are read in order, first hit wins.
+//
+// Nothing here is inferred. A day the Registrar did not publish is an ordinary
+// day, not a holiday.
+export function calendarOn(today, ...sources) {
+  const from = (key) => {
+    for (const src of sources) if (src?.[key] != null) return src[key];
+    return undefined;
+  };
+
+  const raw = from('exams');
+  const exams = Array.isArray(raw) ? { start: raw[0], end: raw[1] } : raw;
+  if (exams?.start && exams?.end && today >= exams.start && today <= exams.end) return { exams: true };
+
+  // A bare string means two different things in the two shapes: an entry in the
+  // list is a DATE, a value in the map is a STATE.
+  const closed = from('closed');
+  const hit = Array.isArray(closed)
+    ? closed.find((c) => (typeof c === 'string' ? c : c?.date) === today)
+    : closed?.[today];
+  if (!hit) return null;
+  const asState = !Array.isArray(closed) && typeof hit === 'string';
+  const kind = asState ? hit : (typeof hit === 'string' ? null : hit.state ?? null);
+  const name = (typeof hit === 'string' ? null : hit.name) ?? null;
+
+  // Offices closed and no classes are not shades of one thing. October 15 is
+  // Autumn Break, no classes and the doors open, which is the best day of the
+  // term for this app. September 7 is Labor Day, the same rooms behind locked
+  // doors. A day whose state did not survive the build gets the cautious half.
+  return kind === 'no-classes' ? { noClasses: true, name } : { buildingsClosed: true, name };
+}
+
 // Everything that has to be settled before a single room is swept.
 //
 // Three of these come from a calendar the class API does not publish and one
@@ -658,7 +696,8 @@ export function refusalFor({ now, rooms = [], sessions, date, active: given, cal
   if (calendar?.buildingsClosed) {
     return {
       refused: 'closed',
-      reason: calendar.reason ?? 'The university is closed today, so the buildings are locked.',
+      reason: calendar.reason
+        ?? `${calendar.name ? `${calendar.name}. ` : ''}Ohio State is closed today. Most buildings are locked, so a room the schedule shows as empty is still a room you cannot get into.`,
     };
   }
 

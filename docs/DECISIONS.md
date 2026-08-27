@@ -563,3 +563,53 @@ would have rendered a confident "0 seats". Checked explicitly now.
 matched no session was dropped with nothing recorded, in an otherwise fully
 instrumented pipeline. Zero occurrences today, but a partial upstream drift
 would empty whole rooms while the funnel still printed a healthy usable count.
+
+---
+
+## 2026-08-26  The origin is enesyilmazcode.github.io/Vacant/, and that is final
+
+**Decided by Enes, 2026-08-26: stay on GitHub Pages. No custom domain.**
+
+Written down as a commitment rather than left as a default, because reversing it
+is unrecoverable. iOS has no mechanism to update an installed web app's URL, so
+moving the origin after the first person adds Vacant to their home screen
+orphans their icon, their cached index, their service worker registration and
+their geolocation grant, with no way to tell them.
+
+Free, live today, and it costs nothing to keep. Three consequences follow and
+every one of them is now a rule rather than a preference.
+
+**The capital V is load bearing.** `enesyilmazcode.github.io/Vacant/` is case
+sensitive and `/vacant/` returns a hard 404. That is survivable in a link, and
+fatal in a `start_url`: it 404s only AFTER install, on a device where the user
+cannot see the address bar to work out why. So:
+
+- every path in `manifest.webmanifest` is absolute and capital-V
+- every asset path in `index.html` and `sw.js` is absolute and capital-V
+- a test greps the built site for `/vacant/` and fails on any match
+
+**Storage is shared with Finder.** Both sites live on
+`enesyilmazcode.github.io`, so they share an origin, which means they share
+`localStorage`, IndexedDB, cache storage and service worker scope. Nothing here
+is a security problem, since both are the same person's public static sites, but
+a key collision would be a real bug. So:
+
+- every `localStorage` and cache key is prefixed `vacant:`
+- the service worker registers with an explicit `{ scope: '/Vacant/' }` and its
+  cache names carry the same prefix
+- the service worker file itself lives at `/Vacant/sw.js`, never at the domain
+  root, so it cannot claim Finder's pages
+
+**Nobody will type it from memory.** That is accepted. Vacant is built to be
+installed, not visited, so the URL is something shared once and then replaced by
+an icon. It does mean the launch plan in
+[#27](https://github.com/EnesYilmazcode/Vacant/issues/27) has to lean on a link
+rather than on a memorable name.
+
+**If this is ever revisited**, the only safe moment is before the first install.
+After that, the honest options are to keep both origins alive forever or to
+accept losing every installed user, and there is no third one.
+
+Unblocks [#21](https://github.com/EnesYilmazcode/Vacant/issues/21),
+[#22](https://github.com/EnesYilmazcode/Vacant/issues/22) and
+[#23](https://github.com/EnesYilmazcode/Vacant/issues/23).

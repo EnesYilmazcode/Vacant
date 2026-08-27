@@ -1084,3 +1084,59 @@ wording it needs, so it does not have to be reinvented:
 > collapsed harvest is UNRECOVERABLE: a term that has left searchableTermsV2
 > returns zero sections forever, so the committed file is the only copy of that
 > grid anywhere. Read the refusal in full before you set this.
+
+---
+
+## 2026-08-27  Multi-term room union: DROP ([#30](https://github.com/EnesYilmazcode/Vacant/issues/30))
+
+**DROP.** One word, as the issue asked for.
+
+**Zero strong positives out of 95 carried-forward rooms.** Running the funnel over
+all three committed terms and diffing room identity:
+
+```
+1262  884 rooms through the funnel
+1264  206
+1268  871
+
+carried forward (in 1262 or 1264, absent from 1268)   95
+  strong  shown type AND on the GA list                0
+  weak    shown type, off the GA list                 49
+  noise   everything else                             46
+```
+
+Beside Roomix's 190 of 1,067 (17.8%), ours is 95 of 966 (9.8%) from two extra
+terms rather than a whole index. Their number reads as cross-term residue in
+their own file, which was the reading this spike existed to test.
+
+**The cheaper half answers outright: all 327 Registrar general assignment rooms
+appear in all three terms.** Not one is missing from 1268, let alone from all
+three. There is no such thing as an unscheduled general assignment room, so the
+union has nothing to reach that one term plus the Registrar list does not already
+have. The research's "69 never appeared in any sample" was a 40-subject sampling
+artifact.
+
+**The 49 weak positives are not study rooms.** 33 of them are Knowlton Hall
+studio bays, `KN0310A` through `KN0390C`, the architecture desk clusters, typed
+`1B` because they are rooms and absent from Autumn because studio sections are
+scheduled term by term. The other 16 are ones and twos across thirteen buildings,
+including Drinko Hall, which is already restricted.
+
+**No rooms were visited, because the spike's own gate is "walk to three strong
+positives" and there are none.** If this is ever reopened the visit list starts
+at Knowlton 310A.
+
+**`searchableTermsV2` on the day, 2026-08-27.** 1262 Spring 2026 endDate
+2026-08-31, 1264 Summer 2026 endDate 2027-01-01, 1268 Autumn 2026 endDate
+2027-01-31. Three terms searchable, and 1262 leaves in four days. The lookback
+ceiling is whatever is already archived, permanently.
+
+**Why the cost of a false positive is not symmetric.** A carried room ships with
+an empty busy list, reads free at every minute of every day forever, and wins
+every ranking tie-break, so it sits at the top of the list until somebody
+notices. A room can be missing from a term because it was renovated, repurposed
+or demolished, and nothing in the data separates that from a quiet classroom.
+
+Measurement in `docs/research/spike-unscheduled-rooms.md`, reproducible offline
+with `node scripts/spike-carried-rooms.mjs`. The union line is deleted from
+BACKLOG.md rather than left open.

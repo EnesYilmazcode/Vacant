@@ -74,14 +74,6 @@ const COARSE_M = 75;
 // than this is drawn as a rule between two classes instead.
 const SEAM_MIN = 20;
 
-const TYPE_WORDS = {
-  '1A': 'seminar room',
-  '1B': 'classroom',
-  '1C': 'lecture hall',
-  LCTR: 'lecture hall',
-  SMNR: 'seminar room',
-};
-
 const $ = (id) => document.getElementById(id);
 
 const state = {
@@ -760,7 +752,10 @@ function roomHtml(id) {
       ? { head: 'No class in here all day', sub: '' }
       : claimFor(tl, nowMin, bname);
 
-  const type = TYPE_WORDS[room.type];
+  // The vocabulary ships in the room index. A second copy here is how five of
+  // the eleven visible codes went missing from it, and 95 rooms, a conference
+  // room and two dozen computer labs among them, rendered as bare untyped rows.
+  const type = state.rooms?.types?.[room.type];
   const facts = [
     r ? `<span class="w">${WALK_ICON}${r.walk} min walk</span>` : '',
     r ? `${r.metres} m` : '',

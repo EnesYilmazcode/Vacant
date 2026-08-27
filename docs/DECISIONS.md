@@ -824,6 +824,20 @@ them never appeared in any sample" was an artifact of sampling 40 subjects. In
 the full harvest the number is 0. That kills one of the two arguments for the
 multi-term union in #30 before the spike starts.
 
+**The room type words ship in the index, and the app keeps no copy.** 486 rooms
+are `vis: "shown"` and 95 are `vis: "secondary"`. The app had its own five-entry
+type table covering exactly the shown codes, so all 95 secondary rooms rendered
+with no type word at all: a conference room, a computer lab and a lecture hall
+looked like the same row. The vocabulary now lives beside the allow list in
+`scripts/lib/room-safety.mjs` and ships as `types` in the index, so one file
+decides both what a room is and what it may be called.
+
+Ten of the eleven visible codes have a word. Everything past `SMNR` comes from
+Roomix's compiled bundle, which carries the Registrar's own decode table for 23
+of the 28 codes in the harvest; `docs/research/peer-check-ui.md` has the two
+greps that recovered it. `5C` is not in that table, nothing else decodes it, and
+its two rooms ship with no word rather than an invented one.
+
 **One room where the two sources point opposite ways.** `CM0100`, Campbell Hall
 100, is on the Registrar's Autumn 2026 general assignment list and reports
 `facilityType: 5L`, which the allow list hides. It stays hidden this term. Ranking
@@ -909,6 +923,35 @@ The issue anticipated one disagreement, the missing Dec 28-31 block outside the
 term, and concluded the diff should refuse rather than merge. That conclusion was
 right for a much bigger reason than the one it was written for.
 
+**Corrected the same day. A veto held by a source measured wrong is not a check,
+it is a wall.** The first cut let the ICS refuse the whole build on any
+disagreement, which meant Spring and Summer exited 1 before writing anything.
+Two of the three seasons had no path to a shipped index, on the strength of a
+file this document had already called wrong.
+
+The measurement that fixes it, run against all fifteen columns of the five-year
+view rather than the three terms on disk:
+
+```
+season   columns  in-window disagreements  exam window
+AUTUMN   2023-27  0, every year            identical, every year
+SPRING   2024-28  2, every year            1 to 6 days off, every year
+SUMMER   2024-28  2, 4, 6, 6, 2            1 to 6 days off, every year
+```
+
+Every one of those 30 Spring and Summer lines is a **pair**. The ICS names the
+right holiday and dates it wrong, by one to six days: Memorial Day on Sunday May
+31, Juneteenth on Thursday June 18, MLK Day on Sunday January 18. Nothing is left
+over on any column.
+
+So a slid holiday is the known defect. It is printed, the Registrar's date ships,
+and the build carries on. A disagreement the slide does not explain still kills
+the build, in every season, and so does two sources putting the same day into two
+different states. Autumn's tolerance is 0 because it has never needed one. The
+table is `ICS_SHIFT_DAYS` in `build-index.mjs` and `calendar.test.mjs` walks all
+fifteen columns, so the day the ICS invents a holiday instead of moving one, the
+test says so before the build does.
+
 **Three sources for the exam window, and all three must agree.** The finals page
 ships because it is the only one carrying the time-of-day matrix. The five-year
 view and the ICS each get a veto. Autumn 2026: all three say 2026-12-11 to
@@ -950,15 +993,15 @@ refuses.
 
 ```json
 "teaching": ["2026-08-25", "2026-12-09"],
-"closed": [
-  {"date":"2026-09-07","state":"offices-closed"},
-  {"date":"2026-10-15","state":"no-classes"},
-  {"date":"2026-10-16","state":"no-classes"},
-  {"date":"2026-11-11","state":"offices-closed"},
-  {"date":"2026-11-25","state":"no-classes"},
-  {"date":"2026-11-26","state":"offices-closed"},
-  {"date":"2026-11-27","state":"offices-closed"}
-],
+"closed": {
+  "2026-09-07": {"state":"offices-closed","name":"Labor Day"},
+  "2026-10-15": {"state":"no-classes","name":"Autumn Break"},
+  "2026-10-16": {"state":"no-classes","name":"Autumn Break"},
+  "2026-11-11": {"state":"offices-closed","name":"Veterans Day observed"},
+  "2026-11-25": {"state":"no-classes","name":"Thanksgiving Break begins"},
+  "2026-11-26": {"state":"offices-closed","name":"Thanksgiving Day"},
+  "2026-11-27": {"state":"offices-closed","name":"Indigenous Peoples' Day/Columbus Day observed"}
+},
 "exams": {"start":"2026-12-11","end":"2026-12-17"},
 "lowConfidence": [{"start":"2026-10-13","end":"2026-10-14","reason":"session-1-finals"}]
 ```
@@ -977,8 +1020,40 @@ seven-week rooms hold exams that appear in no busy list.
 
 **Nothing fetches at runtime.** `scripts/fetch-calendar.mjs` vendors the ICS to
 `data/vendor/academic.ics` with `academic.meta.json` beside it, and caches the
-five-year view and the finals pages under `data/cache/registrar/`. Three
-requests, run when a term rolls over. The build reads files.
+five-year view and the finals pages under `data/cache/registrar/`. The build
+reads files.
+
+**And it names no term.** The first cut hardcoded `AUTUMN 2026` and a two-name
+list of finals pages, in the one script whose header says to run it when a term
+rolls over. It would have refused a healthy five-year view the moment that column
+scrolled off the page, with a wrong reason. Both now come off the page: the
+column headers give all fifteen terms, and the finals index gives every page
+whose slug carries a season and a year.
+
+That fixed a live gap rather than a future one. `summer-2026-finals-schedule` was
+on the Registrar's index for the whole term and was never cached, so the Summer
+build fell back to the five-year view with no third source to check it. Fetching
+it needed one more thing: the Summer page writes its dates as "Monday, August 3"
+and "Monday August 3, 2026" where the Autumn page writes "Monday Dec 14" and
+"Monday 12/14", so it parsed to zero days, and a finals page that parses to
+nothing kills the build. `parseFinalsWindow` reads all four spellings now. All
+three Summer sources agree on 2026-08-03 to 2026-08-05.
+
+**`instruction` in `current.json` is the Registrar's teaching window.** This is
+the field `js/app.js` reads to decide whether it may answer at all, and it was
+the min and max of harvested meeting dates: 2026-08-10 to 2026-12-11. December 11
+is exactly `exams.start`. So on the morning of the first final the app passed its
+own staleness gate and offered Independence Hall 100, 727 seats, as free until
+10:50 pm. It now reads 2026-08-25 to 2026-12-09, the same pair as the index's
+`teaching`, and the build prints the harvested span beside it so the divergence
+stays visible.
+
+**`closed` ships keyed by date, and each day carries its name.** A list makes a
+reader that forgot it was a list return `undefined`, and `undefined` here renders
+as an ordinary day with rooms in it. A map cannot fail that way. The name is the
+publisher's own row label, so a refusal can say "Thanksgiving Day, campus is
+closed", which is a fact a student can check, rather than "campus is closed
+today", which is the app asking to be believed.
 
 ---
 

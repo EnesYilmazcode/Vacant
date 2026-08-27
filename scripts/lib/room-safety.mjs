@@ -43,6 +43,33 @@ export const TYPE_VISIBILITY = {
   '5C': 'secondary',
 };
 
+// What the app is allowed to call a room, decoded once here so nothing
+// downstream keeps a second copy of the code table. It kept one, and five of
+// these ten codes were missing from it, so 95 rooms rendered with no type word
+// at all: a conference room and a lecture hall looked like the same thing.
+//
+// Everything below `SMNR` comes from Roomix's compiled bundle, which carries
+// the Registrar's own decode table for 23 of the 28 codes seen in the harvest.
+// docs/research/peer-check-ui.md has the two greps that recovered it. LCTR and
+// SMNR are not in that table and do not need to be; they are the API's own
+// English mnemonics.
+//
+// 5C is in TYPE_VISIBILITY and NOT in here. Roomix's table does not carry it,
+// nothing else decodes it, and its two rooms ship with no word rather than a
+// guess. Adding one would be inventing a fact about a room we have never seen.
+export const TYPE_WORDS = {
+  '1A': 'seminar room',
+  '1B': 'classroom',
+  '1C': 'lecture hall',
+  LCTR: 'lecture hall',
+  SMNR: 'seminar room',
+  '2J': 'TV and radio facility',
+  '2P': 'computer lab',
+  '2Q': 'computer lab',
+  '5K': 'conference room',
+  '6L': 'meeting room',
+};
+
 // Report campus Columbus AND location CS-COLMBUS, but sit 126 km away in
 // Wooster. Nothing in the payload flags them.
 //

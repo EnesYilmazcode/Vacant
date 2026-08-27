@@ -41,6 +41,12 @@ export function addDays(date, n) {
   return t.toISOString().slice(0, 10);
 }
 
+// Signed whole days from a to b. Both are plain dates read at UTC midnight, so
+// no daylight-saving hour ever leaks into the subtraction.
+export function daysBetween(a, b) {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+}
+
 // The state a calendar row puts a day into, from the literal phrases the
 // Registrar writes. A row that says neither is not classified: this returns
 // null and the day does not ship. "Spring Break" alone is such a row.
@@ -49,6 +55,18 @@ export function stateOf(summary) {
   if (s.includes('offices closed')) return OFFICES_CLOSED;
   if (s.includes('offices open')) return NO_CLASSES;
   return null;
+}
+
+// The holiday out of the row, so a refusal can say WHICH day it is refusing.
+// "Thanksgiving Day, campus is closed" is a fact a student can check. "Campus
+// is closed today" is the app asking to be believed.
+//
+// Two shapes on the same page. Most rows separate the name from the state with
+// a dash, and Indigenous Peoples Day runs them together with no punctuation at
+// all, so the state words are cut either way.
+export function eventName(summary) {
+  const cut = String(summary ?? '').trim().split(/\s+[-–—]\s+/)[0];
+  return cut.replace(/\s+(?:no classes|offices)\b.*$/i, '').trim() || null;
 }
 
 // ---------------------------------------------------------------- ICS
@@ -121,6 +139,23 @@ export function parseLongDates(cell) {
   return days;
 }
 
+// The term columns the five-year view is carrying today, in page order.
+//
+// The page is republished and the columns roll: the copy on disk runs Autumn
+// 2023 to Autumn 2027 and will not carry Autumn 2026 forever. Anything that
+// names a column in a string constant refuses a healthy page for a wrong
+// reason the first time a term rolls over.
+export function parseFiveYearColumns(html) {
+  const out = [];
+  for (const rows of parseTables(html)) {
+    for (const cell of rows[0] ?? []) {
+      const m = /^(AUTUMN|SPRING|SUMMER)\s+(\d{4})$/i.exec(cell.trim());
+      if (m) out.push(`${m[1].toUpperCase()} ${m[2]}`);
+    }
+  }
+  return out;
+}
+
 // The five-year view, read down one column. `column` is the header label, for
 // example "AUTUMN 2026". Returns one entry per calendar row that resolves to at
 // least one date.
@@ -151,6 +186,12 @@ export function parseFiveYear(html, column) {
 // Two spellings of the same day appear on the page and both are read, so a
 // change to one is caught by the other: "Monday Dec 14" in the three lookup
 // tables and "Monday 12/14" in the matrix header.
+//
+// The comma and the trailing year are optional because the Summer page writes
+// the same day three ways. "Monday, August 3" in its lookup tables and "Monday
+// August 3, 2026" in its matrix header, where Autumn writes "Monday Dec 14" and
+// "Monday 12/14". Requiring Autumn's spelling parsed the whole Summer page to
+// zero days, and a page that parses to nothing is a build that dies.
 export function parseFinalsWindow(html, year) {
   const days = new Set();
   for (const rows of parseTables(html)) {
@@ -161,10 +202,15 @@ export function parseFinalsWindow(html, year) {
           days.add(iso(year, Number(slash[1]), Number(slash[2])));
           continue;
         }
-        const named = /^(?:Mon|Tues|Tue|Wednes|Wed|Thurs|Thu|Fri)[a-z]*\s+([A-Za-z]{3,})\.?\s+(\d{1,2})$/i.exec(cell);
+        const named =
+          /^(?:Mon|Tues|Tue|Wednes|Wed|Thurs|Thu|Fri)[a-z]*,?\s+([A-Za-z]{3,})\.?\s+(\d{1,2})(?:,\s*(\d{4}))?$/i.exec(cell);
         if (named) {
           const month = SHORT_MONTHS[named[1].slice(0, 3).toLowerCase()];
-          if (month) days.add(iso(year, month, Number(named[2])));
+          // A cell that names a year has to name the one we asked for, or the
+          // page is not the term it was cached as.
+          if (month && (!named[3] || Number(named[3]) === year)) {
+            days.add(iso(year, month, Number(named[2])));
+          }
         }
       }
     }
@@ -184,13 +230,11 @@ export function closedDays(events, [from, to]) {
     for (const date of event.days) {
       if (date < from || date > to) continue;
       // offices-closed wins a collision. A day that is both is a locked door.
-      if (byDate.get(date) === OFFICES_CLOSED) continue;
-      byDate.set(date, state);
+      if (byDate.get(date)?.state === OFFICES_CLOSED) continue;
+      byDate.set(date, { date, state, name: eventName(event.summary) });
     }
   }
-  return [...byDate.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, state]) => ({ date, state }));
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 // Windows where the grid is misleading but the day is not closed. Autumn 2026's
@@ -254,18 +298,68 @@ export function termWindow(events) {
   return { first: begins.sort()[0], last: ends.sort()[ends.length - 1] };
 }
 
-// Every date the two sources put into a state inside the window, compared.
-// Returns one line per disagreement, empty when they agree.
-export function diffCalendars(a, b, window, labels = ['registrar', 'ics']) {
-  const map = (events) => new Map(closedDays(events, window).map((c) => [c.date, c.state]));
+// Every date the two sources put into a state inside the window, compared, and
+// split by whether a slid holiday explains the difference.
+//
+// `tolerance` is how many days a holiday may have moved before the difference
+// stops being the ICS generator's known defect and starts being news. 0 means
+// the two sources must agree exactly, which is what Autumn gets: it has never
+// needed anything else. See the ICS_SHIFT_DAYS note in build-index.mjs for the
+// measurement the other two seasons come from.
+//
+// `shifted` is reported and `unexplained` is fatal, so a source that names the
+// right holiday on the wrong day does not stop a term shipping, and a source
+// that invents a holiday still does.
+export function diffCalendars(a, b, window, { tolerance = 0, labels = ['registrar', 'ics'] } = {}) {
+  const map = (events) => new Map(closedDays(events, window).map((c) => [c.date, c]));
   const left = map(a);
   const right = map(b);
-  const lines = [];
+  const line = (date) =>
+    `${date}  ${labels[0]}=${left.get(date)?.state ?? 'nothing'}  ` +
+    `${labels[1]}=${right.get(date)?.state ?? 'nothing'}`;
+
+  const leftOnly = [];
+  const rightOnly = [];
+  const unexplained = [];
   for (const date of [...new Set([...left.keys(), ...right.keys()])].sort()) {
-    const l = left.get(date);
-    const r = right.get(date);
+    const l = left.get(date)?.state;
+    const r = right.get(date)?.state;
     if (l === r) continue;
-    lines.push(`${date}  ${labels[0]}=${l ?? 'nothing'}  ${labels[1]}=${r ?? 'nothing'}`);
+    // One date, two states, is never a slid holiday. It is one source calling a
+    // locked door an open one, which is the disagreement that matters most.
+    if (l && r) unexplained.push(line(date));
+    else if (l) leftOnly.push(date);
+    else rightOnly.push(date);
   }
-  return lines;
+
+  // Nearest pair first, so two holidays inside one tolerance window cannot swap
+  // partners and leave both sides looking explained.
+  const candidates = [];
+  for (const l of leftOnly) {
+    for (const r of rightOnly) {
+      if (left.get(l).state !== right.get(r).state) continue;
+      const gap = Math.abs(daysBetween(l, r));
+      if (gap > tolerance) continue;
+      candidates.push({ l, r, gap });
+    }
+  }
+  candidates.sort((x, y) => x.gap - y.gap || x.l.localeCompare(y.l) || x.r.localeCompare(y.r));
+
+  const shifted = [];
+  const usedLeft = new Set();
+  const usedRight = new Set();
+  for (const c of candidates) {
+    if (usedLeft.has(c.l) || usedRight.has(c.r)) continue;
+    usedLeft.add(c.l);
+    usedRight.add(c.r);
+    shifted.push(
+      `${left.get(c.l).name ?? left.get(c.l).state}: ${labels[0]} ${c.l}, ` +
+        `${labels[1]} ${c.r}, ${c.gap} day(s) off`,
+    );
+  }
+  for (const date of [...leftOnly, ...rightOnly]) {
+    if (usedLeft.has(date) || usedRight.has(date)) continue;
+    unexplained.push(line(date));
+  }
+  return { shifted: shifted.sort(), unexplained: unexplained.sort() };
 }

@@ -26,11 +26,12 @@ import {
   toMinutes,
 } from './lib/funnel.mjs';
 import { buildSessions, expandMeeting, mergeIntervals, propagateGroups } from './lib/rooms.mjs';
-import { classify, OFF_CAMPUS, TYPE_VISIBILITY } from './lib/room-safety.mjs';
+import { classify, OFF_CAMPUS, TYPE_VISIBILITY, TYPE_WORDS } from './lib/room-safety.mjs';
 import { indexRefusals, measure, notReady } from './lib/index-guards.mjs';
 import { refusalMessage } from './guards.mjs';
 import {
   closedDays,
+  daysBetween,
   diffCalendars,
   lowConfidence,
   parseFinalsWindow,
@@ -44,8 +45,10 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Bookings with no recoverable weekday get their clock window blocked on all
 // seven days, so a handful of them is honest and a flood of them would delete
-// the index. Measured across the three archives: 0 in 1268, 4 in 1264, 1 in
-// 1262. Twenty is far above anything seen and far below anything that matters.
+// the index. This counts BOOKINGS, which is what the guard compares against,
+// not the deduped slots they collapse into. Measured off stats.unplaceableBookings
+// on the three archives: 0 in 1268, 8 in 1264 (all of them Dreese Lab 280), 1
+// in 1262. Twenty is above anything seen and below anything that matters.
 const MAX_UNPLACEABLE = 20;
 
 const TERM_NAMES = { 2: 'Spring', 4: 'Summer', 8: 'Autumn' };
@@ -68,6 +71,28 @@ const CLOSED_DAY_BOUNDS = {
   4: [1, 5], // Summer. Measured 3 on 1264: Memorial Day, Juneteenth, July 3.
   8: [5, 9], // Autumn. Measured 7 on 1268.
 };
+
+// How far a holiday may have slid between the two sources before the build
+// stops calling it the ICS generator's known defect.
+//
+// The ICS is a third-party regeneration of the Registrar's calendar and it is
+// wrong in two of the three seasons, every year on file. Measured 2026-08-27
+// against all fifteen columns of the five-year view:
+//
+//   Autumn 2023-2027   0 disagreements, and all five exam windows identical
+//   Spring 2024-2028   2 disagreements a year, exam window 1 to 6 days off
+//   Summer 2024-2028   2, 4, 6, 6 and 2, exam window 1 to 6 days off
+//
+// Every one of those 30 lines is a PAIR. The ICS names the right holiday and
+// dates it wrong: Memorial Day on Sunday May 31, Juneteenth on Thursday June
+// 18, MLK Day on Sunday January 18. A university does not close its offices on
+// a Sunday.
+//
+// Giving a source measured wrong a veto is how Spring and Summer ended up with
+// no path to a shipped index at all. So a slid holiday is reported and the
+// Registrar's date ships; a disagreement the slide does not explain is still
+// fatal, in every season. Autumn gets 0 because it has never needed more.
+const ICS_SHIFT_DAYS = { 2: 7, 4: 7, 8: 0 };
 
 function die(message) {
   console.error(`\nFATAL  ${message}`);
@@ -106,20 +131,29 @@ export function calendarFor(term, name, { ics, fiveYear, finals }) {
   const window = termWindow(registrar);
   if (!window) die(`the five-year view gave no ${column} teaching window.`);
 
-  // The publisher of record ships. The ICS is a third-party regeneration and
-  // gets to veto, not to decide.
-  const closed = closedDays(registrar, [window.first, window.last]);
-  const disagreements = diffCalendars(registrar, icsEvents, [window.first, window.last]);
-  if (disagreements.length) {
-    die(
-      `the Registrar and the vendored ICS disagree on ${disagreements.length} date(s) inside ` +
-        `${name}. Neither is picked automatically:\n` +
-        disagreements.map((d) => `         ${d}`).join('\n'),
-    );
+  const season = Number(term.slice(3));
+  const bounds = CLOSED_DAY_BOUNDS[season];
+  const tolerance = ICS_SHIFT_DAYS[season];
+  if (!bounds || tolerance === undefined) {
+    die(`term ${term} has an unknown season digit, so there is no closed-day bound for it.`);
   }
 
-  const bounds = CLOSED_DAY_BOUNDS[Number(term.slice(3))];
-  if (!bounds) die(`term ${term} has an unknown season digit, so there is no closed-day bound.`);
+  // The publisher of record ships. The ICS is a third-party regeneration and
+  // gets to raise its hand, not to decide.
+  const closed = closedDays(registrar, [window.first, window.last]);
+  const { shifted, unexplained } = diffCalendars(registrar, icsEvents, [window.first, window.last], {
+    tolerance,
+  });
+  if (unexplained.length) {
+    die(
+      `the Registrar and the vendored ICS disagree on ${unexplained.length} date(s) inside ` +
+        `${name}, and a slid holiday does not explain it. Neither is picked automatically:\n` +
+        unexplained.map((d) => `         ${d}`).join('\n'),
+    );
+  }
+  for (const line of shifted) {
+    console.warn(`  warn  the vendored ICS slid ${line}. The Registrar's date ships.`);
+  }
   if (closed.length < bounds[0] || closed.length > bounds[1]) {
     die(
       `${closed.length} closed day(s) for ${name}, outside the ${bounds[0]} to ${bounds[1]} ` +
@@ -145,17 +179,34 @@ export function calendarFor(term, name, { ics, fiveYear, finals }) {
   if (finals && !exams) die(`the ${name} finals page parsed to zero exam days.`);
   if (!exams) console.warn(`  warn  no ${name} finals page, using the five-year view for the exam window`);
 
-  for (const [label, events] of [['five-year view', registrar], ['vendored ICS', icsEvents]]) {
+  // The five-year view is the same publisher as the finals page, so those two
+  // must be identical. The ICS is the third party and its window slides in the
+  // same two seasons and by the same handful of days as its holidays do, so it
+  // gets the same tolerance.
+  for (const [label, events, slack] of [
+    ['five-year view', registrar, 0],
+    ['vendored ICS', icsEvents, tolerance],
+  ]) {
     const other = examWindow(events, window.last);
     if (!other) die(`the ${label} gave no ${name} exam window.`);
     if (!exams) {
       exams = other;
       continue;
     }
-    if (other.start !== exams.start || other.end !== exams.end) {
+    const slip = Math.max(
+      Math.abs(daysBetween(other.start, exams.start)),
+      Math.abs(daysBetween(other.end, exams.end)),
+    );
+    if (slip > slack) {
       die(
         `${name} exam window disagrees. ${finals ? 'finals page' : 'five-year view'}=` +
           `${exams.start}..${exams.end}, ${label}=${other.start}..${other.end}`,
+      );
+    }
+    if (slip) {
+      console.warn(
+        `  warn  the ${label} puts ${name} finals at ${other.start} to ${other.end}, ${slip} ` +
+          `day(s) off ${exams.start} to ${exams.end}. The Registrar's window ships.`,
       );
     }
   }
@@ -504,12 +555,6 @@ async function main() {
     );
   }
 
-  // The instruction window is the min and max of harvested meeting dates, never
-  // searchableTermsV2, whose dates are eleven-month search visibility windows:
-  // Autumn 2026 "starts" 2026-02-09 by that field.
-  const allDates = sessions.flat().sort();
-  const instruction = [allDates[0], allDates[allDates.length - 1]];
-
   const name = termName(term);
   if (!name) die(`cannot name term ${term}. Refusing to guess rather than shipping a wrong label.`);
 
@@ -526,8 +571,21 @@ async function main() {
     finals: existsSync(finalsPath) ? readFileSync(finalsPath, 'utf8') : null,
   });
 
+  // The window the app gates on, and it is the Registrar's own, never the min
+  // and max of harvested meeting dates.
+  //
+  // Autumn 2026 harvests as 2026-08-10 to 2026-12-11 because Anatomy 6511 and
+  // Pharmacy 7110 keep the medical school's calendar. 2026-12-11 is exactly
+  // exams.start, so a gate built on the harvest lets the app offer a 727-seat
+  // lecture hall as free until 10:50 pm on the first day of finals. It is also
+  // never searchableTermsV2, whose dates are eleven-month search visibility
+  // windows: Autumn 2026 "starts" 2026-02-09 by that field.
+  const instruction = calendar.instruction;
+  const observed = sessions.flat().sort();
+
   console.log(
-    `\n${name} teaching ${calendar.instruction[0]} to ${calendar.instruction[1]}, ` +
+    `\n${name} teaching ${calendar.instruction[0]} to ${calendar.instruction[1]} ` +
+      `(harvested meetings run ${observed[0]} to ${observed[observed.length - 1]}), ` +
       `${calendar.closed.length} closed day(s), finals ${calendar.exams.start} to ${calendar.exams.end}`,
   );
   for (const d of calendar.closed) console.log(`  ${d.date}  ${d.state}`);
@@ -561,15 +619,29 @@ async function main() {
       'unplaceable=[start,end,session] is a real booking whose weekday the API never gave, ' +
       'blocked on all seven days of that session; ' +
       'vis shown|secondary from facilityType; ga=false means the Registrar does not list ' +
-      'the room as general assignment, which ranks it lower and never hides it',
+      'the room as general assignment, which ranks it lower and never hides it; ' +
+      'closed is keyed by date, state offices-closed means locked doors and no-classes ' +
+      'means an open campus with nothing meeting; types maps facilityType to the word ' +
+      'the app may print, and a type absent from it has no published decode',
     gaPulled: gaFile._meta?.pulled ?? null,
     restrictedPulled: restrictedFile._meta?.pulled ?? null,
     // The Registrar's own teaching window, not the min and max of harvested
     // meeting dates. Every closed day below is inside it.
     teaching: calendar.instruction,
-    closed: calendar.closed,
+    // Keyed by date, not a list. A screen answering "is today a closed day"
+    // does one lookup, and the shape cannot be read correctly by a reader that
+    // forgot it was a list, which is a bug that ships silently as "free".
+    closed: Object.fromEntries(
+      calendar.closed.map(({ date, state, name: holiday }) => [
+        date,
+        holiday ? { state, name: holiday } : { state },
+      ]),
+    ),
     exams: calendar.exams,
     lowConfidence: calendar.lowConfidence,
+    // The facilityType vocabulary, so the app does not keep a second copy that
+    // silently drops the codes it has not heard of. 5C is absent on purpose.
+    types: TYPE_WORDS,
     sessions,
     rooms: sorted,
   };
@@ -586,7 +658,11 @@ async function main() {
   }
 
   if (/"generated"/.test(json)) die('generated must not appear inside the room index.');
-  if (/"lat"|"lon"|"name"/.test(json)) die('geography belongs in buildings.json, not here.');
+  // Scoped to the rooms rather than the whole file. A closed day carries the
+  // holiday's name, which is the publisher's own words and not geography.
+  if (/"lat"|"lon"|"name"/.test(JSON.stringify(sorted))) {
+    die('geography belongs in buildings.json, not here.');
+  }
   if (/\d{1,2}:\d{2}\s*[ap]m/i.test(json)) die('a raw clock string reached the room index.');
 
   // The refusals. Everything above this point is a shape check; this is the one

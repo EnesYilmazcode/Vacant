@@ -21,7 +21,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { fetchText } from './lib/fetch.mjs';
-import { parseFiveYear, parseIcs } from './lib/calendar.mjs';
+import { parseFiveYear, parseFiveYearColumns, parseIcs } from './lib/calendar.mjs';
 
 const ICS_URL = 'https://mcmanning.github.io/ohio-state-ics/academic.ics';
 const FIVE_YEAR_URL =
@@ -53,11 +53,14 @@ async function writeAtomic(path, text) {
   await rename(tmp, path);
 }
 
-// The finals page for one term, discovered from the index. Never a built slug:
-// the index also carries session-1 pages whose names break the season-year
-// pattern, and a constructed URL 404s silently as a themed error page.
-export function findFinalsLink(indexHtml, name) {
-  const want = String(name ?? '').toLowerCase().replace(/\s+/g, '-');
+// Every finals page the index links, discovered rather than built. A
+// constructed URL 404s silently as a themed error page, which validates and
+// caches as a real one.
+//
+// `dated` is the subset build-index.mjs can ever ask for: it looks a page up by
+// the term it is building, so the slug has to carry a season and a year. The
+// index also lists session-1 pages, whose slugs carry neither.
+export function finalsLinks(indexHtml) {
   const links = new Map();
   for (const m of String(indexHtml ?? '').matchAll(/href="([^"]*finals-schedule[^"]*)"/gi)) {
     const href = m[1];
@@ -66,8 +69,10 @@ export function findFinalsLink(indexHtml, name) {
     if (!slug || slug === 'final-exams-schedule') continue;
     links.set(slug, href.startsWith('http') ? href : `${ORIGIN}${href}`);
   }
-  const hit = [...links.keys()].find((slug) => slug.startsWith(want));
-  return { slug: hit ?? null, url: hit ? links.get(hit) : null, all: [...links.keys()] };
+  const dated = [...links.keys()].filter((slug) =>
+    /^(autumn|spring|summer)-\d{4}-finals-schedule$/.test(slug),
+  );
+  return { all: [...links.keys()], dated, url: (slug) => links.get(slug) };
 }
 
 async function save(url, path, { validate, dryRun, label }) {
@@ -112,9 +117,16 @@ async function main() {
   });
   // The rendered text needs JavaScript, but the table markup sits in the raw
   // HTML, which is why this scrapes rather than driving a browser.
-  const autumn = parseFiveYear(five, 'AUTUMN 2026');
-  if (!autumn.length) die('the five-year view parsed to zero Autumn 2026 rows.');
-  console.log(`  ${autumn.length} Autumn 2026 rows`);
+  //
+  // Read off the page's own headers. The columns roll every year, so a term
+  // named here would refuse a healthy page the first time Autumn 2026 drops off
+  // the left edge, and this is the script whose header tells you to run it when
+  // a term rolls over.
+  const columns = parseFiveYearColumns(five);
+  if (!columns.length) die('the five-year view has no term columns, so its tables moved.');
+  const empty = columns.filter((c) => !parseFiveYear(five, c).length);
+  if (empty.length) die(`the five-year view parsed to zero rows for ${empty.join(', ')}.`);
+  console.log(`  ${columns.length} term columns: ${columns.join(', ')}`);
 
   const finalsIndex = await save(FINALS_INDEX_URL, join(CACHE_DIR, 'finals-index.html'), {
     label: 'finals index',
@@ -122,18 +134,21 @@ async function main() {
     validate: (t) => (/finals-schedule/i.test(t) ? null : 'no finals links'),
   });
 
-  for (const name of ['Autumn 2026', 'Spring 2027']) {
-    const { slug, url, all } = findFinalsLink(finalsIndex, name);
-    if (!url) {
-      console.warn(`  warn  no finals page for ${name}. The index lists: ${all.join(', ')}`);
-      continue;
-    }
-    await save(url, join(CACHE_DIR, `${slug}.html`), {
+  // Every dated page the index lists, not a hand-kept pair of term names. The
+  // Summer finals page sat on that index for the whole term and was never
+  // cached, so the Summer build fell back to the five-year view with no third
+  // source to check it against.
+  const finals = finalsLinks(finalsIndex);
+  if (!finals.dated.length) die(`no dated finals page on the index. It lists: ${finals.all.join(', ')}`);
+  for (const slug of finals.dated) {
+    await save(finals.url(slug), join(CACHE_DIR, `${slug}.html`), {
       label: slug,
       dryRun,
       validate: (t) => (/<table/i.test(t) ? null : 'no tables'),
     });
   }
+  const skipped = finals.all.filter((slug) => !finals.dated.includes(slug));
+  if (skipped.length) console.log(`  no season and year in the slug, not cached: ${skipped.join(', ')}`);
 
   const meta = {
     fetched: localDate(),

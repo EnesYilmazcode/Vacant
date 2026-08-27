@@ -3,10 +3,18 @@
 // The shapes here are copied from the real archives. The DL0280 rows are the
 // nine timed bookings with no recoverable weekday, verbatim except for the
 // instructors array the funnel strips.
+//
+// The three real dry runs at the bottom are the exception, and they are worth
+// the second they cost: everything above them passed on a branch where two of
+// the three seasons could not be built at all.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { invert, termName } from '../build-index.mjs';
+import { TYPE_WORDS } from '../lib/room-safety.mjs';
 
 const SESSION = { startDate: '2026-05-11', endDate: '2026-07-30' };
 
@@ -210,4 +218,48 @@ test('termName refuses a term it cannot name rather than guessing', () => {
   assert.equal(termName('1262'), 'Spring 2026');
   assert.equal(termName('1264'), 'Summer 2026');
   assert.equal(termName('1263'), null);
+});
+
+// ---------------------------------------------------------------- real builds
+
+const BUILD = fileURLToPath(new URL('../build-index.mjs', import.meta.url));
+const dryRun = (term) =>
+  spawnSync(process.execPath, [BUILD, term, '--dry-run'], { encoding: 'utf8' });
+
+test('every archived term still builds', () => {
+  // Spring and Summer both exited 1 before writing anything, because the build
+  // let the vendored ICS veto the Registrar on dates the ICS has been measured
+  // wrong on since 2021. A source you have measured as wrong is not a check,
+  // and giving it a veto left two of the three seasons with no path to a
+  // shipped index. See ICS_SHIFT_DAYS in build-index.mjs.
+  for (const term of ['1262', '1264', '1268']) {
+    const run = dryRun(term);
+    assert.equal(run.status, 0, `${term} exited ${run.status}: ${run.stderr}`);
+    assert.match(run.stdout, /DRY RUN, nothing written\./);
+  }
+});
+
+test('the slid holidays are reported on the terms that have them, not swallowed', () => {
+  // A build that silently drops the disagreement is the same failure in the
+  // other direction. Summer 2026 must still say all three of its holidays moved.
+  const summer = dryRun('1264');
+  const slid = summer.stderr.match(/the vendored ICS slid [^:]+:/g) ?? [];
+  assert.equal(slid.length, 3, summer.stderr);
+  assert.ok(slid.some((l) => l.includes('Memorial Day')), summer.stderr);
+  assert.ok(dryRun('1268').stderr.includes('the vendored ICS slid') === false);
+});
+
+test('every shipped room type has a word, or is one nobody has decoded', () => {
+  // 95 rooms shipped with a type the app had no word for, so a conference room
+  // and a lecture hall rendered identically. The vocabulary lives in the index
+  // now; 5C is the one code with no published decode and it ships no word.
+  const index = JSON.parse(
+    readFileSync(new URL('../../data/rooms-1268.json', import.meta.url), 'utf8'),
+  );
+  assert.deepEqual(index.types, TYPE_WORDS);
+  const missing = new Set();
+  for (const room of Object.values(index.rooms)) {
+    if (!index.types[room.type]) missing.add(room.type);
+  }
+  assert.deepEqual([...missing], ['5C']);
 });

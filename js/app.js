@@ -1179,7 +1179,10 @@ function attachBearing(id) {
           ? 360 - e.alpha
           : null;
       if (heading == null) return;
-      arrow.hidden = false;
+      // `hidden` is an HTMLElement property and this is an SVG element, so the
+      // assignment sets a JS property nobody reads and leaves the attribute in
+      // place. The needle would never have appeared.
+      arrow.removeAttribute('hidden');
       arrow.style.transform = `rotate(${(bearing - heading + 360) % 360}deg)`;
       label.textContent = word;
     };

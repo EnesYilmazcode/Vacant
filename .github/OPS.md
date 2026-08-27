@@ -34,6 +34,15 @@ A weekly job broken for a month is then one issue with four comments. The daily
 watch passes a second argument, `144`, which is a six day quiet window, so a
 condition that persists until a human acts nags about weekly instead of daily.
 
+GitHub's issue list is behind its own writes, so the marker alone is not enough.
+Fired against the real API on 2026-08-27, three alerts 2 and 4 seconds apart all
+read an empty list and all filed three separate issues, while a pair 15 seconds
+apart deduplicated correctly. After filing, `alert.sh` now waits up to 25 seconds
+for the list to show what it just wrote, and closes the higher-numbered twin if
+one turns up. A twin that surfaces later than that is closed by the next alert.
+The race cannot be prevented outright: the list is the only place to look and it
+is late.
+
 Seven titles exist, and each gets its own issue. The two watch scripts choose
 their own rather than letting the workflow guess, because each of them can fail
 in more than one way and the title becomes a claim in a place nobody goes back
@@ -167,9 +176,13 @@ Honest list, because a workflow that parses is not a workflow that runs.
 - No workflow in this directory has been executed by GitHub Actions. The YAML
   parses and every `run:` body was extracted from the file and run by hand, but
   the runner, the `GITHUB_TOKEN` permissions and the push have not been tested.
-- `alert.sh` has been run against a stand-in `gh` covering create, comment, both
-  quiet-window branches and both usage errors. It has never talked to the real
-  GitHub API, and it has never filed a real issue.
+- `alert.sh` has filed real issues exactly once, on 2026-08-27, when a stand-in
+  `gh` failed to resolve on Windows and the real one answered instead. Every
+  issue that run created was deleted afterwards and no pre-existing issue was
+  touched. That accident is where the list lag above was measured. It has never
+  run inside Actions. Everything else is covered by a stand-in `gh` in
+  `scripts/test/alert.test.mjs`: create, comment, the twin collapse, a list that
+  never catches up, both quiet-window branches and both usage errors.
 - The 60-day inactivity disable is untested. Nothing here has ever been quiet for
   60 days.
 - The out-of-band check above is not scheduled anywhere. It has only ever been

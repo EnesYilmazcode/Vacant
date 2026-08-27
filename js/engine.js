@@ -443,7 +443,14 @@ function sweep(rooms, opts) {
     // and ONLY so the class schedule can be swept. No usable figure is emitted
     // from it, because "free for 20 hours" at 3am in a building nobody knows is
     // open is an assumed window wearing a different hat.
-    const [open, close] = hoursKnown ? hours : [dayStart, dayEnd];
+    //
+    // The start is clamped to DAY_START or to now, whichever is earlier. The
+    // clamp is there so a room with no morning class does not report "free
+    // since 00:00", which is true and useless. Clamping it past now instead
+    // would put the room in a WAIT and make the row read "from 7:00 AM", and
+    // 7:00 AM is a bound on the class schedule, not an hour anybody published
+    // for that door.
+    const [open, close] = hoursKnown ? hours : [Math.min(dayStart, now), dayEnd];
 
     // On a day the registrar publishes as having no classes, the busy grid is
     // not a description of the room. 788 of 863 sampled Wednesday rows are

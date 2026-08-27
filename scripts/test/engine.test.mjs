@@ -680,13 +680,26 @@ test('the three hours answers never collapse into two', () => {
 
 test('unknown hours are swept over the schedule bounds, not the whole 24 hours', () => {
   // The old fallback was 0 to 1440, which is an assumed window and the most
-  // generous one available. These bounds only ever shrink what is offered.
+  // generous one available. "Free since midnight" is true and useless.
+  const room = [{ id: 'X', b: '279', busy: [] }];
+  const base = { origin: ORIGIN, day: 1, buildings: BUILDINGS, hoursFor: () => undefined };
+  const [daytime] = rank(room, { ...base, now: at(9) });
+  assert.equal(daytime.availableAt, DAY_START);
+  assert.equal(daytime.nextClassAt, DAY_END);
+  assert.equal(daytime.usable, null);
+});
+
+test('an unknown-hours room is never made to wait for an hour nobody published', () => {
+  // At 03:00 the schedule bound is 07:00, and a row that waits for it reads
+  // "from 7:00 AM". Nobody published 7:00 for that door. It is a bound on the
+  // class grid, so it can shorten what we offer and it can never become an
+  // opening time.
   const [row] = rank([{ id: 'X', b: '279', busy: [] }], {
     origin: ORIGIN, now: at(3), day: 1, buildings: BUILDINGS, hoursFor: () => undefined,
   });
-  assert.equal(row.availableAt, DAY_START);
-  assert.equal(row.nextClassAt, DAY_END);
-  assert.equal(row.usable, null);
+  assert.equal(row.wait, 0);
+  assert.equal(row.availableAt, at(3));
+  assert.equal(row.usable, null, 'and still no window, because we still do not know');
 });
 
 test('a malformed hours pair reads as not published rather than as a window', () => {

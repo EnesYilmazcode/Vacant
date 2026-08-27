@@ -2,20 +2,24 @@
 // locked building on one bar of LTE who needs an answer now.
 //
 // Two caches, because the shell and the schedule change on different clocks. The
-// shell is code and it changes when Enes deploys. The schedule is 26.8 KB
+// shell is code and it changes when Enes deploys. The schedule is 26.7 KB
 // gzipped, it changes weekly, and it changes its own filename at term rollover.
 // One cache would either re-download the room index on every deploy or pin an
 // installed icon to last month's app.js forever.
 //
-// Measured with gzip -9 over the committed files: shell 44,657 bytes, data
-// 72,884. The first commit of this file guessed 32 and 30 KB without running
-// anything, and both numbers were wrong.
+// Measured over the committed blobs, which is the copy Pages serves:
+// `git show HEAD:<file> | gzip -9 -c | wc -c` on gzip 1.14. Shell 45,415 bytes,
+// data 72,744. Running the same command over a Windows working tree gives a
+// different answer, because git checks the text files out with CRLF. The first
+// commit of this file guessed 32 and 30 KB without running anything, both were
+// wrong, and the correction then went stale by 758 bytes. scripts/test/sw.test.mjs
+// recomputes both now.
 
 // Stamped by scripts/stamp-sw.mjs before the commit lands. The authored
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-d915246';
+const SHELL_CACHE = 'vacant-shell-5feeea1';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also

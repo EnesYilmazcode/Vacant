@@ -741,16 +741,18 @@ portfolio repo, not this one. The fix is the `<link rel="icon">`; the file is
 only what it points at. Measured after: a cold headless load of `/Vacant/` logs
 zero non-200 responses, where before it logged one.
 
-**Two caches, split by how often the bytes change**, measured gzipped on the
-committed files:
+**Two caches, split by how often the bytes change.** Sizes are the committed
+blobs, `git show HEAD:<file> | gzip -9 -c | wc -c`, which is the copy Pages
+serves. The same command over a Windows working tree answers differently,
+because git checks the text files out with CRLF.
 
 ```
-shell   index.html 5.6  js/app.js 12.9  js/map.js 7.9  js/engine.js 4.4
-        js/campus.js 1.6  js/pwa.js 2.2  js/install.js 3.3  js/firstrun.js 2.8
-        manifest and the three icons 2.9              total 44,657 bytes
-data    rooms-1268.json 26.8  buildings-1268.json 2.5
-        buildings-hours.json 3.6  campus.json 38.1
-        current.json 0.2                              total 72,884 bytes
+shell   index.html 5.8  js/app.js 12.8  js/map.js 7.8  js/engine.js 4.3
+        js/campus.js 1.6  js/pwa.js 2.2  js/install.js 3.9  js/firstrun.js 3.0
+        manifest and the three icons 2.9              total 45,415 bytes
+data    rooms-1268.json 26.7  buildings-1268.json 2.5
+        buildings-hours.json 3.5  campus.json 38.1
+        current.json 0.2                              total 72,744 bytes
 ```
 
 `SHELL_CACHE` carries the commit SHA and is therefore replaced on every deploy;

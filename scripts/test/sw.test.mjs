@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -212,4 +213,47 @@ test('term eviction only touches files that are actually term keyed', () => {
   assert.ok(keeps('buildings-1268.json'));
   assert.equal(keeps('rooms-1264.json'), false, 'kept last term');
   assert.equal(keeps('buildings-1262.json'), false, 'kept last term');
+});
+
+// gzip -9 over the bytes Pages serves. Text files are checked out with CRLF on
+// Windows and served with LF, so the CR has to come back out before compressing
+// or the answer is a local artefact rather than the transfer size.
+function gzipped(file) {
+  const raw = readFileSync(join(ROOT, file));
+  const text = /[.](html|js|mjs|json|webmanifest|css)$/.test(file);
+  return gzipSync(text ? Buffer.from(raw.toString('utf8').replace(/\r\n/g, '\n'), 'utf8') : raw, { level: 9 }).length;
+}
+
+test('the gzip figures in the header are the sizes of the files it caches', () => {
+  // This is the comment that corrected an earlier pair of guessed numbers, and
+  // it then went stale by 758 bytes across three edits to the shell. GNU gzip
+  // and node's zlib disagree by about a tenth of a percent at the same level, so
+  // the check is one percent wide: tight enough to catch a figure that stopped
+  // describing the files, loose enough to survive the two tools.
+  // `sw` has the comments stripped, so the claim is read from the raw file.
+  const claimed = source.match(/Shell ([0-9,]+) bytes,[^0-9]*([0-9,]+)/);
+  assert.ok(claimed, 'no measured shell and data figures in the sw.js header');
+  const near = (label, said, real) => {
+    const off = Math.abs(said - real) / real;
+    assert.ok(off < 0.01, `${label} says ${said} and the files are ${real}, ${(off * 100).toFixed(1)}% out`);
+  };
+
+  const shell = shellAssets()
+    .filter((asset) => asset !== SCOPE)
+    .reduce((total, asset) => total + gzipped(asset.slice(SCOPE.length)), 0);
+  near('shell', Number(claimed[1].replace(/,/g, '')), shell);
+
+  const current = JSON.parse(readFileSync(join(ROOT, 'data', 'current.json'), 'utf8'));
+  const at = sw.indexOf('const WARM_ALWAYS = [');
+  assert.ok(at > 0, 'no WARM_ALWAYS array');
+  const warm = sw
+    .slice(at + 'const WARM_ALWAYS = ['.length, sw.indexOf(']', at))
+    .split(',')
+    .map((entry) => entry.trim().replace(/^'|'$/g, ''))
+    .filter(Boolean);
+  const data = ['data/current.json', current.rooms, current.buildings, ...warm].reduce(
+    (total, file) => total + gzipped(file),
+    0,
+  );
+  near('data', Number(claimed[2].replace(/,/g, '')), data);
 });

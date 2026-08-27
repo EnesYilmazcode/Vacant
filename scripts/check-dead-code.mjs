@@ -66,7 +66,18 @@ for (const [file, src] of sources) {
     }
   }
 
-  for (const m of src.matchAll(/^(export\s+)?(?:const|let|function|class)\s+([A-Za-z_$][\w$]*)/gm)) {
+  // Default and namespace imports, which the braces pattern above never sees.
+  for (const m of src.matchAll(/import\s+(?:(\w+)|\*\s+as\s+(\w+))\s+from/g)) {
+    const name = m[1] ?? m[2];
+    if (name && countUses(src, name) < 2) findings.push({ rel, kind: 'unused import', name });
+  }
+
+  // `async` must be in the pattern. Without it 17 top-level declarations in
+  // this repo were invisible, including the exported fetchWith and mapLimit,
+  // while the tool still printed "no dead code" -- a stronger claim than it
+  // could support.
+  const DECL = /^(export\s+)?(?:async\s+)?(?:const|let|function|class)\s+([A-Za-z_$][\w$]*)/gm;
+  for (const m of src.matchAll(DECL)) {
     const exported = Boolean(m[1]);
     const name = m[2];
     if (exported) {

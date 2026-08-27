@@ -5,7 +5,7 @@
 // them at 60 fps would pin a phone's main thread, and the flyover in particular
 // only ever changes the transform, never the geometry.
 
-import { decodeShape } from './campus.js';
+import { aspect, decodeShape } from './campus.js';
 
 // Dark, because the app is used at night and in stairwells, and because the map
 // is the surface of the app rather than a panel inside it.
@@ -20,17 +20,27 @@ export const PALETTE = {
   targetGlow: 'rgba(255, 77, 61, 0.22)',
   you: '#4cc2ff',
   youHalo: 'rgba(76, 194, 255, 0.16)',
+  guess: '#8b94a2',
   line: '#ff6a5a',
 };
 
-// How much of the bbox the settled view shows. Below 1 it zooms in, so the
-// user's surroundings fill the screen rather than the whole 2.7 km.
+// How much of the basemap the settled view shows across its shorter axis.
 const SETTLED_SPAN = 0.42;
 
 // One offscreen render of everything that never moves.
+//
+// The canvas is NOT square. Grid space is not square either: toGrid normalises
+// a non-square bounding box to 0..grid on both axes independently, so a square
+// canvas compressed campus by 17% east to west, made every building 21% too
+// tall for its width, and rotated the you-to-room bearing by up to 10 degrees
+// from the real direction. The x axis carries the aspect correction.
 export function buildBasemap(campus, pixelsPerGrid) {
-  const w = Math.ceil(campus.grid * pixelsPerGrid);
-  const h = Math.ceil(campus.grid * pixelsPerGrid);
+  const ar = aspect(campus);
+  const sx = pixelsPerGrid * ar;
+  const sy = pixelsPerGrid;
+  const w = Math.ceil(campus.grid * sx);
+  const h = Math.ceil(campus.grid * sy);
+
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
@@ -40,10 +50,10 @@ export function buildBasemap(campus, pixelsPerGrid) {
   g.fillRect(0, 0, w, h);
 
   // Grid y runs north-up; canvas y runs down.
-  const px = (x) => x * pixelsPerGrid;
-  const py = (y) => h - y * pixelsPerGrid;
+  const px = (x) => x * sx;
+  const py = (y) => h - y * sy;
 
-  const path = (feature) => {
+  const trace = (feature) => {
     g.beginPath();
     for (const ring of feature) {
       const pts = decodeShape(ring);
@@ -54,20 +64,20 @@ export function buildBasemap(campus, pixelsPerGrid) {
   };
 
   for (const f of campus.layers.landscape ?? []) {
-    path(f);
+    trace(f);
     g.fillStyle = PALETTE.landscape;
     // Even-odd, so a feature's inner rings are holes rather than overpaint.
     g.fill('evenodd');
   }
 
   for (const f of campus.layers.water ?? []) {
-    path(f);
+    trace(f);
     g.fillStyle = PALETTE.water;
     g.fill('evenodd');
   }
 
   g.strokeStyle = PALETTE.street;
-  g.lineWidth = Math.max(1, 3 * pixelsPerGrid * 400);
+  g.lineWidth = Math.max(1, 3 * sy * 400);
   g.lineJoin = 'round';
   g.lineCap = 'round';
   for (const f of campus.layers.street ?? []) {
@@ -80,23 +90,26 @@ export function buildBasemap(campus, pixelsPerGrid) {
     }
   }
 
-  g.lineWidth = Math.max(0.5, 1.2 * pixelsPerGrid * 400);
+  g.lineWidth = Math.max(0.5, 1.2 * sy * 400);
   for (const f of campus.layers.building ?? []) {
-    path(f);
+    trace(f);
     g.fillStyle = PALETTE.building;
     g.fill('evenodd');
     g.strokeStyle = PALETTE.buildingEdge;
     g.stroke();
   }
 
-  return { canvas: c, pixelsPerGrid, size: w };
+  return { canvas: c, sx, sy, width: w, height: h, size: h };
 }
 
-// The view: where on the basemap we are looking, and how hard we are zoomed.
-// `span` is the fraction of the grid visible across the shorter screen axis.
+// Where we are looking, and how hard we are zoomed. `span` is the fraction of
+// the basemap's shorter axis visible across the shorter screen axis.
 export function makeView({ cx, cy, span, rotation = 0 }) {
   return { cx, cy, span, rotation };
 }
+
+const viewScale = (basemap, view, width, height) =>
+  Math.min(width, height) / (view.span * basemap.size);
 
 // Draw one frame. Everything that moves is a transform on a single drawImage.
 export function drawFrame(ctx, basemap, view, { width, height, dpr = 1 }) {
@@ -105,30 +118,22 @@ export function drawFrame(ctx, basemap, view, { width, height, dpr = 1 }) {
   ctx.fillStyle = PALETTE.bg;
   ctx.fillRect(0, 0, width, height);
 
-  const shorter = Math.min(width, height);
-  const scale = shorter / (view.span * basemap.size);
-
+  const scale = viewScale(basemap, view, width, height);
   ctx.translate(width / 2, height / 2);
   ctx.rotate(view.rotation);
   ctx.scale(scale, scale);
-  // Grid y is north-up and the basemap already flipped it, so cy maps through
-  // the same flip here.
-  ctx.translate(-view.cx * basemap.pixelsPerGrid, -(basemap.size - view.cy * basemap.pixelsPerGrid));
+  ctx.translate(-view.cx * basemap.sx, -(basemap.height - view.cy * basemap.sy));
 
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(basemap.canvas, 0, 0);
   ctx.restore();
-  return { scale, shorter };
 }
 
 // Grid coordinates to screen pixels, for anything drawn on top of the basemap.
 export function project([gx, gy], basemap, view, { width, height }) {
-  const shorter = Math.min(width, height);
-  const scale = shorter / (view.span * basemap.size);
-  const bx = gx * basemap.pixelsPerGrid;
-  const by = basemap.size - gy * basemap.pixelsPerGrid;
-  const dx = (bx - view.cx * basemap.pixelsPerGrid) * scale;
-  const dy = (by - (basemap.size - view.cy * basemap.pixelsPerGrid)) * scale;
+  const scale = viewScale(basemap, view, width, height);
+  const dx = (gx * basemap.sx - view.cx * basemap.sx) * scale;
+  const dy = (basemap.height - gy * basemap.sy - (basemap.height - view.cy * basemap.sy)) * scale;
   const cos = Math.cos(view.rotation);
   const sin = Math.sin(view.rotation);
   return [width / 2 + dx * cos - dy * sin, height / 2 + dx * sin + dy * cos];
@@ -186,13 +191,30 @@ export function drawTarget(ctx, { footprint, from, to, label, dpr = 1, width, he
   ctx.restore();
 }
 
-// You. The accuracy radius is drawn honestly rather than as a confident point,
-// because a 100 m fix can swap the top two results.
-export function drawYou(ctx, { at, accuracyPx = 0, dpr = 1, width, height }, basemap, view) {
+// You.
+//
+// `guess` means we never got a fix and this is the Oval standing in. Drawing
+// that as a solid dot makes the one point we are least sure of look like the
+// most confident thing on the map, so it is drawn hollow and muted instead.
+// A real fix draws its accuracy radius, because a 100 m circle can swap the
+// top two results and the user deserves to see that.
+export function drawYou(ctx, { at, accuracyPx = 0, guess = false, dpr = 1, width, height }, basemap, view) {
   if (!at) return;
   ctx.save();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const [x, y] = project(at, basemap, view, { width, height });
+
+  if (guess) {
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = PALETTE.guess;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 9, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    return;
+  }
 
   if (accuracyPx > 6) {
     ctx.beginPath();

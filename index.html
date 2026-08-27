@@ -19,6 +19,11 @@
     --warn: #ffb02e;
     --safe-b: env(safe-area-inset-bottom, 0px);
   }
+  /* Author-origin `display` beats the UA sheet's `[hidden] { display: none }`
+     regardless of specificity, so `#ask { display: flex }` made the hidden
+     attribute inert and the question overlay could never be dismissed. The app
+     could not leave its first screen. */
+  [hidden] { display: none !important; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; }
   body {
@@ -64,7 +69,11 @@
     appearance: none; background: var(--card); border: 1px solid var(--line); color: var(--fg);
     font: inherit; padding: .6rem .8rem; border-radius: 10px; min-height: 44px;
   }
-  #ask:not(.ready) .opts, #ask:not(.ready) .until { opacity: .45; pointer-events: none; }
+  /* pointer-events blocks taps but NOT keyboard activation, so Tab+Enter
+     before boot() resolved reached choose() with no data and threw. The
+     buttons carry `disabled` in the markup and app.js clears it when ready;
+     this is only the dimming. */
+  #ask:not(.ready) .opts, #ask:not(.ready) .until { opacity: .45; }
   #ask:not(.ready) .loading { opacity: 1; }
   .loading { color: var(--dim); font-size: .82rem; opacity: 0; transition: opacity .3s; }
 
@@ -128,11 +137,11 @@
   <p class="q">How long do you need?</p>
   <p class="sub">A room near you, open, and free for that long once you get there.</p>
   <div class="opts">
-    <button class="opt primary" data-min="30">30 min</button>
-    <button class="opt" data-min="60">1 hour</button>
-    <button class="opt" data-min="120">2 hours</button>
+    <button class="opt primary" data-min="30" disabled>30 min</button>
+    <button class="opt" data-min="60" disabled>1 hour</button>
+    <button class="opt" data-min="120" disabled>2 hours</button>
   </div>
-  <label class="until">until <input id="until" type="time" aria-label="I need a room until"></label>
+  <label class="until">until <input id="until" type="time" aria-label="I need a room until" disabled></label>
   <p class="loading">finding campus&hellip;</p>
 </section>
 

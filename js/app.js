@@ -31,21 +31,24 @@ const FIX_TIMEOUT_MS = 8000;
 const MAX_WAIT_MIN = 90;
 
 const $ = (id) => document.getElementById(id);
+
 const state = {
   campus: null,
   basemap: null,
   view: null,
   rooms: null,
   buildings: null,
-  hours: null,
+  hoursTerm: null,
   current: null,
   origin: null,
   accuracy: null,
   originIsGuess: true,
   needed: Number(safeGet(KEY)) || 30,
   results: [],
+  soonest: null,
   selected: null,
   settled: false,
+  ready: false,
 };
 
 function safeGet(k) {
@@ -59,7 +62,7 @@ function safeSet(k, v) {
   try {
     localStorage.setItem(k, v);
   } catch {
-    /* private mode, a remembered duration is not worth an error */
+    /* private mode; a remembered duration is not worth an error */
   }
 }
 
@@ -77,22 +80,30 @@ const isoDate = (d) =>
 
 let raf = 0;
 let flyoverStart = 0;
+let lastSize = { w: 0, h: 0, dpr: 0 };
 const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-function sizeCanvas() {
+// Assigning canvas.width or .height reallocates the backing store and resets
+// every context property, even when the value is unchanged. Doing that per
+// frame on a DPR-2 phone reallocates a full viewport bitmap sixty times a
+// second, which is the cost the offscreen basemap exists to avoid.
+function surface() {
   const c = $('map');
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const w = c.clientWidth;
   const h = c.clientHeight;
-  c.width = Math.round(w * dpr);
-  c.height = Math.round(h * dpr);
+  if (w !== lastSize.w || h !== lastSize.h || dpr !== lastSize.dpr) {
+    c.width = Math.round(w * dpr);
+    c.height = Math.round(h * dpr);
+    lastSize = { w, h, dpr };
+  }
   return { ctx: c.getContext('2d'), width: w, height: h, dpr };
 }
 
 function render(now) {
   raf = requestAnimationFrame(render);
   if (!state.basemap) return;
-  const { ctx, width, height, dpr } = sizeCanvas();
+  const { ctx, width, height, dpr } = surface();
 
   if (!state.settled) {
     // Slow drift over campus. Nothing here is on the critical path: it is what
@@ -108,43 +119,43 @@ function render(now) {
   }
 
   drawFrame(ctx, state.basemap, state.view, { width, height, dpr });
+  if (!state.settled || !state.selected) return;
 
-  if (state.settled && state.selected) {
-    const b = state.buildings[state.selected.building];
-    const target = b ? toGrid([b.lon, b.lat], state.campus) : null;
-    const you = state.origin ? toGrid([state.origin.lon, state.origin.lat], state.campus) : null;
-    drawTarget(
-      ctx,
-      {
-        footprint: footprintNear(target),
-        from: you,
-        to: target,
-        label: `${state.selected.walk} min walk`,
-        dpr,
-        width,
-        height,
-      },
-      state.basemap,
-      state.view,
-    );
-    if (you) {
-      const shorter = Math.min(width, height);
-      const scale = shorter / (state.view.span * state.basemap.size);
-      const gridPerMetre = state.campus.grid / ((state.campus.bbox[3] - state.campus.bbox[1]) * 111000);
-      drawYou(
-        ctx,
-        {
-          at: you,
-          accuracyPx: (state.accuracy ?? 0) * gridPerMetre * state.basemap.pixelsPerGrid * scale,
-          dpr,
-          width,
-          height,
-        },
-        state.basemap,
-        state.view,
-      );
-    }
-  }
+  const b = state.buildings[state.selected.building];
+  const target = b ? toGrid([b.lon, b.lat], state.campus) : null;
+  const you = state.origin ? toGrid([state.origin.lon, state.origin.lat], state.campus) : null;
+
+  drawTarget(
+    ctx,
+    {
+      footprint: footprintNear(target),
+      from: you,
+      to: target,
+      label: `${state.selected.walk} min walk`,
+      dpr,
+      width,
+      height,
+    },
+    state.basemap,
+    state.view,
+  );
+
+  if (!you) return;
+  const scale = Math.min(width, height) / (state.view.span * state.basemap.size);
+  const gridPerMetre = state.campus.grid / ((state.campus.bbox[3] - state.campus.bbox[1]) * 111000);
+  drawYou(
+    ctx,
+    {
+      at: you,
+      accuracyPx: (state.accuracy ?? 0) * gridPerMetre * state.basemap.sy * scale,
+      guess: state.originIsGuess,
+      dpr,
+      width,
+      height,
+    },
+    state.basemap,
+    state.view,
+  );
 }
 
 // The map layers carry no attributes, so the footprint for a building is found
@@ -187,34 +198,53 @@ function settle() {
 
 // ---------------------------------------------------------------- answering
 
+// The term the app is SERVING, not whichever table happens to be biggest.
+// Picking the fullest one worked only because Autumn has 47 buildings against
+// Summer's 46; during Summer term it would have ranked every room against
+// Autumn's hours, and Sullivant would have read open until 19:30 when Summer
+// publishes 17:00. That is the assumed-window failure the engine forbids.
+function pickHoursTerm(hours, current) {
+  const want = (current?.termName ?? '').toLowerCase().replace(/\s+/g, '-');
+  const terms = Object.entries(hours?.terms ?? {});
+  const exact = terms.find(([slug]) => slug.startsWith(want));
+  if (exact) return exact[1];
+  // No table for the live term. Every building then reports unknown hours,
+  // which is honest, rather than borrowing another term's doors.
+  console.warn(`Vacant: no published hours for ${current?.termName}; all buildings will read unknown.`);
+  return null;
+}
+
 function hoursFor(code, day) {
-  const terms = Object.values(state.hours?.terms ?? {});
-  // The fullest term is the live one; key order follows discovery order.
-  const term = terms.reduce(
-    (a, b) => (a && Object.keys(a.buildings).length >= Object.keys(b.buildings).length ? a : b),
-    null,
-  );
-  const rec = term?.buildings?.[code];
+  const rec = state.hoursTerm?.buildings?.[code];
   if (!rec) return undefined; // no published hours: shown, tiered below, never assumed
   return rec.hours[day]; // an [open, close] pair, or null for published-closed
 }
 
 function answer() {
+  if (!state.ready) return;
   const now = new Date();
   const minutes = now.getHours() * 60 + now.getMinutes();
-  const results = rank(Object.entries(state.rooms.rooms).map(([id, r]) => ({ id, ...r })), {
-    origin: state.origin,
-    now: minutes,
-    day: now.getDay(),
-    needed: state.needed,
-    buildings: state.buildings,
-    hoursFor,
-    sessions: state.rooms.sessions,
-    date: isoDate(now),
-  });
-  // Split what you can use now from what you would have to wait for.
+  const results = rank(
+    Object.entries(state.rooms.rooms).map(([id, r]) => ({ id, ...r })),
+    {
+      origin: state.origin,
+      now: minutes,
+      day: now.getDay(),
+      needed: state.needed,
+      buildings: state.buildings,
+      hoursFor,
+      sessions: state.rooms.sessions,
+      date: isoDate(now),
+    },
+  );
+
   const usable = results.filter((r) => r.wait <= MAX_WAIT_MIN);
-  state.soonest = results.find((r) => r.wait > MAX_WAIT_MIN) ?? null;
+  // rank() orders by tier, then walk. The FIRST building to open is not the
+  // nearest one that opens: at 6am the nearest might open at 9:00 while one a
+  // minute further opens at 7:00, and naming the wrong one is a wrong answer.
+  state.soonest = results
+    .filter((r) => r.wait > MAX_WAIT_MIN)
+    .reduce((a, b) => (a && a.availableAt <= b.availableAt ? a : b), null);
   state.results = usable.slice(0, 40);
   state.selected = state.results[0] ?? null;
   paintList();
@@ -226,9 +256,7 @@ function paintList() {
   const head = $('head');
 
   if (!state.results.length) {
-    // Say so plainly rather than listing tomorrow morning as though it were an
-    // answer. The probe caught this at 00:30, when every row read "from 7:00am".
-    head.innerHTML = 'Nothing open right now';
+    head.textContent = 'Nothing open right now';
     const next = state.soonest;
     list.innerHTML = next
       ? `<p class="empty">Every classroom building near you is closed.
@@ -237,39 +265,48 @@ function paintList() {
     return;
   }
 
-  // Three states, because "we know it is open", "we do not know" and "nothing"
-  // are different answers and only the first one is a promise.
+  // Four states, because "open and long enough", "open but shorter than you
+  // asked", "we do not know" and "nothing" are different answers, and only the
+  // first one is a promise.
   let caveat = '';
-  const vouched = state.results.filter((r) => r.hoursKnown && r.wait === 0).length;
-  const soon = state.results.filter((r) => r.hoursKnown && r.wait > 0).length;
-  if (vouched) {
+  const meets = state.results.filter((r) => r.hoursKnown && r.wait === 0 && r.meetsNeed).length;
+  const shorter = state.results.filter((r) => r.hoursKnown && r.wait === 0).length;
+  const waiting = state.results.filter((r) => r.hoursKnown && r.wait > 0).length;
+
+  if (meets) {
     head.innerHTML = `Free for <b>${dur(state.needed)}</b>, nearest first`;
-  } else if (soon) {
+  } else if (shorter) {
+    // The headline must not promise a duration the rows do not deliver.
+    head.innerHTML = `Nothing free for <b>${dur(state.needed)}</b> &middot; closest anyway`;
+  } else if (waiting) {
     head.innerHTML = `Nothing free this second &middot; <b>${dur(state.needed)}</b>`;
   } else {
     // Every building whose hours we actually have is closed. What is left is
     // rooms nobody publishes hours for, and saying "free" about those would be
     // the exact dishonesty this app exists to avoid.
-    head.innerHTML = 'Every building we have hours for is closed';
+    head.textContent = 'Every building we have hours for is closed';
     caveat = `<p class="empty">These have <b>no published hours</b>, so Vacant cannot tell
        you whether the door is open. They are not a promise.</p>`;
   }
 
-  list.innerHTML = caveat + state.results
-    .map((r, i) => {
-      const seats = r.seats ? `${r.seats} seats` : 'seats unknown';
-      const when =
-        r.wait > 0
-          ? `<span class="warn">from ${clock(r.availableAt)}</span>`
-          : r.hoursKnown
-            ? `yours for ${dur(r.usable)}`
-            : '<span class="warn">hours not published</span>';
-      return `<button class="row${i === 0 ? ' on' : ''}" data-i="${i}">
+  list.innerHTML =
+    caveat +
+    state.results
+      .map((r, i) => {
+        const seats = r.seats ? `${r.seats} seats` : 'seats unknown';
+        const when =
+          r.wait > 0
+            ? `<span class="warn">from ${clock(r.availableAt)}</span>`
+            : r.hoursKnown
+              ? `yours for ${dur(r.usable)}`
+              : '<span class="warn">hours not published</span>';
+        return `<button class="row${i === 0 ? ' on' : ''}" data-i="${i}">
         <span class="name">${r.id}<em>${r.name ?? ''}</em></span>
         <span class="meta"><b>${r.walk} min</b> walk &middot; ${when} &middot; ${seats}</span>
       </button>`;
-    })
-    .join('');
+      })
+      .join('');
+
   for (const el of list.querySelectorAll('.row')) {
     el.onclick = () => {
       state.selected = state.results[Number(el.dataset.i)];
@@ -304,15 +341,18 @@ function locate() {
       (p) => {
         clearTimeout(watchdog);
         const here = { lon: p.coords.longitude, lat: p.coords.latitude };
-        const far =
-          Math.hypot((here.lon - oval.lon) * 85, (here.lat - oval.lat) * 111) > OFF_CAMPUS_KM;
+        const far = Math.hypot((here.lon - oval.lon) * 85, (here.lat - oval.lat) * 111) > OFF_CAMPUS_KM;
         if (far) return finish(oval, null, true, 'You are off campus, showing from the Oval');
         finish(here, p.coords.accuracy, false, null);
       },
       (err) => {
         clearTimeout(watchdog);
         const why =
-          err.code === 1 ? 'Location is off' : err.code === 2 ? 'Location unavailable' : 'Location timed out';
+          err.code === 1
+            ? 'Location is off'
+            : err.code === 2
+              ? 'Location unavailable'
+              : 'Location timed out';
         finish(oval, null, true, `${why}, showing from the Oval`);
       },
       { enableHighAccuracy: false, timeout: FIX_TIMEOUT_MS, maximumAge: 60000 },
@@ -346,7 +386,7 @@ async function boot() {
   ]);
   state.rooms = rooms;
   state.buildings = buildings;
-  state.hours = hours;
+  state.hoursTerm = pickHoursTerm(hours, current);
   state.origin = located.origin;
   state.accuracy = located.accuracy;
   state.originIsGuess = located.guess;
@@ -355,11 +395,16 @@ async function boot() {
     $('note').hidden = false;
   }
 
+  state.ready = true;
+  for (const el of document.querySelectorAll('#ask [disabled]')) el.disabled = false;
   $('ask').classList.add('ready');
   performance.mark('vacant:ready');
 }
 
 function choose(minutes) {
+  // Belt and braces. The controls carry `disabled` until boot() finishes, but a
+  // caller reaching here early would read state.rooms as null and throw.
+  if (!state.ready) return;
   state.needed = minutes;
   safeSet(KEY, String(minutes));
   $('ask').hidden = true;

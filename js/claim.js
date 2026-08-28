@@ -21,7 +21,7 @@
 //
 // Pure. Wall-clock minutes in, a verdict out, no Date and no DOM.
 
-import { usableMinutes } from './engine.js';
+import { PACKUP, usableMinutes } from './engine.js';
 
 export function roomClaim({ known, rows = [], blocks = [], open, close, now, metres }) {
   // Null, not zero and not the whole gap. A caller with no distance behind it,
@@ -62,10 +62,17 @@ export function roomClaim({ known, rows = [], blocks = [], open, close, now, met
   const here = rows.find((r) => r.kind === 'free' && r.now);
   if (!here) return { kind: 'nothing-free' };
 
+  // The row promises `gapEnd - PACKUP`, which is when you have to be packed up,
+  // and this line has to promise the same minute. It shipped as the raw class
+  // start, so the room screen read ten minutes later than the row that sent you
+  // there: Townshend Hall 245 said "till 2:35pm" in the list and "Free till
+  // 2:45pm" one tap later, with "Yours for 4h13" underneath it already carrying
+  // the subtraction. Two answers to one question, and the generous one was on
+  // the screen you read last.
   const later = blocks.find(([s]) => s >= now);
   return {
     kind: 'free',
-    until: later ? later[0] : null,
+    until: later ? later[0] - PACKUP : null,
     known: !!known,
     yours: yours(here.t, here.end ?? close),
   };

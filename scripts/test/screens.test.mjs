@@ -639,7 +639,7 @@ test('the room screen subtracts the walk, the way the engine says to', () => {
 
   const claim = roomClaim({ ...TIMELINE, now: nowMin, metres });
   assert.equal(claim.kind, 'free');
-  assert.equal(claim.until, 930, 'free till 3:30pm');
+  assert.equal(claim.until, 920, 'the class is at 3:30pm, so you are out at 3:20pm');
   assert.equal(claim.yours, engine);
   assert.notEqual(claim.yours, naive);
 });
@@ -651,7 +651,7 @@ test('the room screen prints no duration when it does not know the walk', () => 
   // has nothing to print.
   const claim = roomClaim({ ...TIMELINE, now: 735, metres: null });
   assert.equal(claim.kind, 'free');
-  assert.equal(claim.until, 930);
+  assert.equal(claim.until, 920);
   assert.equal(claim.yours, null);
 });
 

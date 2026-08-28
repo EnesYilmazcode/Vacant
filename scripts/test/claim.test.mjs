@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { roomClaim } from '../../js/claim.js';
-import { usableMinutes } from '../../js/engine.js';
+import { PACKUP, usableMinutes } from '../../js/engine.js';
 
 const at = (h, m = 0) => h * 60 + m;
 
@@ -48,13 +48,15 @@ test('a building with no published hours is never called closed for the day', ()
 test('with no published hours, being free is a fact about classes', () => {
   // 10:00, two classes today, the second at 13:00. The room is free of classes,
   // which is not the same as the door being open, so the claim says the first.
+  // `until` is 12:50, not 13:00: it is the minute you have to be out, the same
+  // minute the list row promised. See the #77 test at the bottom of this file.
   const tl = timeline({
     known: false, blocks: [[at(8), at(9)], [at(13), at(14)]], open: at(8), close: at(14), now: at(10),
   });
   const c = roomClaim(tl);
   assert.equal(c.kind, 'free');
   assert.equal(c.known, false);
-  assert.equal(c.until, at(13));
+  assert.equal(c.until, at(12, 50));
 });
 
 test('published hours still get door sentences, because there the door is a fact', () => {
@@ -75,7 +77,7 @@ test('published hours still get door sentences, because there the door is a fact
   }));
   assert.equal(free.kind, 'free');
   assert.equal(free.known, true);
-  assert.equal(free.until, at(12));
+  assert.equal(free.until, at(11, 50), 'the class is at 12:00, you are out at 11:50');
 });
 
 test('a class in the room is a claim either way, hours or no hours', () => {
@@ -119,4 +121,26 @@ test('every claim about a door is reachable only when the hours are published', 
     const c = roomClaim(thompson(now));
     assert.ok(!doorKinds.has(c.kind), `at ${now} the claim was ${c.kind}`);
   }
+});
+
+test('the free claim ends when the row said it ends, not when the class starts', () => {
+  // Issue #77. The list row promises `gapEnd - PACKUP`, the minute you have to
+  // be packed up. This line used to promise the raw class start, so the room
+  // screen read ten minutes later than the row that sent you there, with
+  // "Yours for" underneath it already carrying the subtraction.
+  const c = roomClaim({
+    known: true,
+    now: 620,
+    open: 420,
+    close: 1140,
+    blocks: [[885, 1005]],
+    rows: [{ kind: 'free', now: true, t: 420, end: 885 }],
+    metres: 160,
+  });
+
+  assert.equal(c.kind, 'free');
+  assert.equal(c.until, 875, 'the class starts at 885, and 875 is when you are out');
+  assert.equal(c.until, 885 - PACKUP);
+  // The two numbers on the screen have to agree about the same window.
+  assert.equal(c.yours, usableMinutes({ now: 620, gapStart: 420, gapEnd: 885, metres: 160 }));
 });

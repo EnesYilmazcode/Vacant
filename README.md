@@ -4,12 +4,12 @@ Find an empty classroom near you at Ohio State, free for as long as you need it.
 
 ### **[enesyilmazcode.github.io/Vacant](https://enesyilmazcode.github.io/Vacant/)**
 
-It is a web page. Nothing to install, no account, no search box. It finds you, asks
-one question, and hands you rooms you can walk to, nearest first.
+It is a web page. No account, no search box, nothing to sign up for. It finds you,
+asks one question, and hands you rooms you can walk to, nearest first.
 
 | | | |
 | :--: | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark campus map, the question "How long do you need?", and three buttons reading 30 min, 1 hour and 2 hours](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. Townshend Hall 038, 2 min walk, till 6:50pm, 40 seats. Townshend Hall 245, 2 min, till 2:35pm, class, 20 seats.](docs/media/list.webp) | ![One room picked, Cunz Hall 160. Its building footprint is outlined in red on the map and a dashed line runs from the blue dot to it, labelled 4 min walk.](docs/media/room.webp) |
+| ![The opening screen: the word Vacant over a dark campus map, the question "How long do you need?", and three buttons reading 30 min, 1 hour and 2 hours](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. 251 rooms free, 40 shown. Townshend Hall 038, 2 min walk, no class rest of today, 40 seats. Townshend Hall 245, 2 min, free till 2:35pm, 20 seats.](docs/media/list.webp) | ![One room picked, Townshend Hall 245. Its building footprint is outlined in red on the map and a dashed line runs from the blue dot to it, labelled 2 min walk.](docs/media/room.webp) |
 | One question. | The answer. | Where it is. |
 
 ## Yours for, not free until
@@ -22,19 +22,38 @@ in the room's schedule, subtracts the walk, and leaves ten minutes at the end so
 you are not packing up while the next class files in. Walk time is straight line
 distance times 1.3 for the fact that campus paths bend, at 78 metres a minute.
 
-Read the second row of the middle screenshot. Townshend Hall 245 says **till
-2:35pm**. The next class in that room starts at 2:45pm, you are two minutes away,
-and 2:35pm is what is actually left for you.
+Read the second row of the middle screenshot. Townshend Hall 245 says **free
+till 2:35pm**. The next class in that room starts at 2:45pm, you are two minutes
+away, and 2:35pm is when you have to be packed up.
 
-The word after the time is the other half of the answer. `till 2:35pm, class`
-means a class walks in then. `till 6:50pm` with nothing after it means no class
-is coming at all, and the time is when the building locks, less the same ten
-minutes.
+Tap it and the room screen says the same minute, then spells the rest out:
+**Yours for 4h13 once you get there.** The two screens agreeing is the point.
+They did not for a while: the room screen printed 2:45pm, the raw class start,
+handing back the ten minutes the row had already taken off
+([#77](https://github.com/EnesYilmazcode/Vacant/issues/77)).
+
+A row that says **no class rest of today** instead of a time means no class is
+coming at all, and the timeline behind it ends where the building locks.
 
 | | |
 | :--: | :--: |
-| ![The list dragged up to fill the screen, showing ten rooms across three buildings, all two or three minutes away](docs/media/list-full.webp) | ![The room screen for Cunz Hall 160: no class in here for the rest of today, 4 min walk, 192 m, 42 seats, classroom, then a timeline reading 6:30am Cunz Hall opens, 6:30am free for 1h30, 8:00am in use, 9:10am in use, 10:05am free for 8h55, 7:00pm Cunz Hall closes](docs/media/timeline.webp) |
+| ![The list dragged up to fill the screen, showing ten rooms across three buildings, all two or three minutes away](docs/media/list-full.webp) | ![The room screen for Townshend Hall 245: free till 2:35pm, yours for 4h13 once you get there, 2 min walk, 76 m, 20 seats, conference room, then a timeline reading 7:00am Townshend Hall opens, 7:00am free for 7h45, 2:45pm in use, 4:45pm free for 2h15, 7:00pm Townshend Hall closes](docs/media/timeline.webp) |
 | Drag the sheet up for the rest. | Tap a room twice for its whole day, doors included. |
+
+## Put it on your home screen
+
+You do not have to. But it is built to be installed, and installing it is what
+makes it answer in a stairwell.
+
+On iPhone, open it in Safari and tap Share, or **...** then Share if your tab bar
+sits at the bottom, then **Add to Home Screen**. iOS 26 defaults to that Compact
+layout, which is why the app offers you both. On Android, Chrome has **Install
+app** in its menu.
+
+Installed, the whole app is 69 KB of shell and 66 KB of schedule, gzipped, and
+none of it is fetched again to answer a question. Turn the network off, open it,
+and it still ranks rooms. That matters because the moment you want it most is the
+moment you are in a basement with one bar.
 
 ## What it refuses to guess
 
@@ -126,25 +145,13 @@ already left the API and cannot be refetched at any price.
 
 ## Not built yet
 
-- **It does not install and it does not work offline.** There is no service worker
-  and no web app manifest yet, which is
-  [#21](https://github.com/EnesYilmazcode/Vacant/issues/21),
-  [#22](https://github.com/EnesYilmazcode/Vacant/issues/22) and
-  [#23](https://github.com/EnesYilmazcode/Vacant/issues/23). The architecture is
-  built for it: the whole schedule is one small static file on purpose.
-- **Campus holidays and finals week are not subtracted.** The Registrar publishes
-  both on the same page the hours come from.
-  [#11](https://github.com/EnesYilmazcode/Vacant/issues/11) puts them in the index,
-  [#19](https://github.com/EnesYilmazcode/Vacant/issues/19) puts the refusal on the
-  screen.
-- **The list is a room list where it should be a place list.** One building can
-  take a third of the forty rows.
+- **The list is a room list where it should be a place list.** Forty rows came
+  back across thirteen buildings, and one of them took six of them.
   [#62](https://github.com/EnesYilmazcode/Vacant/issues/62).
-- **The room screen hands back the ten minutes the row took off.** Open a room
-  whose window ends at a class and the headline prints the minute the class
-  starts, not the minute you have to be out, so it reads ten minutes later than
-  the row you tapped. The row is the right one.
-  [#77](https://github.com/EnesYilmazcode/Vacant/issues/77).
+- **Nobody has walked to a room the app called free and checked.** That is the
+  measurement the whole thing rests on and it has not been taken.
+  [#26](https://github.com/EnesYilmazcode/Vacant/issues/26) is the walk, and
+  `spikes/walk.html` is the checklist to walk it with.
 
 ## Roomix
 

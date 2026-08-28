@@ -502,8 +502,8 @@ function sweep(rooms, opts) {
     const [open, close] = hoursKnown ? hours : [Math.min(dayStart, now), dayEnd];
 
     // On a day the registrar publishes as having no classes, the busy grid is
-    // not a description of the room. 788 of 863 sampled Wednesday rows are
-    // still active on Veterans Day, so trusting it hides 91% of campus.
+    // not a description of the room. 2,048 of the 2,106 Wednesday blocks are
+    // still active on Veterans Day, so trusting it hides 97% of campus.
     const gaps = classesSuspended
       ? withMalformed([[open, close]], 0)
       : freeGaps(room.busy ?? [], day, open, close, active);
@@ -626,7 +626,7 @@ export function scheduleCoverage(rooms, active) {
 //
 // MEASURED on the committed Autumn index, 9,561 blocks over 7 sessions, every
 // date from August 1 to December 31: on the days classes meet the live share
-// sits between 94.80% and 97.75%, and on every other day it is at or below
+// sits between 94.80% and 97.68%, and on every other day it is at or below
 // 0.073%. Two clusters three orders of magnitude apart with nothing in between,
 // so this sits an order of magnitude clear of each.
 //

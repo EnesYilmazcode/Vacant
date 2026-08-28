@@ -507,8 +507,8 @@ function answer() {
       hoursFor,
       sessions: state.rooms.sessions,
       date,
-      // A day with no classes is a day the busy grid describes nobody. 788 of
-      // 863 sampled Wednesday rows are still active on Veterans Day.
+      // A day with no classes is a day the busy grid describes nobody. 2,048
+      // of the 2,106 Wednesday blocks are still active on Veterans Day.
       classesSuspended: !!state.situation?.classesSuspended,
     },
   );

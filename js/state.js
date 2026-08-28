@@ -13,7 +13,7 @@
 //
 // The row phrasing lives here for the same reason: a sentence about a door is a
 // decision, and a decision that can only be checked by opening the app on the
-// right afternoon is a decision nobody checks. The room screen'''s one claim is
+// right afternoon is a decision nobody checks. The room screen's one claim is
 // in js/claim.js, which is the same rule applied to the sentence that carries
 // the most weight.
 //
@@ -213,8 +213,8 @@ export function resolveState({ now, current, index }) {
       body: null,
       note: `${closed.name ? `${closed.name}. ` : ''}No classes are meeting today, so campus is quiet and these rooms are free for that reason rather than a lucky gap.`,
       // The busy grid still marks rooms busy on a day nobody is teaching in
-      // them, so the sweep has to be told to ignore it. 788 of 863 sampled
-      // Wednesday rows are still active on Veterans Day.
+      // them, so the sweep has to be told to ignore it. 2,048 of the 2,106
+      // Wednesday blocks are still active on Veterans Day.
       classesSuspended: true,
       action: null,
     };
@@ -361,10 +361,10 @@ function nextTermStart(current) {
 // ---------------------------------------------------------------- unscheduled hours
 
 // A day the schedule really covers, as a share of the week's blocks. Measured
-// on the shipped index: the five weekdays carry 14.87% to 22.67% each, Saturday
-// carries 0.06% and Sunday 0.02%. Seven blocks in the whole term do not make
-// Saturday a scheduled day, and the gap between 0.06 and 14.87 is wide enough
-// that nothing sits near this line.
+// on the shipped index, 9,561 blocks: the five weekdays carry 15.39% to 22.47%
+// each, Saturday carries 0.06% and Sunday nothing at all. Six blocks in the
+// whole term do not make Saturday a scheduled day, and the gap between 0.06 and
+// 15.39 is wide enough that nothing sits near this line.
 const DAY_SHARE = 0.01;
 
 // The tail of the day is not its edge. Fifteen of the shipped index's 9,561
@@ -377,7 +377,7 @@ const TAIL = 0.005;
 // A day whose sessions have all ended is not a day the schedule covers, and
 // the weekday mask above cannot see that: it is week-shaped, so 2026-12-10
 // reads as an ordinary Thursday while the sessions running that date hold one
-// block out of the 2,661 the weekly Thursday pattern carries.
+// block out of the 2,135 the weekly Thursday pattern carries.
 //
 // Measured over the 109 weekdays of the shipped Autumn 1268 index, 581 rooms
 // and 9,561 blocks: 32 days where the sessions have all finished or not yet

@@ -1388,3 +1388,282 @@ the iOS install-hint prefetch worthwhile is per browser context in Chrome, so th
 "installed icon inherits the Safari tab's HTTP cache" step is reasoned from the
 platform behaviour, not measured. A real iPhone is still owed one check: airplane
 mode on the first launch after install.
+## 2026-08-27  ODbL is not triggered, and the credit that is owed is FITS
+
+**Decided.** No `LICENSE-ODbL.txt`, no OpenStreetMap credit, and no ODbL notice
+anywhere in the app. Written down because the research note in
+`research/legal-privacy.md` section 6 says the opposite in strong language ("this
+is not a judgment call"), and anyone reading it in March will re-derive the wrong
+answer unless this entry is here.
+
+The research was written when the plan was still an Overpass extraction. It is
+not. Every coordinate that ships comes from OSU's own ArcGIS server, and
+OpenStreetMap produced exactly one thing: `osm_check_m`, the distance in metres
+between the GIS point and the OSM point, on 73 of the 631 buildings in the draft
+table. That is an audit column, not a source.
+
+Checked rather than reasoned, on the committed files:
+
+```
+grep -c osm_check_m data/buildings.json          0
+grep -c osm_check_m data/buildings-1268.json     0
+grep -c osm_check_m data/campus.json             0
+grep -c osm_check_m data/buildings.draft.json   73
+```
+
+Every record in `buildings.draft.json` carries `source: "osu-gis:FacilitiesStreets_RO/11"`
+and no OSM coordinate is stored anywhere, only the delta. So there is no
+Derivative Database and no attribution obligation. 73 scalar distances are not a
+substantial extraction of anything.
+
+**Decided against** dropping the column to make the question go away. The audit is
+the evidence that the GIS join is right, and deleting evidence to tidy a licence
+question that does not exist is the wrong trade. It stays in the draft file, which
+the app does not fetch.
+
+**The credit that IS owed** is to Ohio State FITS, whose Hub item grants "use by
+anyone interested in OSU data" with `Copyright 2025. OSU GIS` beside it and a
+Terms of Service link that is `href="#"` and goes nowhere. So it is an explicit
+grant of public use with an asserted copyright, not an open licence:
+
+> Building locations (c) 2025 The Ohio State University, Facilities Information
+> and Technology Services.
+
+`FacilitiesStreets_RO` is not one of the 13 items the OSU GIS account publishes
+to ArcGIS Online, so that Hub statement is the closest applicable statement rather
+than a statement about this exact layer. `docs/outreach/gismaps-email.md` is
+drafted and **not sent**. It goes out before the URL is shared publicly, and
+**silence is not permission**: if no reply arrives, the entry recording that has
+to use those words, so a later reader does not find "sent, no objection" and
+mistake it for a grant.
+
+Per-file provenance now lives in `data/README.md`.
+
+---
+
+## 2026-08-27  data/raw/ stays published, and exclusion was rejected on the numbers
+
+**Decided.** `data/raw/` is served by Pages, deliberately, and `docs/DATA.md` says
+so with the measurements. This closes the "Still open" line at the end of the
+2026-08-26 snapshot entry.
+
+Verified live before deciding:
+
+```
+GET /Vacant/data/raw/1262/1xxx-p01.json.gz    200    33,293 bytes
+```
+
+**First, the thing that had to be checked before anything else: there is no PII in
+it.** All 210 committed pages decompressed and every object in them walked.
+
+```
+files                            210
+decompressed bytes        93,528,295
+courses / sections / meetings   11,717 / 40,452 / 41,534
+email addresses                    0
+"instructors" keys                 0
+lastName / firstName / emplid      0
+```
+
+The only key named `name` anywhere belongs to course attribute codes (`CCP`,
+`CRSF`, `GE`, `HON`, `TAG` and thirteen others). The two manifests record 29,282
+and 16,201 instructor records removed, 45,483 in total, and none survived. The
+parse boundary works.
+
+**Why publishing rather than excluding.** Three reasons, in order of weight.
+
+1. **Exclusion buys no privacy at all.** The repository is public. Excluding
+   `data/raw/` from Pages moves one public URL to a different public URL on
+   `raw.githubusercontent.com`. It hides nothing from anyone.
+2. **The named harm is not fixed by it.** The stated reason to exclude was a
+   service worker caching 4.1 MB onto a phone. Measured, the published tree is
+   7,030,232 bytes over 311 files, of which `data/raw/` is 4,278,214 and `docs/`
+   is another 1,411,520. A cache rule loose enough to pull the archive is loose
+   enough to pull the research notes. The fix is an explicit precache list, which
+   the service worker needs anyway, and that fix works whatever is on the origin.
+3. **The deploy stays "push to main".** Both exclusion mechanisms cost something
+   real. Moving to a `site/` publish root is a tree-wide move that breaks every
+   script path and has to land before the service worker registers. A Pages
+   Actions build inserts a step that can fail between a push and the live site,
+   in a project whose whole deployment story is that there is no build.
+
+**Decided against** a `_config.yml` with `exclude:`, specifically. It requires
+deleting `.nojekyll` and letting Jekyll process the site, which is a build step
+plus a set of filename rules, to hide files that are public anyway.
+
+**And it cannot be hidden from crawlers either, which was also checked.** A
+`robots.txt` was written and then deleted, because it would have done nothing:
+robots.txt is origin-scoped, a crawler reads
+`https://enesyilmazcode.github.io/robots.txt`, and that URL is a **404** that this
+repository cannot create. Pages sets no response headers, so `X-Robots-Tag` is
+out, and a meta tag cannot go on a `.json.gz`. At 4.1 MB against a 100 GB monthly
+soft limit, a crawler walking the whole archive would need about 24,000 passes to
+matter. Shipping an inert file and then citing it in `DATA.md` would have been a
+control that does not exist, which is the one thing this project is not allowed
+to do.
+
+**Unchanged and load-bearing:** the archive stays in the repository. Terms 1262
+and 1264 cannot be refetched at any price and the committed copy is the only one
+that will ever exist. This was never a delete.
+
+---
+
+## 2026-08-27  GitHub Pages is the deployment target and no backend is to be added
+
+**Decided.** No hosting account, no Firebase project, no Vercel project, no
+Cloudflare project, no build step. This entry exists so that nobody creates one,
+and so the answer to "where should we deploy this" is a link rather than a
+conversation.
+
+It is already deployed. Verified live today:
+
+```
+GET /Vacant/                      200   12,383 bytes
+GET /Vacant/data/buildings.json   200  163,277 bytes
+GET /Vacant/data/current.json     200      215 bytes
+GET /vacant/   (lowercase)        404            <- the case trap, still real
+```
+
+The `/Vacant/` 404 recorded in the issue is gone: `index.html` has landed.
+
+**Why there is no backend, stated as design rather than as thrift.** Every byte
+the app needs is a static file small enough for a service worker to hold, which
+is what makes answering with no signal reachable at all, and nothing else in this
+category could copy it without a rewrite. Reachable, not reached: there is no
+`sw.js` yet and the app needs the network on every open. Measured on the shipped
+files:
+
+```
+first launch, gzipped        104,830 bytes   102.4 KB
+first launch, uncompressed   481,460 bytes   470.2 KB
+Roomix's first launch          ~3.3 MB       measured endpoint by endpoint
+```
+
+One backend call on the critical path costs a cold start, a DNS lookup, a TLS
+handshake and a dependency that can be down, in exchange for nothing the app
+needs. The room grid does not change while a student walks to a room.
+
+The only moving part is a cron that rewrites a JSON file. Free on a public
+repository, and when it fails the app serves last week's data instead of going
+down.
+
+**The one case that would ever justify a backend** is the was-it-open reports, and
+even that design keeps the read path static. See the entry below.
+
+`docs/DEPLOY.md` carries how it publishes, how to roll back, and the five things
+to check when the site looks broken. Two constraints from it are worth repeating
+here because they are not obvious: the capital V in `/Vacant/` is case sensitive
+and `/vacant/` is a hard 404, and `.nojekyll` means there is no extensionless
+routing, so the privacy page is `privacy.html` and every link to it has to say so.
+Verified locally: `/Vacant/privacy.html` is 200, `/Vacant/privacy` is 404.
+
+---
+
+## 2026-08-27  The was-it-open report schema, settled on paper with nothing built
+
+**Decided.** `docs/design/reports.md`. No Worker, no D1 database, no Turnstile
+key, no migration, no code. Six calls:
+
+1. **Counters updated in place, never an event log.** Two tables: `conf`, one row
+   per bucket, and `seen`, whose only two columns are `d` and `exp`. Decay folds
+   into the counter because the sum of decayed parts equals the decayed sum, so
+   no report needs a timestamp of its own.
+2. **Building buckets first.** 8.5 rooms per building measured on the shipped
+   index, so a building bucket fills about eight times faster. Room scope is
+   promoted only when a room earns it.
+3. **A Wilson lower bound at `z = 1.645`, never a percentage**, with a label
+   ladder that has a rung which renders nothing.
+4. **Finder's `(ts, day, path, country, ref, visitor)` row is rejected in
+   writing**, with the one-line join that reconstructs a person's day spelled out.
+   It stays the right design for page counts and is wrong for rooms.
+5. **The override is downward only.** Table open plus crowd locked goes to the
+   crowd, which is the May 2024 BuckID lockdown. Table closed plus crowd open
+   never wins, because its failure mode is a student walking to a locked building
+   at 2am and the attack is trivial. The class schedule is never overridden.
+6. **Worker plus D1 plus an hourly cron, reads stay static.** An outage degrades
+   to yesterday's confidence rather than a spinner.
+
+**Two things in the issue did not survive being computed, and both changed the
+design.**
+
+**The three Wilson cases cannot come from one confidence level.** The issue asks
+for 9 of 10 at about 0.76 and 90 of 100 at about 0.82. Computed, 0.76 is a `z = 1`
+figure and 0.82 is a `z = 1.96` figure:
+
+```
+                            1 of 1   9 of 10   90 of 100
+z = 1.960 (95% two-sided)    0.207     0.596       0.826
+z = 1.645 (95% one-sided)    0.270     0.652       0.840
+z = 1.000                    0.500     0.766       0.866
+```
+
+Settled on `z = 1.645`, the one-sided bound, because one-sided is the right
+statistic when only the bad side matters, and because at `z = 1.96` the very first
+state a user could ever see, three people all reporting open, scores 0.439 and
+would render as "reported locked". That is not caution, it is a different wrong
+answer.
+
+**The ladder needed a fifth rung that renders nothing.** Four people open and one
+locked scores 0.435: not enough to say "seen open", and calling it "reported
+locked" misreports what the crowd actually said. The honest render is silence and
+the row falls back to the line it always carries. The research's "1 of 1 renders
+as seen open once" is overruled by the k-of-3 suppression floor, which is a
+privacy rule and wins.
+
+**Cloudflare free tier, re-read from their docs today.** 100k Worker requests a
+day, 100k D1 row writes and 5M reads a day, Turnstile free with unlimited
+challenges. Two corrections to the 2026-08-26 reading: a D1 database is capped at
+**500 MB** (the 5 GB is the account total), and a free Worker gets **50 D1 queries
+per invocation**, which the hourly rebuild has to be written around or it dies at
+bucket 51.
+
+**Still blocked, deliberately.** The ground-truth walk should set the label
+thresholds. 0.50 and 0.75 are defensible arithmetic on zero observations and they
+are placeholders until somebody has stood in front of twenty doors.
+
+---
+
+## 2026-08-27  Launch: 15 September, both Roomix questions yes, and no usage counter
+
+**Decided: Tuesday 15 September 2026.** The parked "hold the URL until building
+hours ship" is discharged, because they shipped. `docs/LAUNCH.md` holds the posts.
+
+Week 4 of a term running 25 August to 9 December, on a calendar the Registrar page
+header, the academic ICS and the live meeting objects all agree on. Clear of every
+no-class weekday (Sep 7, Oct 15, Oct 16, Nov 11, Nov 25 to 27) and of finals
+(Dec 11 to 17). Nineteen days out, which is the time the ground-truth walk needs.
+**Explicitly not a hard date**: if the walk is not done, it moves.
+
+**Does Roomix's author hear about the comparison first? Yes.** A short message
+before anything posts. The comparison quotes numbers pulled out of his own
+bundle, and a maintainer who reads that in a Reddit thread answers defensively
+while one who got a heads-up usually does not. It costs one message and there is
+no downside to it.
+
+**Is Roomix credited in the README? Yes, one line.** It has been live since
+November 2023 across web, iOS and Android and it does the building-browser job
+well. The README was wrong about it until the research corrected it, which is
+exactly the history that makes an uncredited comparison read as a hit piece.
+
+**Related and decided at the same time: the comparison does not go in the r/OSU
+post at all.** It goes in a reply if somebody asks. The same words read as an
+answer in a reply and as an attack in a post.
+
+**Does the usage counter ship? No.**
+
+This one is close and it is decided against the issue's instinct. The only reason
+to ship it is to judge the phase 4 gate, "only if it gets real use". The cost is
+that `privacy.html` currently says, truthfully, "no analytics, no tracking pixels,
+and no third-party scripts of any kind. The page loads nothing from any other
+company." Verified: zero off-origin URLs in `index.html` and `js/`. A beacon adds
+a second origin to a page whose strongest claim is that it has one, and it does it
+to answer a question nobody is asking yet.
+
+The gate can be judged without it. If nobody ever asks for a report button, that
+is the answer. If people do, that is also the answer, and it is better evidence
+than a page-view count.
+
+**If this is reversed**, the honest version is Finder's `analytics/src/index.js`
+beacon for page counts only, and `privacy.html` has to say what is stored
+**before** the beacon ships, not in the same commit. Never the room-level row: see
+the reports entry above for the join that makes it a movement trail.

@@ -10,11 +10,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { invert, termName } from '../build-index.mjs';
 import { TYPE_WORDS } from '../lib/room-safety.mjs';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const SESSION = { startDate: '2026-05-11', endDate: '2026-07-30' };
 
@@ -226,17 +229,48 @@ const BUILD = fileURLToPath(new URL('../build-index.mjs', import.meta.url));
 const dryRun = (term) =>
   spawnSync(process.execPath, [BUILD, term, '--dry-run'], { encoding: 'utf8' });
 
+// The archived terms, and only those. data/raw/<term>/ is committed for 1262
+// and 1264 because both have left the OSU API and cannot be refetched at any
+// price; build-index folds those pages back into a harvest when none is on
+// disk. The live term is deliberately not committed in either form, so a build
+// of it is not a thing a clean checkout can do.
+const ARCHIVED = ['1262', '1264'];
+
 test('every archived term still builds', () => {
   // Spring and Summer both exited 1 before writing anything, because the build
   // let the vendored ICS veto the Registrar on dates the ICS has been measured
   // wrong on since 2021. A source you have measured as wrong is not a check,
   // and giving it a veto left two of the three seasons with no path to a
   // shipped index. See ICS_SHIFT_DAYS in build-index.mjs.
-  for (const term of ['1262', '1264', '1268']) {
+  for (const term of ARCHIVED) {
     const run = dryRun(term);
     assert.equal(run.status, 0, `${term} exited ${run.status}: ${run.stderr}`);
     assert.match(run.stdout, /DRY RUN, nothing written\./);
   }
+});
+
+test('the live term is buildable only where its harvest is, and says so', () => {
+  // This test used to include 1268 in the loop above. It passed on a laptop
+  // that had run the harvester and failed on the first clean CI checkout,
+  // which is the worst way round: the machine with the least context was the
+  // only one telling the truth. The boundary is the point, so it is asserted
+  // rather than assumed.
+  const term = JSON.parse(readFileSync(join(ROOT, 'data', 'current.json'), 'utf8')).term;
+  assert.ok(!ARCHIVED.includes(term), `${term} is the live term and must not be in ARCHIVED`);
+  assert.equal(existsSync(join(ROOT, 'data', 'raw', term)), false, 'the live term must not be archived');
+
+  const run = dryRun(term);
+  if (existsSync(join(ROOT, 'data', `harvest-${term}.json.gz`))) {
+    assert.equal(run.status, 0, `${term} exited ${run.status}: ${run.stderr}`);
+    assert.match(run.stdout, /DRY RUN, nothing written\./);
+    return;
+  }
+  // No harvest and no archive is the normal state of a fresh clone. The build
+  // has to refuse and name both inputs, not half of one.
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, new RegExp(`no harvest at data/harvest-${term}\.json\.gz`));
+  assert.match(run.stderr, new RegExp(`no page archive at data/raw/${term}/`));
+  assert.match(run.stderr, /Run fetch-rooms\.mjs/);
 });
 
 test('the slid holidays are reported on the terms that have them, not swallowed', () => {
@@ -246,7 +280,12 @@ test('the slid holidays are reported on the terms that have them, not swallowed'
   const slid = summer.stderr.match(/the vendored ICS slid [^:]+:/g) ?? [];
   assert.equal(slid.length, 3, summer.stderr);
   assert.ok(slid.some((l) => l.includes('Memorial Day')), summer.stderr);
-  assert.ok(dryRun('1268').stderr.includes('the vendored ICS slid') === false);
+  // Autumn only if it can be built here at all. On a clean checkout there is no
+  // harvest for the live term, and a refusal carries no ICS line either way.
+  const term = JSON.parse(readFileSync(join(ROOT, 'data', 'current.json'), 'utf8')).term;
+  if (existsSync(join(ROOT, 'data', `harvest-${term}.json.gz`))) {
+    assert.ok(dryRun(term).stderr.includes('the vendored ICS slid') === false);
+  }
 });
 
 test('every shipped room type has a word, or is one nobody has decoded', () => {

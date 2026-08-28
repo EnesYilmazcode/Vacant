@@ -136,7 +136,9 @@ These are real forks. Each carries a recommendation, but none should be settled 
 
 > Show them, ranked below general-assignment rooms, with a one-word label on the row rather than a paragraph. They are almost certainly real classrooms and hiding them deletes a large share of the app's inventory, but they are also the rooms most likely to be departmentally controlled, so the ranking should reflect that rather than the filter. Ship the `ga: false` flag either way so the decision can be reversed without a rebuild.
 
-**Roughly 60% of rooms sit in buildings with no published hours at all. After dark and at weekends, does Vacant show them labelled unknown, or hide them entirely?**
+**Roughly 53% of buildings, holding 22% of rooms, publish no hours at all. After dark and at weekends, does Vacant show them labelled unknown, or hide them entirely?**
+
+> Corrected 2026-08-27, and the shape of the claim was inverted. This read "roughly 60% of rooms" when it was a buildings figure wearing a rooms label. Measured on the shipped index: 47 of 78 referenced buildings publish hours and they hold 456 of the 581 rooms, so 125 rooms, 22%, are in a building nobody documents. The recommendation below is unaffected, which is why it stands as written. See [#61](https://github.com/EnesYilmazcode/Vacant/issues/61).
 
 > Show them, labelled unknown, ranked below every building with published open hours, and never with an assumed or 'usually open' window. Hiding them loses real music, chemistry and art classroom space and makes the app useless at exactly the times it is most wanted. But the label has to be honest rather than hedged: 'hours not published' is a fact, 'usually open' is a guess dressed as one.
 

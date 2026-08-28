@@ -108,3 +108,59 @@ test('the photographed room screen agrees with its own list row', () => {
     `the room screen says "${manifest.room.claim}" where its row says "${manifest.room.row}"`,
   );
 });
+
+// ---------------------------------------------------------------- the counts
+
+// The alt-text checks above hold the README to the pictures. Nothing held it to
+// the DATA, and it drifted the moment the room safety filter shipped: the
+// Saturday paragraph still said 867 of 871 rooms against an index of 581, and
+// the hours paragraph said 245 rooms and 28% against a real 125 and 22%. Every
+// figure was measured when it was written and every one of them was wrong by
+// the time it was read, which is the failure this repo's own rule exists to
+// stop. These recompute from the shipped files, so the next filter change
+// breaks the build instead of the sentence.
+test('the README counts are the counts in the shipped index', () => {
+  const index = JSON.parse(readFileSync(join(ROOT, 'data', 'rooms-1268.json'), 'utf8'));
+  const current = JSON.parse(readFileSync(join(ROOT, 'data', 'current.json'), 'utf8'));
+  const file = JSON.parse(readFileSync(join(ROOT, 'data', 'buildings-hours.json'), 'utf8'));
+
+  // The app's own selection, not a second copy of the rule.
+  const want = current.termName.toLowerCase().replace(/\s+/g, '-');
+  const term = Object.entries(file.terms).find(([slug]) => slug.startsWith(want))[1];
+  const hoursFor = (code, day) => term.buildings[code]?.hours[day];
+
+  const ids = Object.keys(index.rooms);
+  const rooms = ids.length;
+  const buildings = new Set(ids.map((id) => index.rooms[id].b)).size;
+  const published = Object.keys(term.buildings).length;
+  const noHours = ids.filter((id) => hoursFor(index.rooms[id].b, 1) === undefined).length;
+
+  // Saturday is day 6, and it is the case the whole project is an argument about.
+  const quiet = ids.filter((id) => !(index.rooms[id].busy ?? []).some((b) => b[0] === 6));
+  const sat = (id) => hoursFor(index.rooms[id].b, 6);
+  const unknown = quiet.filter((id) => sat(id) === undefined).length;
+  const closed = quiet.filter((id) => sat(id) === null).length;
+  const open = quiet.length - unknown - closed;
+
+  // Pin the sentences, not the digits. Checking that each number appears
+  // somewhere in the file is too weak to bite: swapping "578 of the 581 rooms"
+  // back to the pre-filter "867 of the 871 rooms" left both 578 and 581 sitting
+  // in neighbouring lines, and the guard passed on a README that had just been
+  // made wrong.
+  const phrases = [
+    `${quiet.length} of the ${rooms} rooms have no Saturday class`,
+    `calls all ${quiet.length} of them free on a Saturday`,
+    `**${closed}** of those`,
+    `**${unknown}** more sit`,
+    `**${open}** are in a building that is`,
+    `table covers ${published}`,
+    `index touches ${buildings}`,
+    `${noHours} of the ${rooms} rooms, ${Math.round((noHours / rooms) * 100)}%`,
+  ];
+  for (const phrase of phrases) {
+    assert.ok(
+      readme.includes(phrase),
+      `the README does not say "${phrase}", which is what the shipped files measure`,
+    );
+  }
+});

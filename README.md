@@ -63,14 +63,14 @@ and it is not a door. Three things are true and the app says all three on screen
 **Doors get locked.** This is the failure every other tool in this category ships
 with, and at Ohio State it is avoidable, because the Registrar publishes an open
 and close time per building per weekday. Measured against the committed index,
-**867 of the 871 rooms have no Saturday class at all this term**. A tool that
-stops at the schedule calls all 867 of them free on a Saturday. **549** of those
-sit in a building the Registrar publishes as closed that day, and **243** more sit
-in a building nobody publishes hours for at all. **75** are in a building that is
+**578 of the 581 rooms have no Saturday class at all this term**. A tool that
+stops at the schedule calls all 578 of them free on a Saturday. **398** of those
+sit in a building the Registrar publishes as closed that day, and **123** more sit
+in a building nobody publishes hours for at all. **57** are in a building that is
 genuinely open.
 
 **Hours are not published everywhere.** The Registrar's table covers 47
-buildings. The index touches 96. So 245 of the 871 rooms, 28%, are in a building
+buildings. The index touches 78. So 125 of the 581 rooms, 22%, are in a building
 whose door nobody documents. Those rooms say `hours not published` and rank below
 every room that has real hours. They are never given an assumed window, because
 "usually open" is a guess wearing the clothes of a fact.

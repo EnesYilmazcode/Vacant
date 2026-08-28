@@ -70,9 +70,10 @@ minutes if it is closer or bigger.
 
 ## Save it to your home screen
 
-Vacant is built to be installed, not visited. On iPhone, open it in Safari, tap
-the Share button and choose **Add to Home Screen**. On Android, Chrome offers
-**Install app** from its menu.
+Vacant is built to be installed, not visited. On iPhone, open it in Safari and
+tap Share, or **...** then Share if your tab bar sits at the bottom, then choose
+**Add to Home Screen**. iOS 26 defaults to that Compact layout, which is why the
+app tells you both. On Android, Chrome offers **Install app** from its menu.
 
 That is not a nice-to-have, it drives the whole architecture:
 
@@ -82,10 +83,19 @@ That is not a nice-to-have, it drives the whole architecture:
   basement. The entire room schedule is a single small static file, so a service
   worker caches it and the app answers from local storage with the network off.
 - It has to look like an app, not a web page. Standalone display mode, no browser
-  chrome, a real icon, a splash screen.
+  chrome, a real icon. No splash screens: iOS ignores the manifest background
+  colour, so owning the splash takes about fifteen PNGs that break every time
+  Apple ships a new screen size. iOS draws one from the icon instead.
 
-The only thing that needs the network is refreshing the schedule file, and that
-matters about once a week.
+The only thing that needs the network is the schedule file, and that matters
+about once a week after the first time.
+
+The first launch is the exception, and it is not one iOS lets you design away.
+Every home-screen icon gets its own storage jar, sealed off from Safari and from
+every other icon of the same site, so everything the Safari tab cached while you
+were reading the install hint is in the wrong jar. That first standalone launch
+needs the network once. With no signal it says so and offers a retry, rather
+than sitting on a white screen.
 
 ---
 

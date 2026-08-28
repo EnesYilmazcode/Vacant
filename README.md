@@ -1,412 +1,196 @@
 # Vacant
 
-Find an empty classroom near you, free for as long as you need it.
+Find an empty classroom near you at Ohio State, free for as long as you need it.
 
-**[enesyilmazcode.github.io/Vacant](https://enesyilmazcode.github.io/Vacant/)**
+### **[enesyilmazcode.github.io/Vacant](https://enesyilmazcode.github.io/Vacant/)**
 
-> **Status: data layer done, app screen next.** The term archive, building
-> coordinates, Registrar opening hours, room index and ranking engine are all
-> built and live at the link above. There is no room-finding screen yet, so
-> there is nothing to use today.
->
-> The design below is backed by live measurement, not guesses, and the work is
-> broken into ordered issues. Read [docs/BACKLOG.md](docs/BACKLOG.md) for the
-> plan and [docs/DECISIONS.md](docs/DECISIONS.md) for what has actually been
-> settled, including every place a measurement contradicted the plan.
+It is a web page. Nothing to install, no account, no search box. It finds you, asks
+one question, and hands you rooms you can walk to, nearest first.
 
----
+| | | |
+| :--: | :--: | :--: |
+| ![The opening screen: the word Vacant over a dark campus map, the question "How long do you need?", and three buttons reading 30 min, 1 hour and 2 hours](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. Townshend Hall 038, 2 min walk, till 6:50pm, 40 seats. Townshend Hall 245, 2 min, till 2:35pm, class, 20 seats.](docs/media/list.webp) | ![One room picked, Cunz Hall 160. Its building footprint is outlined in red on the map and a dashed line runs from the blue dot to it, labelled 4 min walk.](docs/media/room.webp) |
+| One question. | The answer. | Where it is. |
 
-## The problem
+## Yours for, not free until
 
-You have ninety minutes between classes and nowhere to sit. The library is full,
-the union is loud, and there are hundreds of classrooms within a ten minute walk
-that are sitting empty right now. You cannot find any of them without
-walking into buildings and trying doors.
+Every other tool answers "is this room free right now". That is the wrong
+question, because the room is not where you are standing.
 
-[Roomix](https://roomix.app), an unofficial room matrix for Ohio State, already
-does a lot of this, and it deserves an honest description. It is a maintained
-three year old product: a Flutter app with iOS and Android builds, a backend,
-accounts, bookmarks, a GPS "nearest facility" button and a vacancy search. Its
-data was regenerated the day before this was written. Anyone calling it a toy has
-not looked at it.
+Vacant answers **how long the room is yours once you get there**. It takes the gap
+in the room's schedule, subtracts the walk, and leaves ten minutes at the end so
+you are not packing up while the next class files in. Walk time is straight line
+distance times 1.3 for the fact that campus paths bend, at 78 metres a minute.
 
-What it does is bolt location and time onto a building browser, and the seams show
-in two places that are measurable rather than matters of taste.
+Read the second row of the middle screenshot. Townshend Hall 245 says **till
+2:35pm**. The next class in that room starts at 2:45pm, you are two minutes away,
+and 2:35pm is what is actually left for you.
 
-**It costs 3.3 MB to open.** Its API serves eleven static JSON files and
-`courses.json` alone is 2.4 MB. Vacant's entire index is one file in the low
-hundreds of kilobytes. Outdoors on a phone, that is the difference between an
-answer and a spinner.
+The word after the time is the other half of the answer. `till 2:35pm, class`
+means a class walks in then. `till 6:50pm` with nothing after it means no class
+is coming at all, and the time is when the building locks, less the same ten
+minutes.
 
-**It answers Saturday wrong.** Roomix computes "no class is scheduled, therefore
-free." On a Saturday that reports over a thousand rooms free while 41 of the 47
-classroom pool buildings are locked. Every project in this category makes that
-mistake, and at Ohio State it is avoidable, because the Registrar publishes the
-open hours and nobody reads them.
+| | |
+| :--: | :--: |
+| ![The list dragged up to fill the screen, showing ten rooms across three buildings, all two or three minutes away](docs/media/list-full.webp) | ![The room screen for Cunz Hall 160: no class in here for the rest of today, 4 min walk, 192 m, 42 seats, classroom, then a timeline reading 6:30am Cunz Hall opens, 6:30am free for 1h30, 8:00am in use, 9:10am in use, 10:05am free for 8h55, 7:00pm Cunz Hall closes](docs/media/timeline.webp) |
+| Drag the sheet up for the rest. | Tap a room twice for its whole day, doors included. |
 
-Neither app can tell you the thing that actually decides where you go, which is
-how long a room is yours **after** you finish walking to it.
+## What it refuses to guess
 
-## What Vacant does
+Vacant reads the class schedule. A class schedule is not a reservation calendar
+and it is not a door. Three things are true and the app says all three on screen:
 
-You open it. It already knows where you are. You tap how long you need. It hands
-you a ranked list:
+**Doors get locked.** This is the failure every other tool in this category ships
+with, and at Ohio State it is avoidable, because the Registrar publishes an open
+and close time per building per weekday. Measured against the committed index,
+**867 of the 871 rooms have no Saturday class at all this term**. A tool that
+stops at the schedule calls all 867 of them free on a Saturday. **549** of those
+sit in a building the Registrar publishes as closed that day, and **243** more sit
+in a building nobody publishes hours for at all. **75** are in a building that is
+genuinely open.
 
-```
-  Dreese 357            4 min walk     yours for 2h06     46 seats
-  Baker Systems 120     6 min walk     yours for 3h14     80 seats
-  Caldwell 177          7 min walk     yours for 1h48     30 seats
-```
+**Hours are not published everywhere.** The Registrar's table covers 47
+buildings. The index touches 96. So 245 of the 871 rooms, 28%, are in a building
+whose door nobody documents. Those rooms say `hours not published` and rank below
+every room that has real hours. They are never given an assumed window, because
+"usually open" is a guess wearing the clothes of a fact.
 
-No search box, no building picker, no term selector. One tap from cold start to
-an answer.
-
-The "yours for" number is the differentiator. It is not when the room frees up,
-it is how long you get **once you arrive**, with walking time already subtracted.
-That turns "how long do you need" from a filter into a real constraint, and it
-makes the fallback behavior obvious: if nothing fits two hours, Vacant offers the
-closest room that fits ninety minutes, and the room that frees up in twelve
-minutes if it is closer or bigger.
-
-## Save it to your home screen
-
-Vacant is built to be installed, not visited. On iPhone, open it in Safari and
-tap Share, or **...** then Share if your tab bar sits at the bottom, then choose
-**Add to Home Screen**. iOS 26 defaults to that Compact layout, which is why the
-app tells you both. On Android, Chrome offers **Install app** from its menu.
-
-That is not a nice-to-have, it drives the whole architecture:
-
-- The app has to open **instantly**, because you are standing outside in the cold
-  with one hand free.
-- It has to work with **no signal**, because you will open it in a stairwell or a
-  basement. The entire room schedule is a single small static file, so a service
-  worker caches it and the app answers from local storage with the network off.
-- It has to look like an app, not a web page. Standalone display mode, no browser
-  chrome, a real icon. No splash screens: iOS ignores the manifest background
-  colour, so owning the splash takes about fifteen PNGs that break every time
-  Apple ships a new screen size. iOS draws one from the icon instead.
-
-The only thing that needs the network is the schedule file, and that matters
-about once a week after the first time.
-
-The first launch is the exception, and it is not one iOS lets you design away.
-Every home-screen icon gets its own storage jar, sealed off from Safari and from
-every other icon of the same site, so everything the Safari tab cached while you
-were reading the install hint is in the wrong jar. That first standalone launch
-needs the network once. With no signal it says so and offers a retry, rather
-than sitting on a white screen.
-
----
+**Clubs book rooms.** A club meeting, a review session or a departmental event is
+invisible to every public source, so it is invisible to Vacant too. Every screen
+carries that caveat, and [#26](https://github.com/EnesYilmazcode/Vacant/issues/26)
+is the plan to go and measure how often it bites.
 
 ## How it works
 
-The whole thing is a static site. There is no server, no database, and no login.
+Ohio State publishes, for every class, the room it meets in and the minutes it
+occupies. Nobody publishes which rooms are empty. But empty is the complement of
+busy, so the whole product is one inversion of a public dataset. A script walks
+the class API, drops everything that is not a real Columbus room, and writes a
+room-keyed list of busy intervals. The page downloads that file, subtracts today's
+intervals from the building's published opening hours, and ranks what is left by
+walk time. There is no server, no database, no build step and no dependencies.
 
-```
- SOURCES                       BUILD, weekly on a Sunday cron
- =======                       =============================
+Everything the page fetches to produce a ranked list is **ten files, 470 KB, or
+102 KB over the wire once gzipped**. Measured with `node:zlib` over the tree as
+committed.
 
- content.osu.edu/v2
- the class schedule
- 26,298 sections
-        |
-        |   1. walk 8 catalog-number buckets
-        |      136 requests, about 52 seconds, twice to catch page drift
-        v
-   +------------------------------------------------------------------+
-   | 2. funnel, and count every row you drop                          |
-   |      drop the ONLINE and OFFCAMPUS pseudo-rooms      (465 rows)  |
-   |      drop cancelled, no room, no time, no weekday                |
-   |      strip instructors[] HERE, their emails are in the payload   |
-   +------------------------------------------------------------------+
-        |
-        v
-   +------------------------------------------------------------------+
-   | 3. invert                                                        |
-   |      section -> meetings        becomes        room -> busy[]    |
-   |      merge overlapping intervals    (607 pairs, cross-listed)    |
-   |      key every interval to its own session date range            |
-   +------------------------------------------------------------------+
-        |
- gissvc.osu.edu ---------> 4. join on buildingCode, exact string match
- OSU's own building           80 of 80 first try. lat, lon, address
- layer, 80 buildings          |
-                              |
- registrar.osu.edu -------> 5. scrape open and close, per weekday
- classroom pool table         47 buildings, plus holidays and exam week
- 47 bldgs x 7 days            |
-                              v
-   +------------------------------------------------------------------+
-   | 6. GUARDS. fail the build rather than ship a confident wrong     |
-   |    answer. A healthy harvest already reads 81% free, so lost     |
-   |    data does not look like breakage, it looks like good news.    |
-   |                                                                  |
-   |      busy BLOCKS and busy MINUTES above floor  <- not room count |
-   |      weekday balance within range                                |
-   |      zero instructor emails in the output       <- fatal         |
-   +------------------------------------------------------------------+
-        |
-        v
+| Where | What is in it |
+| --- | --- |
+| `index.html` | The whole shell. Markup and CSS, no framework. |
+| `js/app.js` | Three screens in one sheet: the question, the list, one room. |
+| `js/engine.js` | The ranking, and the formula that decides how long a room is yours. |
+| `js/map.js` | The campus map, drawn as vectors on a canvas. No tiles, no key. |
+| `js/campus.js` | Latitude and longitude into map grid space. |
+| `scripts/` | The harvest, the inversion, and the screenshots. |
+| `data/` | The committed artefacts the page reads. |
 
- ARTIFACTS, committed to the repo
- ================================
-   data/rooms-1268.json        room -> busy[]        about 30 KB gzipped
-   data/buildings.json         code -> name, lat, lon           (ODbL)
-   data/buildings-hours.json   code -> open/close per weekday
-   data/current.json           which term is live, and when it was built
-        |
-        v
+## Run it
 
- THE PHONE
- =========
-   installed PWA on GitHub Pages, service worker, two caches
-        |
-        |   cold launch: shell from cache, data stale-while-revalidate
-        |   must answer with the network off, in a stairwell
-        v
-   GPS fix          +     duration chip      +     the clock
-   (watchdog,             30m / 1h / 2h            today's date, so
-    off-campus gate)                               closures apply
-        |
-        v
-   +------------------------------------------------------------------+
-   |   free    = complement of busy                                   |
-   |             minus the 7 campus closure days                      |
-   |             minus the exam window                                |
-   |   open    = intersect the building's published hours             |
-   |   usable  = gap end - arrival time - buffer                      |
-   |   rank    = distance first, then how long it stays yours         |
-   +------------------------------------------------------------------+
-        |
-        v
-   STRONG   "Dreese 357, 4 min walk, yours till 1:55p"
-            a real bounded number, because a class starts then
-
-   MEDIUM   "no class here for the rest of today"
-            open ended, which is 47% of free rooms at peak
-
-   WEAK     "nothing is scheduled anywhere on campus right now"
-            89% of the year. The list is a distance sort and the
-            screen has to say so instead of faking confidence.
+```sh
+git clone https://github.com/EnesYilmazcode/Vacant.git
+cd Vacant
+python3 -m http.server 8000     # or any static file server
 ```
 
-### 1. The insight
+Then open `http://localhost:8000`. It has to be served rather than opened as a
+file, because the page is ES modules and it fetches JSON.
 
-Ohio State publishes, for every class, the exact room it meets in and the exact
-minutes it occupies that room. Nobody publishes which rooms are empty. But
-**empty is just the complement of busy**, and busy is fully derivable from the
-class schedule. So the entire product is one inversion of a public dataset.
-
-### 2. The data already exists
-
-A real meeting object, pulled live from
-`GET https://content.osu.edu/v2/classes/search`:
-
-```json
-{
-  "facilityId": "DL0357",
-  "facilityType": "1B",
-  "facilityDescription": "Dreese Laboratories",
-  "facilityDescriptionShort": "Dreese Lab",
-  "facilityCapacity": 46,
-  "buildingCode": "279",
-  "room": "357",
-  "buildingDescriptionShort": "DL 357",
-  "startTime": "8:00 am",
-  "endTime": "8:55 am",
-  "startDate": "2026-08-25",
-  "endDate": "2026-12-09",
-  "monday": false, "tuesday": true, "wednesday": false,
-  "thursday": true, "friday": false, "saturday": false, "sunday": false
-}
+```sh
+npm test                        # node --test, 224 tests, no network
+node scripts/shoot.mjs          # redraw docs/media from the real app
 ```
 
-Room-level ID, seat count, the exact window, the day flags, and the date range so
-a class that only meets in the second half of the term does not falsely block a
-room all semester. Everything an occupancy grid needs is already there.
+## Rebuild the data
 
-### 3. Scale, measured
+Nothing here needs a key or an account. Each of these takes `--dry-run`.
 
-Six subjects (cse, math, english, psych, history, physics) for Autumn 2026:
-
-```
-sections 2699    meetings 2719
-distinct rooms 272    distinct buildings 45
-```
-
-The true campus figure, read directly out of Roomix's own published index for the
-same term, is **1,067 rooms across 116 buildings**. The index for all of it lands
-in the low hundreds of kilobytes raw and well under 100 KB gzipped, so the whole
-campus fits in one file the phone holds offline without noticing.
-
-One number in there is a free feature. **190 of those 1,067 rooms, 17.8%, have no
-class at all this term.** A room with zero classes all semester is the best study
-room on campus, and a single term harvest cannot see it, because a room with no
-meetings never appears in that term's class API. Harvesting three terms and
-unioning the room identities finds them.
-
-One pass of the harvest costs **136 requests**, by paging the
-`catalog-number` facet in 8 buckets rather than walking 243 subjects the way
-Finder does. See `docs/research/harvest-feasibility.md`.
-
-### 4. The room index
-
-The build step inverts sections into a room-keyed busy list:
-
-```json
-{
-  "term": "1268",
-  "generated": "2026-08-26",
-  "sessions": [["2026-08-25", "2026-12-09"]],
-  "buildings": {
-    "279": { "name": "Dreese Laboratories", "short": "DL",
-             "lat": 40.0023, "lon": -83.0155 }
-  },
-  "rooms": {
-    "DL0357": { "b": "279", "n": "357", "cap": 46, "type": "1B",
-                "busy": [[2, 480, 535, 0], [4, 480, 535, 0]] }
-  }
-}
+```sh
+node scripts/fetch-buildings.mjs        # OSU's GIS layer  -> data/buildings.json
+node scripts/fetch-campus.mjs           # campus polygons  -> data/campus.json
+node scripts/fetch-building-hours.mjs   # Registrar table  -> data/buildings-hours.json
+node scripts/fetch-rooms.mjs 1268       # the class schedule -> data/harvest-1268.json.gz
+node scripts/build-index.mjs 1268       # invert it        -> data/rooms-1268.json
 ```
 
-Each `busy` entry is `[weekday, startMinute, endMinute, sessionIndex]`. Minutes
-since midnight, so the math is integer comparisons and nothing has to parse
-"8:00 am" at query time. The `sessions` table is deduped by date range so
-part-of-term classes do not repeat ISO dates on every row.
+The harvest itself is not committed, because it is regenerated weekly, so a fresh
+clone has to run `fetch-rooms` before `build-index`. One pass over the schedule is
+136 requests against `content.osu.edu`, sent at about three a second. The
+committed Autumn 2026 harvest took four passes and 545 requests, because paging
+that API is not deterministic: the harvester repeats until two passes in a row
+turn up no meeting in a room it has not already seen. Pass two found thirteen of
+them. `data/harvest-1268.manifest.json` records what every pass saw.
 
-Free time is whatever the busy list does not cover.
+`data/raw/1262` and `data/raw/1264` are committed and must stay. Those terms have
+already left the API and cannot be refetched at any price.
 
-### 5. The query
+## Not built yet
 
-Given your location, the current time, and a duration `D`:
+- **It does not install and it does not work offline.** There is no service worker
+  and no web app manifest yet, which is
+  [#21](https://github.com/EnesYilmazcode/Vacant/issues/21),
+  [#22](https://github.com/EnesYilmazcode/Vacant/issues/22) and
+  [#23](https://github.com/EnesYilmazcode/Vacant/issues/23). The architecture is
+  built for it: the whole schedule is one small static file on purpose.
+- **Campus holidays and finals week are not subtracted.** The Registrar publishes
+  both on the same page the hours come from.
+  [#11](https://github.com/EnesYilmazcode/Vacant/issues/11) puts them in the index,
+  [#19](https://github.com/EnesYilmazcode/Vacant/issues/19) puts the refusal on the
+  screen.
+- **The list is a room list where it should be a place list.** One building can
+  take a third of the forty rows.
+  [#62](https://github.com/EnesYilmazcode/Vacant/issues/62).
+- **The room screen hands back the ten minutes the row took off.** Open a room
+  whose window ends at a class and the headline prints the minute the class
+  starts, not the minute you have to be out, so it reads ten minutes later than
+  the row you tapped. The row is the right one.
+  [#77](https://github.com/EnesYilmazcode/Vacant/issues/77).
 
-1. For each room, find the gap containing `now` in the complement of today's busy
-   set, respecting the session date range.
-2. `usable = gapEnd - now - walkTime(room)`, where walk time is straight-line
-   distance at about 80 metres per minute.
-3. Keep rooms where `usable >= D`.
-4. Sort by distance. Break ties by how long the room stays free, then by seats.
-5. If nothing survives, relax `D` and surface the best near-misses instead of an
-   empty screen.
+## Roomix
 
-Haversine distance to the building centroid is plenty at campus scale. No routing
-engine, no map tiles required.
+[Roomix](https://roomix.app) is the incumbent at Ohio State and deserves an honest
+description. It is a maintained three platform product: a Flutter app with iOS and
+Android builds, a backend, accounts, bookmarks, themes, a nearest facility button
+and a vacancy search. Anyone calling it a toy has not looked at it.
 
-### 5b. Cold launch is the real performance problem
+Two differences are measurable rather than matters of taste. Both were taken off
+its own API and its own compiled bundle on 2026-08-26.
 
-The query is a non-problem. Benchmarked over a synthetic 1,800 room index with no
-spatial index at all, a full ranked answer takes **0.4 to 1.3 ms** warm.
+It downloads about **3.3 MB** on first launch. Its API is eleven static JSON
+files and `courses.json` alone is 2.4 MB.
 
-Cold launch is where the time goes. `JSON.parse` plus building the in-memory index
-costs **365 to 469 ms** before the first answer appears, which is exactly the
-moment the app is being judged. Shipping the busy intervals as a packed binary
-blob that the app reads straight off an `ArrayBuffer`, with only the names and
-coordinates left as JSON, takes that to **29 to 38 ms** with byte identical
-results. See `docs/research/query-engine.md`.
+It has no building hours. Grepping the bundle for "building hours", "holiday" and
+"final exam" returns nothing, and `api.roomix.app/hours.json` is a 404. Its
+vacancy search also needs a building selected first and then stops at a 200 metre
+radius from it, and it prints raw metres rather than walk time.
 
-### 6. Where the coordinates come from
+The full teardown, with the commands, is in
+[docs/research/prior-art.md](docs/research/prior-art.md). It also corrects an
+earlier draft of this README, which said Roomix was organised building by building
+and ignored the clock. Both halves were wrong.
 
-The class API gives `buildingCode: "279"` but no latitude or longitude, and Ohio
-State's campus map is a single-page app with no JSON behind it.
+## Docs
 
-The original plan was to fuzzy match building names against OpenStreetMap, which
-works but leaves about one in eight for a human to fix. There is something much
-better. **Ohio State publishes its own building layer on its own public ArcGIS
-server, and its `buildingNumber` field is character for character the same value
-as the class API's `buildingCode`.**
+- [docs/BACKLOG.md](docs/BACKLOG.md) is the thirty issues, in order.
+- [docs/DECISIONS.md](docs/DECISIONS.md) is append only, and records what each
+  decision was made against and which measurement settled it.
+- [docs/research/](docs/research/) is the measurement itself: the live API, OSU's
+  GIS server, the Registrar's table, Roomix's bundle.
+- [docs/BLUEPRINT.md](docs/BLUEPRINT.md) is the design note this README used to
+  be, kept whole, with the places it turned out wrong marked at the top.
+- [scripts/shoot.mjs](scripts/shoot.mjs) regenerates every screenshot above from
+  the real app, on a pinned clock and a pinned location, and refuses to write a
+  frame of a screen that has not stopped moving. Re-running it on an unchanged
+  tree writes the same five files. It also writes down what each screen said, in
+  `docs/media/frames.json`, and a test holds the alt text above to it.
 
-```
-   THE PLAN                                 WHAT ACTUALLY WORKS
+## Licence
 
-   facilityDescription                      buildingCode = "279"
-     = "Dreese Laboratories"                       |
-          |  normalise, fuzzy match               |  exact string equality
-          v                                       v
-   OpenStreetMap via Overpass               OSU's own GIS building layer
-     70 of 80 matched  (87.5%)                80 of 80 matched  (100%)
-     10 need a human                          lat, lon, campus, address
-     Ohio Stadium silently missing            all already on the record
-```
+The code is MIT, in [LICENSE](LICENSE).
 
-It is a key join, not a name match, and every building observed in live Autumn
-2026 schedule data joined on the first try. OSM stays useful as a second opinion
-for cross-checking coordinates, not as the source. Details and the draft dataset
-are in `docs/research/geocoding.md` and `data/buildings.draft.json`.
-
----
-
-## What Vacant will not pretend to know
-
-**A class schedule is not a room reservation calendar.** A room with no class in
-it can still be booked for a club meeting, a review session, or a departmental
-event, and it can simply be locked. Every tool in this category has this hole and
-most of them hide it.
-
-Three quarters of it turns out to be closeable, which was the biggest surprise in
-the research.
-
-**Building hours are published.** The Registrar puts out a per building, per
-weekday open and close table covering all 47 classroom pool buildings, refreshed
-every semester, as scrapable HTML, with the term's holidays and exam dates on the
-same page. The blueprint assumed this dataset did not exist. It does, and reading
-it is what separates "no class is scheduled" from "open until 7:30pm today."
-
-**The calendar is knowable.** Twelve of the 83 weekdays between the first day of
-class and the last final are wrong for calendar reasons alone, before any room
-level problem: seven no class weekdays that the naive model calls busy and hides,
-and five exam days it calls free and walks you into a final.
-
-**Non class bookings are not knowable.** A club meeting in an empty room is
-invisible to every public source. This is the part that stays honest rather than
-solved, so every result carries the caveat and phase 4 adds a one tap "was it
-open?" report that builds per room confidence from people who actually walked
-there.
-
-One thing that is now answered rather than open: `facilityType` is a property of
-the room and never varies within a term, across 633 rooms and 8,284 meetings, so
-the index stores one type per room and trusts it. Twenty seven codes exist and
-`docs/research/facility-types.md` has the decode.
-
----
-
-## Build order
-
-| Phase | What | Notes |
-| --- | --- | --- |
-| 1 | Harvester emitting the room index | Port the bucket walk from [Finder](https://github.com/EnesYilmazcode/Finder), swap the projection, union three terms so zero-class rooms are not lost, strip instructor emails, and guard on busy blocks rather than room count |
-| 2 | `buildings.json` | Key join on `buildingCode` against OSU's own GIS layer. OSM as a cross-check |
-| 2 | Building hours and the academic calendar | Scrape the Registrar's classroom pool table and the term's holiday and exam dates. This is what makes Saturday correct |
-| 3 | The app | Geolocation, duration chips, ranked list, PWA manifest, service worker |
-| 4 | "Was it open?" reports | Only if it gets real use. Needs a small backend |
-
----
-
-## Relationship to Finder
-
-[Finder](https://github.com/EnesYilmazcode/Finder) is the sibling project: Ohio
-State course search that leads with the instructor. It reads the same API, and
-Vacant borrows its API client, its paging and determinism handling, and its
-documentation of the API's quirks.
-
-They are deliberately separate apps rather than two tabs of one, because they
-disagree on every axis that shapes an app:
-
-|  | Finder | Vacant |
-| --- | --- | --- |
-| Opens with | a search box | your GPS, zero input |
-| Rebuild cadence | nightly, seat counts move hourly | weekly, the room schedule is static |
-| Shell | three panes, desktop first | one list, phone first, installable |
-| Offline | needs the network | must work with no signal |
-| Used | hard for two weeks at registration | between classes, all term |
-
-A mode picker joining them would cost the one tap that is the entire point of
-this one.
-
----
-
-## License
-
-TBD. The research recommends a three way split: MIT for the code, ODbL 1.0 for
-the OSM derived building data, and no rights asserted over the OSU derived schedule.
-See [#25](https://github.com/EnesYilmazcode/Vacant/issues/25).
+The data is derived from Ohio State's own public services: the class schedule at
+`content.osu.edu`, the building layer published by OSU Facilities Information and
+Technology Services GIS, and the classroom pool schedule from the Office of the
+University Registrar. Each file in `data/` carries its source and attribution
+inside it. Vacant is not affiliated with Ohio State. How that gets stated on the
+site is [#25](https://github.com/EnesYilmazcode/Vacant/issues/25).

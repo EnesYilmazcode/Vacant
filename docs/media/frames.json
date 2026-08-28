@@ -1,0 +1,44 @@
+{
+  "note": "What the committed screenshots in this folder say, in words. Written by scripts/shoot.mjs, read by scripts/test/readme.test.mjs, so the README cannot end up describing a picture that says something else.",
+  "when": "2026-09-16T10:20:00-04:00",
+  "where": {
+    "latitude": 39.99944,
+    "longitude": -83.01502,
+    "accuracy": 18
+  },
+  "screen": {
+    "width": 393,
+    "height": 852,
+    "dpr": 3
+  },
+  "room": {
+    "name": "Cunz Hall 160",
+    "row": "till 6:50pm · 42 seats",
+    "claim": "No class in here for the rest of today",
+    "facts": "4 min walk192 m42 seatsclassroom"
+  },
+  "frames": {
+    "ask": {
+      "note": "Autumn 2026, schedule read Aug 27",
+      "text": "Vacant. How long do you need? 30 min 1 hour 2 hours until finding campus… Autumn 2026, schedule read Aug 27 Class schedule only. Doors may be locked, and clubs book rooms too."
+    },
+    "list": {
+      "note": "40 rows shown",
+      "text": "428 rooms free, 40 shown. Townshend Hall 038 2 min till 6:50pm · 40 seats Townshend Hall 245 2 min till 2:35pm, class · 20 seats Townshend Hall 248 2 min till 12:50pm, class · 49 seats Townshend Hall 250 2 min till 12:30pm, class · 30 seats Psychology Building 111 3 min till 8:20pm · 12 seats Psychology Building 115 3 min till 8:20pm · 26 seats Psychology Building 117 3 min till 8:20pm · 26 seats University Hall 286A 3 min till 6:50pm · 15 seats University Hall 448 3 min till 6:50pm · 25 seats University Hall 386 3 min till 2:05pm, class · 21 seats Psychology Building 217 3 min till 1:50pm, class · 30 seats University Hall 043 3 min till 12:30pm, class · 35 seats PAES A234 4 min till 10:20pm · 11 seats Pomerene Hall 155 4 min till 9:20pm · 40 seats Cunz Hall 160 4 min till 6:50pm · 42 seats Cunz Hall 380B 4 min till 6:50pm · 12 seats Cockins Hall 015 4 min till 5:50pm · 35 seats Campbell Hall 393 4 min till 4:20pm, class · seats unknown PAES A111 4 min till 4:00pm, class · 34 seats PAES A327 4 min till 4:00pm, class · 12 seats PAES A470 4 min till 4:00pm, class · 12 seats PAES A006 4 min till 2:10pm, class · 22 seats PAES A070 4 min till 1:40pm, class · seats unknown PAES A103 4 min till 12:40pm, class · 30 seats Campbell Hall 227 4 min till 12:35pm, class · seats unknown Journalism Building 100D 5 min till 11:50pm · 24 seats Baker Systems Engineering 130 5 min till 8:20pm · 32 seats Denney Hall 316 5 min till 6:50pm · 24 seats Denney Hall 435 5 min till 6:50pm · 18 seats Denney Hall 447 5 min till 6:50pm · 12 seats Derby Hall 1116 5 min till 6:20pm · 45 seats Derby Hall 2078 5 min till 6:20pm · 18 seats Eighteenth Ave, 209 W 265 5 min till 4:00pm, class · 29 seats Derby Hall 3150 5 min till 3:45pm, class · 25 seats Derby Hall 150 5 min till 2:10pm, class · 25 seats Derby Hall 047 5 min till 12:35pm, class · 11 seats Orton Hall 110 5 min till 12:35pm, class · 70 seats Baker Systems Engineering 480 5 min till 12:30pm, class · 40 seats Derby Hall 029 5 min till 12:30pm, class · 42 seats Eighteenth Ave, 209 W 285 5 min till 12:30pm, class · 29 seats 388 more further away. Class schedule only. Clubs book rooms and doors get locked."
+    },
+    "list-full": {
+      "note": "sheet 324px -> 665px",
+      "text": "428 rooms free, 40 shown. Townshend Hall 038 2 min till 6:50pm · 40 seats Townshend Hall 245 2 min till 2:35pm, class · 20 seats Townshend Hall 248 2 min till 12:50pm, class · 49 seats Townshend Hall 250 2 min till 12:30pm, class · 30 seats Psychology Building 111 3 min till 8:20pm · 12 seats Psychology Building 115 3 min till 8:20pm · 26 seats Psychology Building 117 3 min till 8:20pm · 26 seats University Hall 286A 3 min till 6:50pm · 15 seats University Hall 448 3 min till 6:50pm · 25 seats University Hall 386 3 min till 2:05pm, class · 21 seats Psychology Building 217 3 min till 1:50pm, class · 30 seats University Hall 043 3 min till 12:30pm, class · 35 seats PAES A234 4 min till 10:20pm · 11 seats Pomerene Hall 155 4 min till 9:20pm · 40 seats Cunz Hall 160 4 min till 6:50pm · 42 seats Cunz Hall 380B 4 min till 6:50pm · 12 seats Cockins Hall 015 4 min till 5:50pm · 35 seats Campbell Hall 393 4 min till 4:20pm, class · seats unknown PAES A111 4 min till 4:00pm, class · 34 seats PAES A327 4 min till 4:00pm, class · 12 seats PAES A470 4 min till 4:00pm, class · 12 seats PAES A006 4 min till 2:10pm, class · 22 seats PAES A070 4 min till 1:40pm, class · seats unknown PAES A103 4 min till 12:40pm, class · 30 seats Campbell Hall 227 4 min till 12:35pm, class · seats unknown Journalism Building 100D 5 min till 11:50pm · 24 seats Baker Systems Engineering 130 5 min till 8:20pm · 32 seats Denney Hall 316 5 min till 6:50pm · 24 seats Denney Hall 435 5 min till 6:50pm · 18 seats Denney Hall 447 5 min till 6:50pm · 12 seats Derby Hall 1116 5 min till 6:20pm · 45 seats Derby Hall 2078 5 min till 6:20pm · 18 seats Eighteenth Ave, 209 W 265 5 min till 4:00pm, class · 29 seats Derby Hall 3150 5 min till 3:45pm, class · 25 seats Derby Hall 150 5 min till 2:10pm, class · 25 seats Derby Hall 047 5 min till 12:35pm, class · 11 seats Orton Hall 110 5 min till 12:35pm, class · 70 seats Baker Systems Engineering 480 5 min till 12:30pm, class · 40 seats Derby Hall 029 5 min till 12:30pm, class · 42 seats Eighteenth Ave, 209 W 285 5 min till 12:30pm, class · 29 seats 388 more further away. Class schedule only. Clubs book rooms and doors get locked."
+    },
+    "room": {
+      "note": "Cunz Hall 160 selected",
+      "of": "Cunz Hall 160",
+      "text": "Cunz Hall 160, 4 minute walk, shown on the map. Townshend Hall 038 2 min till 6:50pm · 40 seats Townshend Hall 245 2 min till 2:35pm, class · 20 seats Townshend Hall 248 2 min till 12:50pm, class · 49 seats Townshend Hall 250 2 min till 12:30pm, class · 30 seats Psychology Building 111 3 min till 8:20pm · 12 seats Psychology Building 115 3 min till 8:20pm · 26 seats Psychology Building 117 3 min till 8:20pm · 26 seats University Hall 286A 3 min till 6:50pm · 15 seats University Hall 448 3 min till 6:50pm · 25 seats University Hall 386 3 min till 2:05pm, class · 21 seats Psychology Building 217 3 min till 1:50pm, class · 30 seats University Hall 043 3 min till 12:30pm, class · 35 seats PAES A234 4 min till 10:20pm · 11 seats Pomerene Hall 155 4 min till 9:20pm · 40 seats Cunz Hall 160 4 min till 6:50pm · 42 seats Cunz Hall 380B 4 min till 6:50pm · 12 seats Cockins Hall 015 4 min till 5:50pm · 35 seats Campbell Hall 393 4 min till 4:20pm, class · seats unknown PAES A111 4 min till 4:00pm, class · 34 seats PAES A327 4 min till 4:00pm, class · 12 seats PAES A470 4 min till 4:00pm, class · 12 seats PAES A006 4 min till 2:10pm, class · 22 seats PAES A070 4 min till 1:40pm, class · seats unknown PAES A103 4 min till 12:40pm, class · 30 seats Campbell Hall 227 4 min till 12:35pm, class · seats unknown Journalism Building 100D 5 min till 11:50pm · 24 seats Baker Systems Engineering 130 5 min till 8:20pm · 32 seats Denney Hall 316 5 min till 6:50pm · 24 seats Denney Hall 435 5 min till 6:50pm · 18 seats Denney Hall 447 5 min till 6:50pm · 12 seats Derby Hall 1116 5 min till 6:20pm · 45 seats Derby Hall 2078 5 min till 6:20pm · 18 seats Eighteenth Ave, 209 W 265 5 min till 4:00pm, class · 29 seats Derby Hall 3150 5 min till 3:45pm, class · 25 seats Derby Hall 150 5 min till 2:10pm, class · 25 seats Derby Hall 047 5 min till 12:35pm, class · 11 seats Orton Hall 110 5 min till 12:35pm, class · 70 seats Baker Systems Engineering 480 5 min till 12:30pm, class · 40 seats Derby Hall 029 5 min till 12:30pm, class · 42 seats Eighteenth Ave, 209 W 285 5 min till 12:30pm, class · 29 seats 388 more further away. Class schedule only. Clubs book rooms and doors get locked."
+    },
+    "timeline": {
+      "note": "6 timeline rows",
+      "of": "Cunz Hall 160",
+      "text": "Cunz Hall 160, 4 minute walk, shown on the map. Cunz Hall 160 No class in here for the rest of today 4 min walk 192 m42 seatsclassroom 6:30am Cunz Hall opens 6:30am free 1h30 8:00am in use 9:10am in use 10:05am FREE 8h55 7:00pm Cunz Hall closes Class schedule only. Clubs book rooms and doors get locked."
+    }
+  }
+}

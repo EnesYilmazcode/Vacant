@@ -123,16 +123,23 @@ test('privacy.html describes the real no-location behaviour', () => {
   const app = read('js/app.js');
   const privacy = read('privacy.html');
 
-  // What the code actually does with a denied fix. If this stops being the
-  // Oval fallback, the privacy page has to be rewritten with it.
-  assert.match(app, /err\.code === 1\s*\n\s*\? 'Location is off'/, 'app.js denied-fix branch moved');
-  assert.match(app, /finish\(oval, null, true, `\$\{why\}, showing from the Oval`\)/);
+  // What the code actually does with a denied fix. If this stops being the Oval
+  // fallback plus an offered picker, the privacy page has to be rewritten with it.
+  // Measured, not assumed: a denied fix renders the note and a Pick a building
+  // button, and the list still ranks campus-wide from the Oval.
+  assert.match(app, /err\.code === 1 \? 'Location is off'/, 'app.js denied-fix branch moved');
+  assert.match(app, /showing from the Oval/);
 
   assert.match(privacy, /Location is off, showing\s+from the Oval/i);
+  assert.match(
+    privacy,
+    /Pick a building/i,
+    'the app offers the picker on a denied fix, so the page has to say so',
+  );
   assert.doesNotMatch(
     privacy,
-    /asks you to pick a building/i,
-    'there is no building picker in the app',
+    /asks you to pick a building|made to pick|have to pick/i,
+    'the picker is offered, never forced: the Oval list renders either way',
   );
   // The claim that hurt: it told a student who denied location they would not be
   // shown walk times, and the app shows them, measured from the Oval.

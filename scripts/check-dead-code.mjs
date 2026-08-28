@@ -50,8 +50,14 @@ function walk(dir, out = []) {
 // The cost is that a name appearing inside a string counts as a use, so the
 // tool under-reports. That is the right direction to be wrong in: a checker
 // that cries wolf gets ignored, and then it finds nothing at all.
+// Line comments go first, and the order is load-bearing. Stripping block
+// comments first lets a `/*` sitting inside a `//` line open a comment that
+// never closes until the next `*/` anywhere in the file. scripts/shoot.mjs
+// documents its own output as `docs/media/*.webp` on line 4, which swallowed
+// the next 173 lines and reported seventeen live identifiers as dead, spawn and
+// createServer among them, in a script that demonstrably runs.
 function countUses(src, name) {
-  const code = src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+  const code = src.replace(/^\s*\/\/.*$/gm, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
   // \b does not fire next to $, which is a legal identifier character in JS.
   const esc = name.replace(/[$]/g, '\\$');
   return (code.match(new RegExp(`(?<![\\w$])${esc}(?![\\w$])`, 'g')) ?? []).length;

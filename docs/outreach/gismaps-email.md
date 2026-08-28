@@ -36,11 +36,11 @@ when something moves, not on a schedule. Total load on your server since I
 started is under twenty requests.
 
 I credit it as: **Building locations (c) 2025 The Ohio State University,
-Facilities Information and Technology Services.** That line is in the repository
-and on the app's privacy page, and it goes in the footer of the app's own screen
-before I share the link with any students. If you would like it worded
-differently, or linked somewhere specific, tell me and I will change it the same
-day.
+Facilities Information and Technology Services, GIS.** That line is in the
+repository, on the app's privacy page, and on the app's own "What Vacant knows"
+panel, which is the screen that tells a student where every figure in front of
+them came from. If you would like it worded differently, or linked somewhere
+specific, tell me and I will change it the same day.
 
 The one question: the licence text on the GIS Hub says "For use by anyone
 interested in OSU data," but `FacilitiesStreets_RO` is not one of the items
@@ -66,19 +66,19 @@ true on the day you send it, because an email to the office that granted the
 layer is the worst place to be caught claiming a courtesy that is not there.
 
 ```sh
-grep -rn "Facilities Information" privacy.html README.md data/README.md index.html
+grep -rln "Facilities Information" privacy.html data/README.md js/app.js
 ```
 
-As of 2026-08-27 that finds the privacy page and the data notes, and finds
-nothing in `index.html` or `README.md`. The results-screen footer does not exist
-yet and there is no About panel, which is why the sentence above says the footer
-is coming rather than that it is there.
+As of 2026-08-27 that finds all three: the privacy page, the data notes, and
+`js/app.js`, where it renders at the bottom of the "What Vacant knows" panel
+beside the link to the privacy page. Verified in a browser, not by grep alone:
+open the app, tap **What Vacant knows**, and the credit is the last line on the
+screen.
 
-**If you send this before the footer ships, the sentence has to change**, not the
-plan. Cut "and it goes in the footer of the app's own screen before I share the
-link with any students" down to what is actually rendering. The whole point of
-the note is that it converts an inference into a fact, and it cannot do that
-while carrying an inference of its own.
+An earlier draft of this email said the credit was "in the footer of the app's
+own screen" while nothing rendered it anywhere in the app. It was caught before
+it was sent. If a future edit moves the panel, this sentence changes before the
+email goes, not after.
 
 ---
 

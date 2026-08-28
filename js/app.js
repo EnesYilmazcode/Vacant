@@ -1380,7 +1380,11 @@ async function paintAbout() {
       <a class="bar-btn" id="report" href="${esc(issue)}" target="_blank" rel="noopener">This was wrong</a>
     </p>
     <p class="foot">A URL is not private. It lands in your address bar, your history and GitHub's
-      logs, so your coordinates stay out of it until you tick the box.</p>`;
+      logs, so your coordinates stay out of it until you tick the box.</p>
+    <p class="foot">Class times come from Ohio State's public class search. Building open and close
+      times come from the Registrar's classroom pool schedule. Building locations &copy; 2025 The
+      Ohio State University, Facilities Information and Technology Services, GIS.
+      <a href="${BASE}privacy.html">What this app does with your location</a></p>`;
 
   $('loc-optin').onchange = (e) => {
     state.includeLocation = e.target.checked;

@@ -16,21 +16,30 @@ const json = (p) => JSON.parse(read(p));
 
 const AUTUMN = { termName: 'Autumn 2026', instruction: ['2026-08-10', '2026-12-11'] };
 
-test('js/app.js still gates the way term.vendor.js copied', () => {
-  const app = read('../../js/app.js');
+test('the app still gates the way term.vendor.js copied', () => {
+  // The gate moved out of js/app.js provenance() and into js/state.js
+  // resolveState(), so the tripwire moved with it. What it guards has not
+  // changed: the words this file prints are the app's words, and the app still
+  // refuses to rank when the verdict is a refusal.
+  const state = read('../../js/state.js');
   for (const needle of [
-    'const [from, to] = current.instruction ?? [];',
-    'if (!from || !to || (today >= from && today <= to)) return;',
-    '`${term} ended on ${fmtDay(to)}`',
-    'Vacant will not rank rooms against a term that is over.',
-    // The gate only matters because boot() stops before this line.
-    'state.ready = true;',
+    'export function inTermOn(today, current, index) {',
+    "if (inst && today < inst.start) {",
+    'Until then the schedule says nothing about which rooms are empty, so Vacant is not answering.',
+    'Ohio State has not published the next term yet. Vacant will not rank rooms against a term that has finished.',
   ]) {
     assert.ok(
-      app.includes(needle),
-      `js/app.js no longer contains ${JSON.stringify(needle)}. spikes/term.vendor.js copied the term gate from it, and the spike pages rank rooms whenever it says they may.`,
+      state.includes(needle),
+      `js/state.js no longer contains ${JSON.stringify(needle)}. spikes/term.vendor.js copied the term gate from it, and the spike pages rank rooms whenever it says they may.`,
     );
   }
+
+  // The gate only matters because nothing ranks past a refusal.
+  const app = read('../../js/app.js');
+  assert.ok(
+    app.includes('if (!state.ready || !state.rankable) return;'),
+    'js/app.js no longer stops answer() on the refusal verdict, so the gate this file copies has stopped meaning anything.',
+  );
 });
 
 test('the term is over: the gate shuts, in the app\'s words', () => {
@@ -38,7 +47,7 @@ test('the term is over: the gate shuts, in the app\'s words', () => {
   assert.equal(g.open, false);
   assert.equal(g.early, false);
   assert.equal(g.headline, 'Autumn 2026 ended on Dec 11');
-  assert.equal(g.detail, 'Ohio State has not published a newer schedule yet. Vacant will not rank rooms against a term that is over.');
+  assert.equal(g.detail, 'Ohio State has not published the next term yet. Vacant will not rank rooms against a term that has finished.');
   // The instrument has to name the dates, because the person reading it was
   // about to walk somewhere.
   assert.match(refusalNote(g), /Aug 10 to Dec 11/);

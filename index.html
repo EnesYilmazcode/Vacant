@@ -11,7 +11,11 @@
   :root {
     --bg: #0b0d10;
     --fg: #eef1f5;
-    --dim: #8b94a2;
+    /* Measured against --bg: 8.20:1, and 7.51:1 over --card. The old #8b94a2
+       sat at 6.35 and 5.82, which passes AA and misses the 7:1 this screen is
+       held to, and the secondary line is where the window and the seat count
+       live. */
+    --dim: #a0a9b6;
     --line: #1d232c;
     --card: #121821;
     --accent: #ff4d3d;
@@ -27,10 +31,30 @@
   [hidden] { display: none !important; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; }
+  /* 1rem, not 16px. A px base silently overrides the browser font size the
+     reader chose, which is the one setting most large-text users actually
+     change. */
   body {
     margin: 0; background: var(--bg); color: var(--fg); overflow: hidden;
-    font: 16px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font: 1rem/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-text-size-adjust: 100%;
+  }
+
+  /* Nothing here is decoration: without a visible ring the whole app is
+     unusable from a keyboard, and forced-colors throws the palette away, so
+     anything that carried meaning in colour has to carry it in a border too. */
+  :focus-visible {
+    outline: 3px solid var(--you); outline-offset: 2px; border-radius: 6px;
+  }
+  @media (forced-colors: active) {
+    .row, .chip, .opt, .b-row, .pick-row, .bar-btn {
+      border: 1px solid ButtonBorder; forced-color-adjust: none;
+      background: ButtonFace; color: ButtonText;
+    }
+    .row.on, .chip[aria-checked="true"], .opt.primary {
+      background: Highlight; color: HighlightText;
+    }
+    .strip, .unknown, #gate { border: 1px solid CanvasText; }
   }
 
   /* The map is the surface of the app, not a panel inside it. */
@@ -60,21 +84,39 @@
   }
 
   /* --- the question --- */
+  /* justify-content: center on a scroll container puts overflow ABOVE the
+     scroll origin, where nothing can reach it. Measured at 393x852 with root
+     53px (AX5): content 1989px in an 852px box, the 30 min button at top -644,
+     and scrollTop, scrollIntoView and Tab all left it there. safe centring
+     falls back to flex-start the moment the content stops fitting, which is
+     exactly when the centring stopped being worth anything. The plain value
+     stays above it for engines that do not parse the safe keyword. */
   #ask {
     position: fixed; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 1.05rem; padding: 1.5rem;
+    align-items: center; justify-content: center; justify-content: safe center;
+    gap: 1.05rem; padding: 1.5rem;
+    padding-bottom: calc(1.5rem + var(--safe-b));
     background: radial-gradient(90% 55% at 50% 46%, rgba(11,13,16,.78), rgba(11,13,16,.55) 62%, rgba(11,13,16,.9));
     overflow-y: auto;
   }
+  /* The clamp floor is in rem, so at a large root it wins and the wordmark grows
+     past the screen: measured with device emulation at 393px and root 53px it
+     rendered 127.2px and 433px wide inside a 234px content box, and #ask
+     scrolled sideways at 492 against 393. "Vacant." measures 3.40 times its own
+     font size at every size tried (51.09px -> 174px, 76.8px -> 261px, 127.2px
+     -> 433px), so the last term caps it at what fits with a little to spare.
+     Below AX5 it never binds: at 393px and root 16px it works out to 98.6px
+     against the 51.09px the clamp already picked. */
   #ask h1 {
-    margin: 0; font-size: clamp(2.4rem, 13vw, 3.4rem); font-weight: 800;
+    margin: 0; font-weight: 800;
+    font-size: min(clamp(2.4rem, 13vw, 3.4rem), calc((100vw - 3rem) / 3.5));
     letter-spacing: -.04em; line-height: 1;
     text-shadow: 0 2px 22px rgba(0,0,0,.75);
   }
   #ask h1 span { color: var(--accent); }
   #ask .q { margin: 0; font-weight: 650; }
-  /* width:100% is here to make the three buttons equal width, nothing more.
-     An earlier comment claimed it fixed a max-content overflow that clipped
+  /* width:100% is here to make the buttons equal width, nothing more. An
+     earlier comment claimed it fixed a max-content overflow that clipped
      "2 hours" at 390px. It did not: measured, the old row was 312px inside a
      342px content box and never overflowed at 320, 375, 390 or 430. The
      apparent clipping was headless Chrome ignoring --window-size for layout
@@ -83,23 +125,26 @@
     display: flex; gap: .55rem; flex-wrap: wrap; justify-content: center;
     width: 100%; max-width: 24rem;
   }
+  /* The side padding is capped in vw because rem grows with the root and the
+     screen does not. At 393px with root 53px a 1rem pad put the button's
+     smallest possible width at 249px inside a 234px content box, which is
+     8px of sideways scroll on the question screen. At every ordinary size the
+     rem is the smaller of the two and nothing moves: 15.7px against 16px at
+     393px and root 16px. */
   .opt {
     appearance: none; border: 1px solid var(--line); background: var(--card); color: var(--fg);
-    font: inherit; font-weight: 650; padding: .95rem 1rem; border-radius: 999px;
+    font: inherit; font-weight: 650; padding: .95rem min(1rem, 4vw); border-radius: 999px;
     min-height: 52px; flex: 1 1 6rem; cursor: pointer;
   }
-  .opt.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  /* White on this red measures 3.29:1, under the 4.5 floor, on the one control
+     every session goes through. Near-black on the same red is 6.38:1. */
+  .opt.primary { background: var(--accent); border-color: var(--accent); color: #0b0d10; }
   .opt:active { transform: scale(.97); }
-  .until { display: flex; align-items: center; gap: .5rem; color: var(--dim); font-size: .9rem; }
-  .until input {
-    appearance: none; background: var(--card); border: 1px solid var(--line); color: var(--fg);
-    font: inherit; padding: .6rem .8rem; border-radius: 10px; min-height: 44px;
-  }
   /* pointer-events blocks taps but NOT keyboard activation, so Tab+Enter
      before boot() resolved reached choose() with no data and threw. The
      buttons carry `disabled` in the markup and app.js clears it when ready;
      this is only the dimming. */
-  #ask:not(.ready) .opts, #ask:not(.ready) .until { opacity: .45; }
+  #ask:not(.ready) .opts { opacity: .45; }
   #ask:not(.ready) .loading { opacity: 1; }
   .loading { color: var(--dim); font-size: .82rem; opacity: 0; transition: opacity .3s; }
   /* The term and the read date used to sit in the corner of the result list,
@@ -110,9 +155,14 @@
   #gate {
     max-width: 26rem; text-align: center; border: 1px solid var(--warn);
     border-radius: 14px; padding: .9rem 1rem;
+    display: flex; flex-direction: column; gap: .6rem; align-items: center;
   }
-  #gate h2 { margin: 0 0 .4rem; font-size: 1rem; color: var(--warn); }
+  #gate h2 { margin: 0; font-size: 1.05rem; color: var(--warn); }
   #gate p { margin: 0; color: var(--dim); font-size: .88rem; }
+  #gate-d { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; }
+  #stale.banner {
+    border: 1px solid var(--warn); border-radius: 12px; padding: .7rem .9rem; color: var(--warn);
+  }
 
   /* --- the back arrow, over the map, never on the root --- */
   #back {
@@ -144,16 +194,36 @@
   #sheet .grip { width: 34px; height: 4px; border-radius: 2px; background: var(--line); }
   /* min-height:0 is load-bearing: without it a flex item will not shrink below
      its content, so the pane grows past the sheet instead of scrolling. */
-  #list, #room {
+  .pane {
     flex: 1 1 auto; min-height: 0;
     overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
     touch-action: pan-y; padding: 0 0 1rem;
   }
 
+  /* --- where the answer is measured from --- */
+  #origin {
+    display: flex; align-items: stretch; gap: .5rem; flex: none;
+    padding: 0 .7rem .5rem; border-bottom: 1px solid var(--line);
+  }
+  .bar-btn {
+    appearance: none; background: var(--card); border: 1px solid var(--line); color: var(--fg);
+    font: inherit; font-size: .84rem; border-radius: 999px; min-height: 44px;
+    padding: .3rem .9rem; cursor: pointer; display: flex; align-items: center; gap: .4rem;
+  }
+  #origin-where { flex: 1 1 auto; min-width: 0; text-align: left; }
+  #origin-where span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #origin-where b { font-weight: 650; }
+  #origin-clear { flex: none; min-width: 44px; justify-content: center; }
+
   .strip {
     margin: 0; padding: .6rem 1.1rem .7rem; color: var(--warn);
     font-size: .88rem; border-bottom: 1px solid var(--line);
   }
+  /* Measured at AX5, root 53px: "Independence" alone is 345px inside a 273px
+     column, so without a break inside the word the name is clipped and the row
+     overflows its own box by 14px. The name is the one field carried while
+     walking, so it breaks rather than truncates. */
+  .row, .b-row, .pick-row .pn { overflow-wrap: anywhere; }
   .row {
     appearance: none; width: 100%; text-align: left; background: transparent; color: inherit;
     font: inherit; border: 0; border-left: 3px solid transparent;
@@ -171,7 +241,7 @@
   .r-chev { grid-area: chev; color: var(--dim); display: flex; align-items: center; justify-content: flex-end; }
   /* rem inside a media query resolves against 16px forever, so the large-text
      reflow has to be a container query in em or it never fires. */
-  #list { container-type: inline-size; container-name: list; }
+  #list, #near, #pick, #room { container-type: inline-size; container-name: list; }
   @container list (max-width: 18em) {
     .row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "walk" "win" "chev"; }
     .row .r-walk, .row .r-chev { justify-self: start; }
@@ -180,6 +250,87 @@
   .empty { color: var(--dim); padding: 1.4rem 1.1rem; margin: 0; }
   .foot { color: var(--dim); font-size: .8rem; padding: 1rem 1.1rem 0; margin: 0; border-top: 1px solid var(--line); }
   .foot b { color: var(--fg); font-weight: 600; }
+  .foot-acts { display: flex; flex-wrap: wrap; gap: .5rem; padding: .7rem 1.1rem 0; }
+  h2.msg { margin: 0; padding: .9rem 1.1rem .3rem; font-size: 1.05rem; letter-spacing: -.01em; }
+
+  /* --- the duration chips --- */
+  /* At AX5 "rest of day" wraps to three lines and the bar grows to 238px,
+     which is most of a peeked sheet. The labels stay on one line and the bar
+     scrolls sideways instead, so the chips keep one row of height at any text
+     size. */
+  #chips {
+    display: flex; gap: .4rem; flex: none; padding: .5rem .7rem;
+    border-top: 1px solid var(--line);
+    overflow-x: auto; overscroll-behavior-x: contain;
+  }
+  .chip {
+    appearance: none; flex: 1 1 auto; white-space: nowrap; min-height: 44px;
+    background: var(--card); border: 1px solid var(--line); color: var(--dim);
+    font: inherit; font-size: .84rem; font-weight: 650; border-radius: 999px;
+    padding: .4rem .3rem; cursor: pointer;
+  }
+  .chip[aria-checked="true"] {
+    background: var(--accent); border-color: var(--accent); color: #0b0d10;
+  }
+
+  /* --- the buildings screen, for the hours the schedule does not cover --- */
+  .why { margin: 0; padding: .2rem 1.1rem .8rem; color: var(--fg); font-size: .92rem; }
+  .grp {
+    margin: 0; padding: .5rem 1.1rem .35rem; font-size: .74rem; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--dim);
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  }
+  .grp .when { font-weight: 500; letter-spacing: 0; text-transform: none; }
+  .b-row {
+    appearance: none; width: 100%; text-align: left; background: transparent; color: inherit;
+    font: inherit; border: 0; padding: .7rem 1.1rem; min-height: 56px; cursor: pointer;
+    display: grid; gap: .12rem 1rem; grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "name walk" "sub hours";
+  }
+  .b-row + .b-row { border-top: 1px solid var(--line); }
+  .b-row .r-win { grid-area: sub; }
+  .b-row .b-hours { grid-area: hours; color: var(--dim); font-size: .84rem; white-space: nowrap; }
+  .b-row .b-hours.unknown-h { color: var(--warn); }
+
+  /* --- the building picker --- */
+  .shortcuts { display: flex; flex-wrap: wrap; gap: .45rem; padding: .3rem 1.1rem .7rem; }
+  .shortcuts .bar-btn { flex: 1 1 8rem; justify-content: center; }
+  .pick-row {
+    appearance: none; width: 100%; text-align: left; background: transparent; color: inherit;
+    font: inherit; border: 0; padding: .6rem 1.1rem; min-height: 44px; cursor: pointer;
+    display: flex; align-items: center; gap: .7rem;
+  }
+  .pick-row + .pick-row { border-top: 1px solid var(--line); }
+  .pick-row .pn { flex: 1 1 auto; min-width: 0; }
+  .pick-row .ps { color: var(--dim); font-size: .8rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .pick-row .pc { color: var(--dim); font-size: .84rem; white-space: nowrap; }
+  /* A container query carries no specificity of its own, so this block has to
+     sit BELOW .b-row and .pick-row or the plain rules win on source order.
+     .b-row had the container name and no rule inside the query at all: measured
+     at 393px with root 53px, all 53 building rows computed a 0px name column
+     against a 342px walk column and #near scrolled sideways at 454 to 393. */
+  @container list (max-width: 18em) {
+    .b-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "walk" "sub" "hours"; }
+    .b-row .r-walk { justify-self: start; }
+    .b-row .b-hours { white-space: normal; }
+    .pick-row { flex-wrap: wrap; }
+    .pick-row .pc { white-space: normal; }
+    /* 8rem is 424px once the root is 53px, and a shortcut label is one flex
+       item that will not shrink under its longest word, so the picker scrolled
+       sideways by 6px. One button per line, and the label breaks the way the
+       row names already do. */
+    .shortcuts .bar-btn { flex-basis: 100%; min-width: 0; overflow-wrap: anywhere; }
+  }
+  #find {
+    flex: none; display: flex; gap: .5rem; padding: .5rem .7rem;
+    border-top: 1px solid var(--line);
+  }
+  #find input {
+    appearance: none; flex: 1 1 auto; min-width: 0; background: var(--card);
+    border: 1px solid var(--line); color: var(--fg); font: inherit; font-size: .95rem;
+    padding: .5rem .9rem; border-radius: 999px; min-height: 44px;
+  }
 
   /* --- the room screen, a second pane in the same sheet --- */
   #room h2 { margin: 0; padding: .1rem 1.1rem .45rem; font-size: 1.05rem; letter-spacing: -.01em; }
@@ -191,6 +342,14 @@
     border-bottom: 1px solid var(--line);
   }
   .facts .w { display: flex; align-items: center; gap: .3rem; color: var(--fg); white-space: nowrap; }
+  .acts { display: flex; flex-wrap: wrap; gap: .5rem; padding: .7rem 1.1rem 0; }
+  .acts a.bar-btn { text-decoration: none; }
+  /* The needle turns, the button does not, so the label stays readable while
+     the arrow points. */
+  #bearing .ico { transition: transform .12s linear; }
+  @media (prefers-reduced-motion: reduce) {
+    #bearing .ico { transition: none; }
+  }
   /* The gap is what the reader came for, so free blocks get the weight and the
      left margin and the classes are indented out of the way. */
   .tl { list-style: none; margin: 0; padding: .4rem 0 0; }
@@ -204,17 +363,47 @@
   .tl .busy, .tl .edge { color: var(--dim); font-size: .85rem; padding-left: 4.6rem; }
   .tl .seam { height: 2px; padding: 0; margin: .12rem 0 .12rem 4.6rem; background: var(--line); }
   .tl .t { min-width: 4.2rem; }
+  /* Below .tl on purpose: a container query wins on order, not specificity. The
+     timeline's whole layout is in rem, so at 393px with root 53px the 4.2rem
+     time column alone was 222px and the 4.6rem class indent was 244px, and the
+     room pane scrolled sideways at 671 against 393. At large text the time
+     stops reserving a column, the rows wrap and the indent goes. */
+  @container list (max-width: 18em) {
+    .tl li { flex-wrap: wrap; gap: .2rem .8rem; }
+    .tl .t { min-width: 0; }
+    .tl .free .len { margin-left: 0; }
+    .tl .busy, .tl .edge { padding-left: 1.1rem; }
+    .tl .seam { margin-left: 1.1rem; }
+  }
   .unknown {
     margin: .5rem 1.1rem 0; padding: .6rem .8rem; border: 1px solid var(--warn);
     border-radius: 10px; color: var(--dim); font-size: .84rem;
   }
 
+  /* --- what the app believes, for a complaint that arrives after the walk --- */
+  .diag {
+    margin: .6rem 1.1rem; padding: .7rem .8rem; background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .74rem; line-height: 1.5; color: var(--fg);
+    white-space: pre-wrap; overflow-x: auto;
+    user-select: text; -webkit-user-select: text;
+  }
+  .diag.picked { outline: 2px solid var(--you); }
+  .optin {
+    display: flex; align-items: center; gap: .6rem; padding: .2rem 1.1rem .6rem;
+    color: var(--dim); font-size: .84rem; min-height: 44px;
+  }
+  .optin input { width: 22px; height: 22px; accent-color: var(--accent); }
+
   #note {
     position: fixed; top: calc(var(--safe-t) + .7rem); left: 50%;
     transform: translateX(-50%); max-width: 92vw; z-index: 3;
     background: var(--card); border: 1px solid var(--line); color: var(--dim);
-    font-size: .8rem; padding: .5rem .85rem; border-radius: 999px; text-align: center;
+    font-size: .8rem; padding: .4rem .6rem .4rem .85rem; border-radius: 999px; text-align: center;
+    display: flex; align-items: center; gap: .6rem;
   }
+  #note-pick { flex: none; }
 </style>
 </head>
 <body>
@@ -226,10 +415,17 @@
   </symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 4 7 12 15 20"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 4 17 12 9 20"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24">
+    <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z"/><circle cx="12" cy="10" r="2.4"/>
+  </symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M12 3 12 21M12 3 6 9M12 3l6 6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19"/></symbol>
 </svg>
 
 <canvas id="map"></canvas>
-<p id="note" hidden></p>
+<p id="note" hidden><span id="note-text"></span>
+  <button id="note-pick" class="bar-btn" hidden>Pick a building</button>
+</p>
 <button id="back" hidden aria-label="Back to the question">
   <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg>
 </button>
@@ -237,31 +433,59 @@
 
 <section id="ask">
   <h1>Vacant<span>.</span></h1>
-  <p class="q">How long do you need?</p>
-  <div class="opts" role="group" aria-label="How long do you need a room for?">
-    <button class="opt primary" data-min="30" disabled>30 min</button>
-    <button class="opt" data-min="60" disabled>1 hour</button>
-    <button class="opt" data-min="120" disabled>2 hours</button>
+  <div id="ask-q">
+    <p class="q">How long do you need?</p>
+    <div class="opts" role="group" aria-label="How long do you need a room for?">
+      <button class="opt primary" data-min="30" disabled>30 min</button>
+      <button class="opt" data-min="60" disabled>1 hour</button>
+      <button class="opt" data-min="120" disabled>2 hours</button>
+      <button class="opt" data-min="day" disabled>rest of day</button>
+    </div>
   </div>
-  <label class="until">until <input id="until" type="time" aria-label="I need a room until" disabled></label>
   <p class="loading">finding campus&hellip;</p>
   <p class="prov" id="prov" hidden></p>
-  <p class="prov">Class schedule only. Doors may be locked, and clubs book rooms too.</p>
+  <p class="prov" id="stale" hidden></p>
+  <p class="prov">Class schedule only. Doors get locked, clubs book rooms, and a class with no
+    room recorded does not appear here at all.</p>
   <div id="gate" hidden>
-    <h2 id="gate-h"></h2>
+    <h2 id="gate-h" tabindex="-1"></h2>
     <p id="gate-p"></p>
+    <p id="gate-d" class="prov" hidden></p>
+    <button id="gate-go" class="opt" hidden></button>
   </div>
+  <button id="ask-pick" class="opt" hidden>Pick your building instead</button>
 </section>
 
 <section id="sheet" hidden>
   <div class="handle" id="handle"><span class="grip"></span></div>
-  <div id="list"></div>
-  <section id="room" hidden></section>
+  <div id="origin" hidden>
+    <button id="origin-where" class="bar-btn" type="button">
+      <svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg><span></span>
+    </button>
+    <button id="origin-clear" class="bar-btn" type="button" hidden aria-label="Use my location instead of the building I picked">
+      <svg class="ico" aria-hidden="true"><use href="#i-x"/></svg>
+    </button>
+  </div>
+  <div id="list" class="pane"></div>
+  <section id="room" class="pane" hidden></section>
+  <section id="near" class="pane" hidden></section>
+  <section id="pick" class="pane" hidden></section>
+  <section id="about" class="pane" hidden></section>
+  <div id="chips" role="radiogroup" aria-label="How long do you need a room for?" hidden>
+    <button class="chip" type="button" role="radio" data-min="30" aria-checked="false" tabindex="-1">30m</button>
+    <button class="chip" type="button" role="radio" data-min="60" aria-checked="false" tabindex="-1">1h</button>
+    <button class="chip" type="button" role="radio" data-min="120" aria-checked="false" tabindex="-1">2h</button>
+    <button class="chip" type="button" role="radio" data-min="day" aria-checked="false" tabindex="-1">rest of day</button>
+  </div>
+  <form id="find" hidden>
+    <input id="find-q" type="search" autocomplete="off" autocorrect="off" spellcheck="false"
+      enterkeyhint="search" placeholder="Search buildings" aria-label="Search buildings by name or code">
+  </form>
 </section>
 
 <script type="module" src="js/app.js"></script>
 <noscript>
-  <p style="padding:2rem;color:#8b94a2">Vacant needs JavaScript to rank rooms. The data it uses is at
+  <p style="padding:2rem;color:#a0a9b6">Vacant needs JavaScript to rank rooms. The data it uses is at
   <a href="https://github.com/EnesYilmazcode/Vacant" style="color:#eef1f5">github.com/EnesYilmazcode/Vacant</a>.</p>
 </noscript>
 </body>

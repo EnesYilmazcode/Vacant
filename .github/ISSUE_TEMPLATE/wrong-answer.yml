@@ -1,0 +1,40 @@
+name: Vacant told me the wrong thing
+description: A room Vacant said was free was not free, or a room it hid was empty.
+title: "Wrong answer: "
+labels: ["wrong-answer"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the report the project needs most. A broken Vacant looks exactly
+        like a Vacant that found a lot of rooms, so a wrong answer someone walked
+        to is often the only signal that a side table went stale.
+
+        If you came here from the app the diagnostics box below is already filled
+        in. If you came here on your own, open the app, tap **What Vacant knows**,
+        tap **Copy**, and paste it in.
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened
+      description: Which room, roughly what time, and what you found when you got there.
+      placeholder: DL0357 at about 2pm on a Thursday. There was a class in it.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      placeholder: An empty room, or for that one not to be in the list.
+    validations:
+      required: false
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: >
+        Straight out of the app. No coordinates are in here unless you ticked the
+        box that puts them there.
+      render: text
+    validations:
+      required: false

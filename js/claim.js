@@ -11,15 +11,32 @@
 // classes and never about doors. Saying "Thompson Library opens at 12:45pm"
 // because a class starts then is exactly the guess this project refuses.
 //
+// The second rule: a window is not the same as YOUR window. `yours` is the
+// minutes left after the walk, through the engine's formula, and it is null
+// rather than optimistic when the walk is unknown. The version that shipped
+// first used `gapEnd - packup - now`, which is the exact expression engine.js
+// documents as the bug it exists to fix, because it counts the walk as study
+// time. Measured on a Thursday at 12:15 it was wrong on all 23 rooms in the
+// top 40 that carried a claim, by 5 minutes each.
+//
 // Pure. Wall-clock minutes in, a verdict out, no Date and no DOM.
 
-export function roomClaim({ known, rows = [], blocks = [], open, close, now }) {
+import { usableMinutes } from './engine.js';
+
+export function roomClaim({ known, rows = [], blocks = [], open, close, now, metres }) {
+  // Null, not zero and not the whole gap. A caller with no distance behind it,
+  // a shared link or the buildings screen, gets no duration at all.
+  const yours = (gapStart, gapEnd) =>
+    Number.isFinite(metres) && Number.isFinite(gapStart) && Number.isFinite(gapEnd)
+      ? usableMinutes({ now, gapStart, gapEnd, metres })
+      : null;
+
   if (open == null || close == null) return { kind: 'no-class-today' };
 
   if (now < open) {
     const first = rows.find((r) => r.kind === 'free');
     return known
-      ? { kind: 'opens', at: open, next: first?.t ?? null, nextLen: first?.len ?? null }
+      ? { kind: 'opens', at: open, next: first?.t ?? null, yours: first ? yours(first.t, first.end) : null }
       : { kind: 'before-first-class', at: open };
   }
 
@@ -36,7 +53,7 @@ export function roomClaim({ known, rows = [], blocks = [], open, close, now }) {
       kind: 'in-class',
       until: inClass[1],
       next: next?.t ?? null,
-      nextLen: next?.len ?? null,
+      yours: next ? yours(next.t, next.end) : null,
     };
   }
 
@@ -46,5 +63,10 @@ export function roomClaim({ known, rows = [], blocks = [], open, close, now }) {
   if (!here) return { kind: 'nothing-free' };
 
   const later = blocks.find(([s]) => s >= now);
-  return { kind: 'free', until: later ? later[0] : null, known: !!known };
+  return {
+    kind: 'free',
+    until: later ? later[0] : null,
+    known: !!known,
+    yours: yours(here.t, here.end ?? close),
+  };
 }

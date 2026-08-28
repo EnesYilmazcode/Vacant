@@ -56,9 +56,12 @@ export const SURPLUS_WEIGHT = 0.1;
 export const SURPLUS_CAP = 60;
 
 // The window the schedule can speak about. MEASURED on the committed index
-// (data/rooms-1268.json, 12,168 intervals over 871 rooms): the earliest class
-// starts at 05:30 and the latest ends at 23:00. The research note's 22:00 came
-// from a 12-subject sample and clips 18 real intervals.
+// (data/rooms-1268.json, 9,561 intervals over 581 rooms once the room safety
+// filter has cut it): the earliest class starts at 05:45 and the latest ends at
+// 21:55. DAY_END keeps the 23:00 it was set to against the 871-room index,
+// which now sits above everything the data carries and never binds. A clamp
+// that is too loose offers nothing extra; one that is too tight clips real
+// intervals, which is what the research note's 22:00 did to 18 of them.
 //
 // DAY_START is a clamp, not a measurement. Without it a room with no morning
 // class reports "free since 00:00", which is true and useless. It only ever
@@ -66,8 +69,12 @@ export const SURPLUS_CAP = 60;
 //
 // Neither of these is a claim that a door is unlocked. They bound the schedule,
 // and a building with no published hours still reports no usable figure at all.
+//
+// NOT js/state.js's MINUTES_IN_DAY, which is 1440. That one is the last minute
+// a wall clock can hold, and a window past it is broken arithmetic. This one is
+// a clamp on what the app will offer.
 export const DAY_START = 420; // 07:00
-export const DAY_END = 1380; // 23:00, the latest class end in the full harvest
+export const DAY_END = 1380; // 23:00, above the 21:55 the shipped index reaches
 
 // The rungs the requested duration falls back through. GUESS, and it mirrors
 // the duration chips the UI offers.
@@ -617,17 +624,16 @@ export function scheduleCoverage(rooms, active) {
 // Below this share of the index live, the schedule has stopped describing the
 // date and an empty room is not evidence of anything.
 //
-// MEASURED on the committed Autumn index, 12,168 blocks over 10 sessions, every
-// date from August 1 to December 31: on all 77 days classes meet the live share
-// sits between 94.98% and 97.64%, and on every other day it is at or below
-// 1.50%. Two clusters three orders of magnitude apart with nothing in between,
-// so this sits an order of magnitude clear of each. December 10, the first day
-// of the wrong week, measures 0.066%.
+// MEASURED on the committed Autumn index, 9,561 blocks over 7 sessions, every
+// date from August 1 to December 31: on the days classes meet the live share
+// sits between 94.80% and 97.75%, and on every other day it is at or below
+// 0.073%. Two clusters three orders of magnitude apart with nothing in between,
+// so this sits an order of magnitude clear of each.
 //
 // The split is structural rather than lucky. One full-term session carries
-// 11,386 of the 12,168 blocks, so the share is either that session running or
-// it is not, and the same shape should hold for any term. Re-derive it anyway
-// when a term with a different session layout ships.
+// 9,057 of the 9,561 blocks, so the share is either that session running or it
+// is not, and the same shape should hold for any term. Re-derive it anyway when
+// a term with a different session layout ships.
 export const SILENT_SHARE = 0.1;
 
 // The calendar the class API does not publish, read off whatever the build put
@@ -670,14 +676,25 @@ export function calendarOn(today, ...sources) {
 
 // Everything that has to be settled before a single room is swept.
 //
-// Three of these come from a calendar the class API does not publish and one
-// comes from the index itself. They are separate because they fail in different
-// directions: an exam window makes an occupied room look free, a closed campus
-// makes a reachable room look reachable, and a date the schedule has stopped
-// covering makes all of campus look free at once.
+// THE one place that decides whether Vacant may answer. The ladder calls it and
+// so does js/state.js, which dresses the verdict into a screen; nothing else is
+// allowed to reach the same conclusion by its own route, because two of those
+// drift and the day they drift one screen offers 450 rooms while another says
+// nobody knows.
+//
+// The checks come from four places and fail in different directions: a clock
+// the device cannot read, an index that did not build, a calendar the class API
+// does not publish, and the index's own coverage of today. An exam window makes
+// an occupied room look free, a closed campus makes a reachable room look
+// reachable, and a date the schedule has stopped covering makes all of campus
+// look free at once.
+//
+// `floor` and `inTerm` are facts about the term rather than about the sweep, so
+// they are worked out by the caller that knows the index shape and handed in.
+// Both are optional: a caller that does not pass them is not asking about them.
 //
 // Returns null when today can be answered normally.
-export function refusalFor({ now, rooms = [], sessions, date, active: given, calendar }) {
+export function refusalFor({ now, rooms = [], sessions, date, active: given, calendar, floor, inTerm }) {
   // Wall-clock minutes since local midnight, and nothing else. A value outside
   // that range is an epoch subtraction, which is a whole hour wrong for the rest
   // of the day on the two Sundays a year Ohio changes its clocks. Computing an
@@ -686,6 +703,17 @@ export function refusalFor({ now, rooms = [], sessions, date, active: given, cal
     return {
       refused: 'clock',
       reason: 'Vacant could not read the time on this device, so it cannot say what is free.',
+    };
+  }
+
+  // Fewer rooms than a term this size can hold is a build that broke, not a
+  // campus that emptied. Ranking the survivors would report free rooms that are
+  // free only because the rooms holding their classes went missing.
+  if (floor && !floor.ok) {
+    return {
+      refused: 'index',
+      reason: 'The weekly build read fewer rooms than this term can hold, so Vacant is not ranking what survived.',
+      floor,
     };
   }
 
@@ -700,6 +728,21 @@ export function refusalFor({ now, rooms = [], sessions, date, active: given, cal
         ?? 'Finals week. Ohio State reassigns rooms for exams and does not publish the assignments, so Vacant cannot tell you what is free.',
     };
   }
+  // Outside the term the busy grid describes nobody, so every room in it reads
+  // free. Only a caller that knows the term's dates can see that, which is why
+  // it arrives as an answer rather than as a measurement. It sits above the
+  // closed days because between terms is the bigger fact: over winter break
+  // "campus is between terms, Spring begins Jan 11" beats "Christmas Day,
+  // campus is closed" for somebody looking for a room. Finals week is the
+  // exception above it, because finals sit outside every session range and
+  // would otherwise be read as an empty campus.
+  if (inTerm === false) {
+    return {
+      refused: 'out-of-term',
+      reason: 'Today is outside the term this schedule covers, so there is nothing to read it against.',
+    };
+  }
+
   if (calendar?.buildingsClosed) {
     return {
       refused: 'closed',

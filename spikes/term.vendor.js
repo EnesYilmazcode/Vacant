@@ -1,12 +1,19 @@
-// The app's term gate, copied out of js/app.js provenance() with the DOM
-// removed.
+// The app's term gate, with the DOM removed.
 //
-// js/app.js renders this gate and then returns from boot() BEFORE it sets
-// state.ready, so outside the published instruction window the app cannot rank
-// a room at all. An instrument that ranks anyway is not measuring the app. On
+// The gate has moved. It used to sit in js/app.js provenance(), which returned
+// from boot() before setting state.ready; it now lives in js/state.js
+// resolveState(), and js/app.js refuses to rank whenever that verdict says so.
+// Either way, outside the published instruction window the app cannot rank a
+// room, and an instrument that ranks anyway is not measuring the app. On
 // 2026-12-23, twelve days after Autumn 2026 ended, the app called zero rooms
 // free and walk.html called 871 free, which would have sent somebody to twenty
 // doors to produce a number about nothing.
+//
+// This is the instruction-window half of that verdict and nothing else. The app
+// also refuses on exam weeks, closed days and days its own schedule has gone
+// dark, so a shut gate here always means the app refuses, while an open one
+// only means the app is not refusing FOR THIS REASON. Wrong in the safe
+// direction for a page that walks people to rooms.
 //
 // Copied by hand means it can drift. spikes/test/term.vendor.test.mjs holds a
 // tripwire on the app source.
@@ -39,10 +46,14 @@ export function termGate(current, today) {
     term,
     from,
     to,
+    // The app's own sentences, which is the point of vendoring rather than
+    // writing new ones. It names the end date in the headline where the app
+    // says only "is over", because the person reading an instrument is reading
+    // it to find out which dates it covers.
     headline: early ? `${term} has not started yet` : `${term} ended on ${fmtDay(to)}`,
     detail: early
       ? `Classes run ${fmtDay(from)} to ${fmtDay(to)}. Until then the schedule says nothing about which rooms are empty, so Vacant is not answering.`
-      : 'Ohio State has not published a newer schedule yet. Vacant will not rank rooms against a term that is over.',
+      : 'Ohio State has not published the next term yet. Vacant will not rank rooms against a term that has finished.',
   };
 }
 

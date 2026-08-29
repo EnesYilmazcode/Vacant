@@ -1849,3 +1849,107 @@ It is loaded with `import()` from `js/app.js` only when armed, and is absent fro
 the service worker's shell list, so a student who never types `?dev=1` never
 downloads it. Checked by `scripts/test/dev.test.mjs`, which also fails if
 `new Date()` reappears in `js/app.js`.
+
+---
+
+## 2026-08-29  Less is more: the day as a calendar, and 90 rooms nobody could get into
+
+Six things, and four of them are one thing: the app was explaining itself
+instead of answering.
+
+**A door nobody documents is not offered at all.** The instruction was one line:
+"if the hours of a place isn't published, don't include it, it's that simple."
+It was not obviously simple. Those 90 rooms in 22 buildings were shipped on
+purpose, in their own ranking tier, labelled `hours not published`, and the
+honesty of that label was a thing this project was proud of.
+
+The measurement settled it. Over 5,040 ranked rows from four origins across a
+week, **zero** unknown-hours rooms ever reached a top ten, because `tierOf` puts
+every published-hours room above every unknown one and there are 425 of those.
+They could not be reached by ranking, and they cost four separate blocks of
+prose across three screens to explain. So they are a build-time filter now,
+beside the type filter and for the same stated reason: an unusable room should
+be absent from the file rather than ranked low in a file anyone can read.
+
+```
+                                     before   after
+  rooms                                 515     425
+  buildings                              68      46
+  rooms with no published hours          90       0
+  ranked tiers the UI has to explain      5       3
+```
+
+The near screen was the reason to check twice. Deleting the unknown group only
+from that screen would have left a dead band roughly 40 hours a week, between
+midnight and 5am when `groups.open` is empty, showing a heading over a collapsed
+row and silently dropping 22 buildings. Filtering at the source instead means
+the screen is complete: everything it does not show is closed, and it says so.
+
+**The buildings screen, by subtraction.** Gone: the "Nothing is scheduled right
+now" heading and its paragraph, the `Open now` group label, `Registrar hours,
+read Aug 26`, the classroom count on every row, `· open every day`, and
+`open till 11:00pm`. What is left is a title, one sentence, and rows of name and
+walk. The closed rows keep their door phrase, because inside a group already
+labelled closed that phrase is the payload rather than a decoration.
+
+One sentence survived on purpose. `An open building is not an unlocked room.` is
+the only place on that screen that says so: `paintNear` renders no caveat, and
+`#ask`, which carries the other one, is hidden behind it.
+
+**The room screen is a calendar.** It used to be a list of rows that read
+"7:00am free 7h00 / 2:00pm in use / 4:45pm free 3h45". Accurate, and nobody could
+see the shape of a day in it. An empty-room app whose answer is the EMPTY parts
+should draw the empty parts as empty space, and every word spent writing "free"
+on a gap is a word spent describing white space.
+
+The grid needed a fact the index did not carry, so the index carries it: each
+busy tuple gained a fifth integer pointing into a new `courses` table, and the
+room screen prints `PSYCH 6650  2:00pm - 4:45pm` on the block. Subject code and
+catalog number, no section, no title, no instructor.
+
+Getting the code took a re-harvest. `data/harvest-1268.json.gz` was built before
+`collectMeetings` was fixed, so it carried `section.subject`, the display name,
+where the Registrar and every student say `MATH`. 545 requests, converged in 4
+passes, and 243 of 243 subjects now come back as codes.
+
+```
+  index, gzipped     19.4 KB -> 39.1 KB
+  courses                    2,024 labels, 3.3 blocks per label
+  blocks with no single course  547 of 8,329 (6.6%), drawn without a name
+```
+
+That is the largest single cost in this repo's history and it is the one the app
+gets the most back from. `MIXED_COURSE = -1` is what a block gets when two
+classes merged into it: naming either one would be a fact about a class that is
+not the only class in that window.
+
+**The sheet no longer resizes the map.** `viewport().band` tracked the sheet's
+live height, and `band` feeds both the vertical centring and the zoom through
+`Math.min(width, band)` in js/map.js, so pulling the sheet up zoomed the map out
+and slid it upward under the thumb. It is pinned to the resting layout now, so
+the sheet slides OVER a map that stays where it was. Verified: the map canvas is
+byte identical with the sheet at 324px and at 700px.
+
+**Setting your location by hand is a dev affordance.** The `from <building>` bar
+cost a full row at the top of the most-used screen and existed to let you say
+you were somewhere you were not. It renders only in dev mode. The one case a
+real user needs it, a geolocation fix that never arrived, is still covered by
+`Pick your building` on the question screen, which is where they already are
+when it happens.
+
+**`/dev` is a page, not a panel.** `dev/index.html` asks the two questions first:
+what minute, and where are you standing. Tap the campus map to drop a pin
+anywhere, or pick a building, or take one of seven jumps, then hand off to the
+real app. It writes three sessionStorage keys and navigates; the app pins the
+same clock every screen reads and the same origin the ranking measures from. The
+in-app panel is still there for changing your mind without leaving.
+
+Verified end to end in a real browser: drop a pin on the Oval, jump to
+Thanksgiving, and the app comes up with `refuses to rank — Thanksgiving Day,
+campus is closed  from a dropped pin`.
+
+**What was NOT cut, and why.** Every `aria-label`, the `say()` live region and
+the per-row spoken name stay at full length. The visible row is glyphs; the
+spoken name is the only place it states its own caveat in words, and shrinking
+the visible layer is exactly the reason the spoken one must not shrink with it.
+`docs/a11y-contract.md` specifies the order.

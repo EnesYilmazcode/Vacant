@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Vacant dev</title>
+<!--
+  The testing door. Pick a minute, drop a pin, open the app.
+
+  It exists because every interesting state of this app is somewhere else.
+  Thanksgiving is once a year. Exam week is in December. "What does it say if I
+  am standing outside Thompson at 9pm" needs you to be outside Thompson at 9pm.
+
+  Nothing here fakes an answer. It writes three sessionStorage keys and hands
+  off to the real app, which pins its own clock and its own origin and then
+  ranks rooms exactly as it would for a student standing there. If this page
+  shows you something wrong, the app is wrong.
+
+  Not linked from anywhere in the app, and noindex.
+-->
+<style>
+  :root {
+    --bg: #0b0d10; --fg: #eef1f5; --dim: #a0a9b6; --line: #1d232c;
+    --card: #121821; --accent: #ff4d3d; --you: #4cc2ff;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); overflow: hidden;
+    font: 1rem/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  :focus-visible { outline: 3px solid var(--you); outline-offset: 2px; border-radius: 6px; }
+
+  header {
+    display: flex; align-items: baseline; gap: .6rem; flex: none;
+    padding: calc(var(--safe-t) + .7rem) .9rem .5rem;
+  }
+  header h1 { margin: 0; font-size: 1.1rem; font-weight: 800; letter-spacing: -.02em; }
+  header h1 b { color: var(--accent); }
+  header span { color: var(--dim); font-size: .78rem; }
+
+  #wrap { position: relative; flex: 1 1 auto; min-height: 0; }
+  #map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #hint {
+    position: absolute; left: 50%; top: .6rem; transform: translateX(-50%);
+    background: rgba(9,11,14,.9); border: 1px solid var(--line); border-radius: 12px;
+    color: var(--dim); font-size: .76rem; padding: .35rem .7rem; margin: 0;
+    pointer-events: none;
+  }
+
+  form {
+    flex: none; display: flex; flex-direction: column; gap: .55rem;
+    padding: .7rem .9rem calc(.9rem + var(--safe-b));
+    border-top: 1px solid var(--line); background: var(--bg);
+  }
+  .line { display: flex; gap: .5rem; align-items: center; }
+  .line > * { min-width: 0; }
+  label { color: var(--dim); font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; }
+  input, select, button {
+    font: inherit; color: var(--fg); background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; padding: .5rem .6rem;
+  }
+  input, select { flex: 1 1 auto; }
+  button { cursor: pointer; }
+  .jumps { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .jumps button { font-size: .78rem; padding: .3rem .55rem; color: var(--dim); }
+  .jumps button[aria-pressed="true"] { color: var(--fg); border-color: var(--you); }
+  #go {
+    background: var(--accent); border-color: var(--accent); color: #0b0d10;
+    font-weight: 700; min-height: 48px; width: 100%;
+  }
+  #go[disabled] { opacity: .5; cursor: default; }
+  #at { color: var(--dim); font-size: .78rem; margin: 0; min-height: 1.2em; }
+  #at b { color: var(--fg); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Vacant<b>.</b> dev</h1>
+  <span>pick a minute, drop a pin</span>
+</header>
+
+<div id="wrap">
+  <canvas id="map"></canvas>
+  <p id="hint">tap the map to stand there</p>
+</div>
+
+<form id="f">
+  <div class="line">
+    <label for="when">When</label>
+    <input type="datetime-local" id="when">
+  </div>
+  <div class="jumps" id="jumps"></div>
+  <div class="line">
+    <label for="pick">Or</label>
+    <select id="pick"><option value="">a building</option></select>
+  </div>
+  <p id="at"></p>
+  <button type="submit" id="go" disabled>Open Vacant here</button>
+</form>
+
+<script type="module">
+import { toGrid, toLonLat } from '../js/campus.js';
+import {
+  SETTLED_SPAN, attachGestures, buildBasemap, drawFrame, drawYou,
+  makeView, panBy, pixelsPerGridFor, unproject, zoomBy,
+} from '../js/map.js';
+
+const BASE = new URL('..', import.meta.url).pathname;
+const $ = (id) => document.getElementById(id);
+const pad = (n) => String(n).padStart(2, '0');
+const local = (d) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+// The same jumps the in-app panel offers, because the two should not disagree
+// about which minutes are worth looking at.
+const JUMPS = [
+  ['Wed 10:20am', '2026-09-16T10:20'],
+  ['Fri 7:30pm', '2026-09-18T19:30'],
+  ['Sat 3:00am', '2026-09-19T03:00'],
+  ['Sun noon', '2026-09-20T12:00'],
+  ['Thanksgiving', '2026-11-26T11:00'],
+  ['Finals', '2026-12-14T11:00'],
+  ['Winter break', '2027-01-05T11:00'],
+];
+
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+const state = { campus: null, basemap: null, view: null, pin: null, moved: false };
+
+const canvas = $('map');
+const ctx = canvas.getContext('2d');
+let size = { w: 0, h: 0, dpr: 1 };
+
+function resize() {
+  const r = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  size = { w: Math.round(r.width), h: Math.round(r.height), dpr };
+  canvas.width = Math.round(r.width * dpr);
+  canvas.height = Math.round(r.height * dpr);
+}
+
+const viewport = () => ({ width: size.w, height: size.h, band: size.h, dpr: size.dpr });
+
+function draw() {
+  requestAnimationFrame(draw);
+  if (!state.basemap || !state.view) return;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  drawFrame(ctx, state.basemap, state.view, viewport());
+  if (!state.pin) return;
+  const at = toGrid([state.pin.lon, state.pin.lat], state.campus);
+  drawYou(ctx, { at, accuracyM: 0, guess: false }, state.basemap, state.view, viewport());
+}
+
+function setPin(lat, lon, label) {
+  state.pin = { lat, lon, label: label ?? null };
+  $('at').innerHTML = label
+    ? `standing at <b>${label}</b>`
+    : `standing at <b>${lat.toFixed(5)}, ${lon.toFixed(5)}</b>`;
+  $('go').disabled = false;
+  $('hint').hidden = true;
+}
+
+async function boot() {
+  const current = await fetch(`${BASE}data/current.json`).then((r) => r.json());
+  const [campus, buildings] = await Promise.all([
+    fetch(`${BASE}data/campus.json`).then((r) => r.json()),
+    fetch(`${BASE}${current.buildings}`).then((r) => r.json()).then((d) => d.buildings),
+  ]);
+  state.campus = campus;
+  resize();
+  const ppg = pixelsPerGridFor(campus, Math.min(size.w, size.h), size.dpr);
+  state.basemap = buildBasemap(campus, ppg);
+  // The Oval, which is where the app itself falls back to.
+  const [cx, cy] = toGrid([-83.01502, 39.99944], campus);
+  state.view = makeView({ cx, cy, span: SETTLED_SPAN, rotation: 0 });
+
+  const pick = $('pick');
+  for (const [code, b] of Object.entries(buildings).sort((a, c) => a[1].name.localeCompare(c[1].name))) {
+    if (!Number.isFinite(b.lat)) continue;
+    const o = document.createElement('option');
+    o.value = code;
+    o.textContent = b.name;
+    o.dataset.lat = b.lat;
+    o.dataset.lon = b.lon;
+    pick.append(o);
+  }
+  pick.onchange = () => {
+    const o = pick.selectedOptions[0];
+    if (!o?.dataset.lat) return;
+    setPin(Number(o.dataset.lat), Number(o.dataset.lon), o.textContent);
+    const g = toGrid([Number(o.dataset.lon), Number(o.dataset.lat)], campus);
+    state.view = makeView({ cx: g[0], cy: g[1], span: SETTLED_SPAN, rotation: 0 });
+  };
+}
+
+// A tap is a place. Pan and zoom are the same handlers the app uses, so the
+// gesture that works there works here.
+attachGestures(canvas, {
+  onPan: (dx, dy) => {
+    if (!state.basemap) return;
+    state.view = panBy(state.view, dx, dy, state.basemap, viewport());
+  },
+  onZoom: (factor, anchor) => {
+    if (!state.basemap) return;
+    state.view = zoomBy(state.view, factor, state.basemap, viewport(), anchor);
+  },
+  // attachGestures hands the point in as ONE array, not two numbers. Taking it
+  // as (x, y) made y undefined and every dropped pin came out NaN, NaN.
+  onTap: (p) => {
+    if (!state.basemap || !state.campus) return;
+    const grid = unproject(p, state.basemap, state.view, viewport());
+    const [lon, lat] = toLonLat(grid, state.campus);
+    setPin(lat, lon, null);
+    $('pick').value = '';
+  },
+});
+
+const jumps = $('jumps');
+JUMPS.forEach(([label, value]) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = label;
+  b.onclick = () => {
+    $('when').value = value;
+    paintWhen();
+  };
+  jumps.append(b);
+});
+
+function paintWhen() {
+  const d = new Date($('when').value);
+  const say = Number.isFinite(d.getTime()) ? `${DAYS[d.getDay()]}, ${d.toLocaleString()}` : '';
+  $('when').setAttribute('aria-label', `When: ${say}`);
+}
+
+$('when').value = local(new Date());
+$('when').oninput = paintWhen;
+paintWhen();
+
+$('f').onsubmit = (e) => {
+  e.preventDefault();
+  const ms = new Date($('when').value).getTime();
+  if (!Number.isFinite(ms) || !state.pin) return;
+  sessionStorage.setItem('vacant.dev', '1');
+  sessionStorage.setItem('vacant.dev.at', String(ms));
+  sessionStorage.setItem('vacant.dev.pin', JSON.stringify(state.pin));
+  sessionStorage.setItem('vacant.dev.where', 'pin');
+  location.href = BASE;
+};
+
+window.addEventListener('resize', () => {
+  resize();
+  if (state.campus) {
+    state.basemap = buildBasemap(state.campus, pixelsPerGridFor(state.campus, Math.min(size.w, size.h), size.dpr));
+  }
+});
+
+draw();
+boot().catch(() => {
+  $('hint').hidden = false;
+  $('hint').textContent = 'could not load the campus data';
+});
+</script>
+</body>
+</html>

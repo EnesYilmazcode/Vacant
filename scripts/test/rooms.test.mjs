@@ -195,18 +195,40 @@ test('propagation is idempotent', () => {
 const INDEX = new URL('../../data/rooms-1268.json', import.meta.url);
 const readIndex = () => (existsSync(INDEX) ? JSON.parse(readFileSync(INDEX, 'utf8')) : null);
 
-test('every busy tuple in the committed index is four integers in range', () => {
+test('every busy tuple in the committed index is five integers in range', () => {
   const d = readIndex();
   if (!d) return;
+  assert.ok(Array.isArray(d.courses) && d.courses.length > 0, 'the index carries a course table');
   for (const [id, room] of Object.entries(d.rooms)) {
     for (const b of room.busy) {
-      assert.equal(b.length, 4, id);
+      assert.equal(b.length, 5, id);
       assert.ok(b.every(Number.isInteger), `${id} ${JSON.stringify(b)}`);
       assert.ok(b[0] >= 0 && b[0] <= 6, `${id} weekday ${b[0]}`);
       assert.ok(b[1] < b[2], `${id} start must precede end`);
       assert.ok(b[2] <= 1440, `${id} end ${b[2]}`);
       assert.ok(b[3] >= 0 && b[3] < d.sessions.length, `${id} session ${b[3]}`);
+      // -1 is MIXED_COURSE: the schedule named no course, or two courses merged
+      // into one block and neither one is the answer.
+      assert.ok(b[4] === -1 || (b[4] >= 0 && b[4] < d.courses.length), `${id} course ${b[4]}`);
     }
+  }
+});
+
+test('the course table is sorted, deduped, and every entry is pointed at', () => {
+  const d = readIndex();
+  if (!d) return;
+  assert.deepEqual(d.courses, [...d.courses].sort(), 'insertion order is harvest order, so it is sorted');
+  assert.equal(new Set(d.courses).size, d.courses.length, 'no duplicate labels');
+  const used = new Set();
+  for (const room of Object.values(d.rooms)) {
+    for (const b of room.busy) if (b[4] >= 0) used.add(b[4]);
+  }
+  assert.equal(used.size, d.courses.length, 'a label nothing points at is dead weight in the file');
+  // Subject CODE and catalog number, not the API's display name. The harvest
+  // stored section.subject for a while, which gave "Mathematics 2153" where the
+  // Registrar and every student say "MATH 2153".
+  for (const label of d.courses) {
+    assert.match(label, /^[A-Z][A-Za-z0-9&]* [0-9][0-9A-Za-z.]*$/, label);
   }
 });
 

@@ -1163,7 +1163,7 @@ test('a query against the committed index answers, and answers the same way twic
   const first = query(rooms, opts);
   const second = query(rooms, opts);
 
-  assert.ok(rooms.length > 500, `${rooms.length} rooms in the index`);
+  assert.ok(rooms.length > 300, `${rooms.length} rooms in the index`);
   assert.ok(first.rows.length > 0);
   assert.equal(first.rung, 'asked');
   assert.equal(
@@ -1427,9 +1427,10 @@ test('the day bounds still cover the committed index, including the late rooms',
   assert.equal(Math.min(...blocks.map((b) => b[2])), 345, 'the earliest class start, 05:45');
 
   // A 21:00 bound would clip these, which is why the clamp is not tightened to
-  // the observed maximum. Fourteen rooms across seven buildings run an evening
-  // section, so this is ordinary scheduling rather than two outliers.
+  // the observed maximum. Eight rooms still run an evening section after the
+  // published-hours rule took the index to 425 rooms, so this is ordinary
+  // scheduling rather than one outlier.
   const late = blocks.filter((b) => b[3] > 1260);
-  assert.equal(late.length, 26, 'intervals a 21:00 bound would have clipped');
-  assert.equal(new Set(late.map((b) => b[0])).size, 14, 'rooms running past 21:00');
+  assert.equal(late.length, 10, 'intervals a 21:00 bound would have clipped');
+  assert.equal(new Set(late.map((b) => b[0])).size, 8, 'rooms running past 21:00');
 });

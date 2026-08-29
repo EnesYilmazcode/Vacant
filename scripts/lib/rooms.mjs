@@ -47,6 +47,14 @@ export function buildSessions(records) {
 // Within a group, `next.start <= current.end` covers all three lies at once.
 // An exact duplicate, a partial overlap and an abutting pair all fold, which is
 // why the ten-copy case falls out for free.
+// A merged block whose sources named different courses. The room screen prints
+// the time and no label.
+export const MIXED_COURSE = -1;
+
+// -1 sorts below every real index and above nothing, which is what makes the
+// sort total for tuples that carry no course at all.
+const courseOf = (iv) => (Number.isInteger(iv[4]) ? iv[4] : MIXED_COURSE);
+
 export function mergeIntervals(intervals) {
   const groups = new Map();
   for (const iv of intervals) {
@@ -60,7 +68,11 @@ export function mergeIntervals(intervals) {
   let merges = 0;
 
   for (const group of groups.values()) {
-    group.sort((a, b) => a[1] - b[1] || a[2] - b[2]);
+    // The course index is part of the sort key, not decoration. Without it two
+    // identical intervals from two cross-listed sections sort equal, so which
+    // one survives depends on harvest order, and the committed file changes on
+    // a rebuild that found nothing new.
+    group.sort((a, b) => a[1] - b[1] || a[2] - b[2] || courseOf(a) - courseOf(b));
     let current = null;
     for (const iv of group) {
       if (!current) {
@@ -72,6 +84,10 @@ export function mergeIntervals(intervals) {
         if (iv[2] <= current[2]) dropped++;
         else merges++;
         current[2] = Math.max(current[2], iv[2]);
+        // One block, two courses. Naming either one of them on the room screen
+        // would be a fact about a class that is not the only class in that
+        // window, so the block keeps its time and loses its name.
+        if (courseOf(iv) !== courseOf(current)) current[4] = MIXED_COURSE;
       } else {
         out.push(current);
         current = [...iv];
@@ -163,12 +179,24 @@ export function propagateGroups(rooms) {
   return { down, up };
 }
 
-// Day-expand one meeting into [weekday, start, end, sessionIndex] tuples.
-export function expandMeeting(meeting, start, end, sessionIndex) {
+// Day-expand one meeting into [weekday, start, end, sessionIndex, courseIndex]
+// tuples.
+//
+// `courseIndex` points into the index's own `courses` table and is what lets
+// the room screen draw a day as a schedule rather than as a list of gaps. It is
+// optional: a caller with no course table emits the four-element tuple every
+// reader before this understood, and every reader after it still only reads the
+// first four.
+export function expandMeeting(meeting, start, end, sessionIndex, courseIndex) {
   const out = [];
+  const withCourse = Number.isInteger(courseIndex);
   for (const day of DAY_NAMES) {
     if (meeting[day] !== true) continue;
-    out.push([DAY_INDEX[day], start, end, sessionIndex]);
+    out.push(
+      withCourse
+        ? [DAY_INDEX[day], start, end, sessionIndex, courseIndex]
+        : [DAY_INDEX[day], start, end, sessionIndex],
+    );
   }
   return out;
 }

@@ -146,7 +146,9 @@ test('every building that hosts classes and sits on the map has a footprint near
     if (!near) missing.push(`${code} ${b.name}`);
   }
   assert.deepEqual(missing, [], 'on-map class buildings with no footprint within 250 m');
-  assert.ok(codes.length > 50, 'the check would be vacuous with too few codes');
+  // See buildings.test.mjs: the index tops out at the 46 buildings with
+  // published hours.
+  assert.ok(codes.length > 30, 'the check would be vacuous with too few codes');
 });
 
 test('the committed map stays inside its stated budget', () => {

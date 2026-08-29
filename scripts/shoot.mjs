@@ -456,7 +456,7 @@ async function choose(page) {
       row.click();
       await new Promise((r) => setTimeout(r, 250));
       const claim = document.querySelector('#room .claim').textContent.replace(/\\s+/g, ' ').trim();
-      const busy = document.querySelectorAll('#room .tl li.busy').length;
+      const busy = document.querySelectorAll('#room .blk').length;
       back.click();
       await new Promise((r) => setTimeout(r, 200));
       const said = time(claim);
@@ -635,11 +635,11 @@ async function run() {
     // 5. tap the same row again and the room screen opens
     await page.tapSelector(`#list .row[data-i="${target.i}"]`);
     await page.waitFor(`!document.getElementById('room').hidden`, 'the room screen');
-    await page.waitFor(`document.querySelectorAll('#room .tl li').length > 2`, "today's timeline");
-    // Opened at peek the timeline runs off the bottom of the phone, and the row
-    // that gets cut is the one saying when the building locks, which is the
-    // half of the answer nobody else has. So the sheet goes up.
-    await page.dragSheet(-0.34 * SCREEN.height);
+    await page.waitFor(`document.querySelector('#room .day')`, "today's grid");
+    // The room screen opens tall on its own now, because it holds a day as a
+    // calendar and a calendar whose first two hours are the only ones above the
+    // fold is a calendar nobody scrolls. The drag that used to be here fought
+    // that, so the frame is taken where the app puts it.
     await page.settled();
     await sleep(900);
     const room = await page.evaluate(`(() => {
@@ -649,14 +649,16 @@ async function run() {
         claim: document.querySelector('#room .claim').textContent.replace(/\\s+/g, ' ').trim(),
         facts: facts.textContent.replace(/\\s+/g, ' ').trim(),
         loose: [...facts.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()),
-        tl: [...document.querySelectorAll('#room .tl li')]
+        day: (document.querySelector('#room .dnav span') || {}).textContent || '',
+        tl: [...document.querySelectorAll('#room .blk')]
           .map((l) => l.textContent.replace(/\\s+/g, ' ').trim())
           .filter(Boolean),
       };
     })()`);
     console.log(`claim  ${room.title}: ${room.claim}`);
-    console.log('timeline ' + room.tl.join('\n         '));
-    await shoot('timeline', `${room.tl.length} timeline rows`, target.name);
+    console.log(`day    ${room.day}`);
+    console.log('classes ' + (room.tl.join('\n        ') || '(none)'));
+    await shoot('timeline', `${room.tl.length} classes on ${room.day}`, target.name);
 
     // The row and the room screen are two renderings of one answer, so they
     // have to print one minute. They did not, and the README shipped both.

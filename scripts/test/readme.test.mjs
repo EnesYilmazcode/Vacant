@@ -147,15 +147,20 @@ test('the README counts are the counts in the shipped index', () => {
   // back to the pre-filter "867 of the 871 rooms" left both 578 and 581 sitting
   // in neighbouring lines, and the guard passed on a README that had just been
   // made wrong.
+  // `unknown` is now structurally zero: a room in a building with no published
+  // hours does not reach the index, so the README no longer has a sentence for
+  // that group and this asserts the zero instead of a phrase about it.
+  assert.equal(unknown, 0, 'a shipped room sits in a building with no published hours');
+  assert.equal(noHours, 0, 'same, measured on a weekday');
+
   const phrases = [
     `${quiet.length} of the ${rooms} rooms have no Saturday class`,
     `calls all ${quiet.length} of them free on a Saturday`,
     `**${closed}** of those`,
-    `**${unknown}** more sit`,
     `**${open}** are in a building that is`,
     `table covers ${published}`,
     `index touches ${buildings}`,
-    `${noHours} of the ${rooms} rooms, ${Math.round((noHours / rooms) * 100)}%`,
+    `${noHours} of the ${rooms} rooms sit in a building whose hours are unpublished`,
   ];
   for (const phrase of phrases) {
     assert.ok(

@@ -125,6 +125,7 @@ export const DROP = {
   restricted: 'restricted',
   farFromCampus: 'farFromCampus',
   thin: 'thin',
+  noHours: 'noHours',
 };
 
 // Decide one room. Returns null to drop it, or the room with `vis` and `ga`.
@@ -136,7 +137,7 @@ export const DROP = {
 // `why` is an optional object the caller passes in to read back which rule
 // dropped the room, because four of the five reasons are now indistinguishable
 // from a null return.
-export function classify(room, { gaRooms, restricted, unknown, why } = {}) {
+export function classify(room, { gaRooms, restricted, unknown, why, hoursKnown } = {}) {
   const drop = (reason) => {
     if (why) why.reason = reason;
     return null;
@@ -164,6 +165,21 @@ export function classify(room, { gaRooms, restricted, unknown, why } = {}) {
   if (Number.isFinite(room.metresFromOval) && room.metresFromOval > MAX_CAMPUS_M) {
     return drop(DROP.farFromCampus);
   }
+
+  // A door nobody publishes hours for is a door this app cannot say anything
+  // useful about.
+  //
+  // It used to ship those rooms and rank them in their own tier, with a label
+  // saying the hours were unknown. That was honest and it was still the wrong
+  // product: the answer "here is a room, and we cannot tell you whether you can
+  // get into the building" is not an answer, and it cost four separate blocks of
+  // explanatory text across three screens to say it.
+  //
+  // Measured on Autumn 2026: 22 of the 68 buildings and 90 of the 515 rooms had
+  // no published hours, and over 5,040 ranked rows from four origins across a
+  // week, ZERO of them ever reached a top ten. They were paying for themselves
+  // in prose and returning nothing.
+  if (hoursKnown === false) return drop(DROP.noHours);
 
   const ga = Boolean(gaRooms && gaRooms.has(id));
   // No GA list means "not general assignment" is not a fact about the room, it

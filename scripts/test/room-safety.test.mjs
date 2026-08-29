@@ -151,7 +151,7 @@ test('applySafety reports what it dropped and why, once per room', () => {
   };
   const { kept, dropped } = applySafety(rooms, { restricted: new Set(['049', '306']) });
   assert.deepEqual(kept, { shown: 1, secondary: 0 });
-  assert.deepEqual(dropped, { type: 2, restricted: 1, offCampus: 1, farFromCampus: 0, thin: 0 });
+  assert.deepEqual(dropped, { type: 2, restricted: 1, offCampus: 1, farFromCampus: 0, thin: 0, noHours: 0 });
   assert.deepEqual(Object.keys(rooms), ['DL0357']);
   assert.equal(rooms.DL0357.vis, 'shown');
 });
@@ -214,9 +214,50 @@ test('applySafety counts the two new rules separately and names what they took',
   });
   assert.deepEqual(Object.keys(rooms).sort(), ['DL0357', 'EC0018']);
   assert.deepEqual(kept, { shown: 2, secondary: 0 });
-  assert.deepEqual(dropped, { type: 0, restricted: 0, offCampus: 0, farFromCampus: 1, thin: 1 });
+  assert.deepEqual(dropped, { type: 0, restricted: 0, offCampus: 0, farFromCampus: 1, thin: 1, noHours: 0 });
   assert.deepEqual(cut.farFromCampus, [{ id: 'AARL100', b: '199', m: 9942 }]);
   assert.deepEqual(cut.thin, [{ id: 'TO0038', b: '087', type: '5K', week: 1 }]);
+});
+
+test('a building with no published hours takes its rooms out of the index', () => {
+  // The rule the owner asked for in one line: "if the hours of a place isn't
+  // published, don't include it". It is a filter and not a label, because a
+  // label cost four blocks of prose across three screens to say the same thing.
+  const published = new Set(['072']);
+  const opts = {
+    gaRooms: new Set(['EC0018']),
+    restricted: new Set(),
+    publishesHours: (code) => published.has(code),
+  };
+  const rooms = {
+    EC0018: { b: '072', type: '1B', busy: [[1, 480, 535, 0]] },
+    HM0100: { b: '038', type: '1B', busy: [[1, 480, 535, 0], [3, 480, 535, 0], [5, 480, 535, 0]] },
+  };
+  const { dropped, cut } = applySafety(rooms, opts);
+  assert.deepEqual(Object.keys(rooms), ['EC0018'], 'the undocumented building lost its room');
+  assert.equal(dropped.noHours, 1);
+  assert.deepEqual(cut.noHours, [{ id: 'HM0100', b: '038' }]);
+});
+
+test('with no hours table at all the rule does not fire', () => {
+  // An archived term has no Registrar table and never will, so applying the
+  // rule against nothing would drop every room and call it a filter. Same
+  // fail-open the GA rule takes for the same reason.
+  const rooms = { HM0100: { b: '038', type: '1B', busy: [[1, 480, 535, 0], [3, 480, 535, 0], [5, 480, 535, 0]] } };
+  const { dropped } = applySafety(rooms, { gaRooms: new Set(), restricted: new Set() });
+  assert.deepEqual(Object.keys(rooms), ['HM0100']);
+  assert.equal(dropped.noHours, 0);
+});
+
+test('every shipped room sits in a building the hours table names', () => {
+  const idx = read('../../data/rooms-1268.json');
+  const hours = read('../../data/buildings-hours.json');
+  const term = hours.terms['autumn-2026-classroom-pool-building-schedule'];
+  const orphans = new Set();
+  for (const r of Object.values(idx.rooms)) {
+    if (!term.buildings[r.b]) orphans.add(r.b);
+  }
+  assert.deepEqual([...orphans], [], 'shipped buildings with no published hours');
 });
 
 test('the committed GA list is a real Registrar pull with a term and a date', () => {

@@ -1,76 +1,75 @@
 {
   "term": "1268",
-  "runs": 2,
-  "facetTotal": 26298,
+  "runs": 3,
+  "facetTotal": 26283,
   "passes": 4,
   "history": [
     {
       "pass": 1,
-      "saw": 26465,
-      "added": 26465,
-      "addedWithRoom": 8466,
-      "unionAfter": 26465
+      "saw": 26599,
+      "added": 26599,
+      "addedWithRoom": 8465,
+      "unionAfter": 26599
     },
     {
       "pass": 2,
-      "saw": 26248,
-      "added": 471,
-      "addedWithRoom": 13,
-      "unionAfter": 26936
+      "saw": 26639,
+      "added": 453,
+      "addedWithRoom": 1,
+      "unionAfter": 27052
     },
     {
       "pass": 3,
-      "saw": 26158,
-      "added": 61,
+      "saw": 26681,
+      "added": 5,
       "addedWithRoom": 0,
-      "unionAfter": 26997
+      "unionAfter": 27057
     },
     {
       "pass": 4,
-      "saw": 26220,
-      "added": 77,
+      "saw": 26617,
+      "added": 4,
       "addedWithRoom": 0,
-      "unionAfter": 27074
+      "unionAfter": 27061
     }
   ],
-  "distinctMeetings": 27074,
-  "meetingsInARealRoom": 8479,
-  "missedBySinglePass": 609,
-  "roomedMissedBySinglePass": 13,
+  "distinctMeetings": 27061,
+  "meetingsInARealRoom": 8466,
+  "missedBySinglePass": 462,
+  "roomedMissedBySinglePass": 1,
   "requests": 545,
   "buckets": [
     {
       "slug": "1xxx",
-      "facetCount": 2623
+      "facetCount": 2611
     },
     {
       "slug": "2xxx",
-      "facetCount": 2420
+      "facetCount": 2415
     },
     {
       "slug": "3xxx",
-      "facetCount": 1847
+      "facetCount": 1848
     },
     {
       "slug": "4xxx",
-      "facetCount": 6321
+      "facetCount": 6303
     },
     {
       "slug": "5xxx",
-      "facetCount": 2269
+      "facetCount": 2274
     },
     {
       "slug": "6xxx",
-      "facetCount": 2304
+      "facetCount": 2301
     },
     {
       "slug": "7xxx",
-      "facetCount": 2979
+      "facetCount": 2987
     },
     {
       "slug": "8xxx",
-      "facetCount": 5535
+      "facetCount": 5544
     }
-  ],
-  "meetingsWithAnyFacilityId": 11454
+  ]
 }

@@ -22,14 +22,11 @@ import { toGrid } from './campus.js';
 import { roomClaim } from './claim.js';
 import { activeSessions, distanceMetres, mark, measure, rank, walkMinutes } from './engine.js';
 import {
-  allWeekCodes,
   busyDayOf,
   clock,
   clockIsPinned,
   diagnosticsBlock,
   dur,
-  durShort,
-  fmtDay,
   inScheduledHours,
   isoDate,
   now as clockNow,
@@ -102,6 +99,10 @@ const CORE_Y = 0.5;
 // enough to know the map is still there.
 const PEEK = 0.38;
 const FULL = 0.78;
+// Where the sheet opens on the room screen. Below FULL so the building stays
+// visible on the map behind it, and far enough up that six hours of the day
+// grid are on screen before anybody scrolls.
+const ROOM_SHEET = 0.72;
 
 // Drag the sheet this far below peek and it means "take me back to the
 // question", which is the same action the back arrow fires.
@@ -135,6 +136,9 @@ const state = {
   hoursSlug: null,
   current: null,
   origin: null,
+  // Dev mode. Off for everyone who did not ask for it, and the only thing in
+  // the app that reads it is which location controls exist.
+  dev: false,
   accuracy: null,
   originIsGuess: true,
   duration: safeGet(KEY_DURATION) ?? '30',
@@ -219,16 +223,26 @@ function surface() {
 
 // The map's viewport is not the canvas box. `band` is the strip of canvas the
 // sheet is not covering, and the map centres on the middle of THAT, which is
-// what puts the you-dot back on screen. It is cached rather than measured,
-// because reading the sheet's rect inside the frame loop forces layout sixty
-// times a second.
+// what puts the you-dot back on screen.
+//
+// It is the strip at the sheet's RESTING height, not at its current one.
+// `band` feeds both the vertical centring and the zoom, through
+// `Math.min(width, band)` in js/map.js, so tracking the live drag meant the map
+// zoomed out and slid upward under the thumb every time the sheet was pulled
+// up. That is a map redrawing itself in response to a gesture that was not
+// about the map. Freezing it at the resting layout makes the sheet slide OVER a
+// map that stays where it was, which is what every map app does and what the
+// gesture already looks like it is doing.
+//
+// Cached rather than measured, because reading the sheet's rect inside the
+// frame loop forces layout sixty times a second.
 function viewport() {
   const width = lastSize.w || window.innerWidth;
   const height = lastSize.h || window.innerHeight;
   return {
     width,
     height,
-    band: state.band ?? height,
+    band: state.screen === 'ask' ? height : Math.round(height * (1 - PEEK)),
     dpr: lastSize.dpr || Math.min(window.devicePixelRatio || 1, 2),
   };
 }
@@ -326,7 +340,6 @@ function setSheet(px, snap) {
   const sheet = $('sheet');
   sheet.classList.toggle('snap', Boolean(snap));
   sheet.style.height = `${Math.round(h)}px`;
-  state.band = Math.max(0, H - h);
 }
 
 function attachSheet() {
@@ -754,8 +767,6 @@ function paintNear(reason) {
   });
   state.groups = groups;
 
-  const allWeek = new Set(allWeekCodes(state.hoursTerm));
-  const read = state.hours?.generated ? fmtDay(state.hours.generated) : null;
 
   // Five doors, five sentences. A building the Registrar publishes as shut
   // today is a fact and reads as one; only a building nobody publishes anything
@@ -770,28 +781,41 @@ function paintNear(reason) {
     unknown: () => ['hours unknown', 'opening hours not published'],
   };
 
+  // An open row is a name and a walk. It used to carry a room count, an "open
+  // every day" tag and a closing time as well, and none of the three changed
+  // what anybody did next: the count is not a promise that any of them is free,
+  // and the closing time is a fact about a door you have not walked to yet.
+  //
+  // The closed rows keep their door phrase, because inside a group already
+  // labelled closed that phrase IS the payload: "opens 7:00am" and "closed
+  // today" are different answers and the second one is not worth walking for.
+  //
+  // The spoken name keeps everything the visible row drops.
   const row = (b) => {
     const [hoursText, hoursSay] = DOOR[b.when](b);
     const rooms = `${b.rooms} classroom${b.rooms === 1 ? '' : 's'}`;
     const name = `${shortName(b.name)}, ${b.walk} minute walk, ${rooms}, ${hoursSay}`;
+    const shut = b.when !== 'open';
     return `<button type="button" class="b-row" data-code="${esc(b.code)}" aria-label="${esc(name)}">
       <span class="r-name">${esc(shortName(b.name))}</span>
       <span class="r-walk">${WALK_ICON}${b.walk} min</span>
-      <span class="r-win">${rooms}${allWeek.has(b.code) ? ' &middot; open every day' : ''}</span>
-      <span class="b-hours${b.when === 'unknown' ? ' unknown-h' : ''}">${hoursText}</span>
+      ${shut ? `<span class="b-hours">${hoursText}</span>` : ''}
     </button>`;
   };
 
-  const openGroup = groups.open.length
-    ? `<p class="grp">Open now${read ? `<span class="when">Registrar hours, read ${esc(read)}</span>` : ''}</p>` +
-      groups.open.map(row).join('')
-    : '';
-  const unknownGroup = groups.unknown.length
-    ? '<p class="grp">Hours not published</p>' + groups.unknown.map(row).join('')
-    : '';
+  // No header over the open rows. "Open now" was a label on the only group that
+  // is not behind a disclosure, so it named the default, and the read date next
+  // to it was provenance nobody acts on; it lives in Sources, which is one tap
+  // away from every screen.
+  const openGroup = groups.open.map(row).join('');
+  // The unknown-hours group is gone with the rooms that fed it. A building the
+  // Registrar publishes no hours for no longer reaches the index at all, so
+  // this stays empty unless the hours table moves under a built index, and in
+  // that case not showing a door we cannot describe is still the right answer.
   const closedGroup = groups.closed.length
-    ? `<p class="grp"><button type="button" class="bar-btn" data-more="closed" aria-expanded="false">
-         ${groups.closed.length} building${groups.closed.length === 1 ? ' is' : 's are'} closed now</button></p>
+    ? `<p class="grp"><button type="button" class="bar-btn" data-more="closed" aria-expanded="false"
+         aria-label="${groups.closed.length} building${groups.closed.length === 1 ? ' is' : 's are'} closed now">
+         ${groups.closed.length} closed</button></p>
        <div id="closed-list" hidden>${groups.closed.map(row).join('')}</div>`
     : '';
 
@@ -799,10 +823,11 @@ function paintNear(reason) {
     `<h2 class="msg" id="near-h" tabindex="-1">${esc(reason.head)}</h2>
      <p class="why">${esc(reason.body)}</p>` +
     openGroup +
-    unknownGroup +
-    (groups.open.length || groups.unknown.length
-      ? ''
-      : '<p class="empty">Nothing in the index has a coordinate to walk to.</p>') +
+    // The one state this screen can reach with nothing at the top: every door
+    // we have hours for is shut, which is most of the night. The old sentence
+    // here blamed a missing coordinate, and no shipped building has ever been
+    // missing one.
+    (groups.open.length ? '' : '<p class="empty">Everything is closed right now.</p>') +
     closedGroup +
     FOOT_ACTS;
 
@@ -840,8 +865,13 @@ function selectBuilding(code) {
 // "right now" on a day where nothing runs at any hour would point at the clock
 // for a problem that is not about the clock.
 const UNSCHEDULED = {
-  head: 'Nothing is scheduled right now',
-  body: 'No class is meeting anywhere on campus at this minute, so the schedule cannot tell you what is empty.',
+  head: 'Nearest buildings',
+  // The heading used to be "Nothing is scheduled right now" over a paragraph
+  // explaining that no class was meeting. Both said the same thing, and neither
+  // was what the reader wanted: they are looking at a list of buildings, so the
+  // heading may as well name it. showNear focuses this h2, so the element has
+  // to stay whatever it says.
+  body: '',
 };
 
 // Why this screen and not a room list. The locked-door caveat lives in this
@@ -850,11 +880,14 @@ const UNSCHEDULED = {
 function nearReason() {
   const s = state.situation;
   const base = s && !s.ranked ? { head: s.heading, body: s.body } : UNSCHEDULED;
+  // The one sentence this screen cannot drop. It is the only place on it that
+  // says an open building is not an unlocked room, because paintNear renders no
+  // caveat and #ask, which carries the other one, is hidden behind it.
   return {
     head: base.head,
-    body:
-      `${base.body} These are the nearest buildings that hold classrooms, and a building being ` +
-      'open is not a promise that a room inside it is unlocked.',
+    body: base.body
+      ? `${base.body} An open building is not an unlocked room.`
+      : 'An open building is not an unlocked room.',
   };
 }
 
@@ -983,6 +1016,133 @@ function paintOriginBar() {
 
 // -------------------------------------------------------------- the room
 
+// Which day the room screen is drawing. An offset in days from the app's own
+// clock, not a date, so it survives the clock moving under it in dev mode.
+let roomDayOffset = 0;
+
+const dayShown = () => {
+  const d = clockNow();
+  d.setDate(d.getDate() + roomDayOffset);
+  return d;
+};
+
+// One hour of the grid, in CSS pixels. 46 is the smallest that fits a course
+// code and a time range on two lines inside a 55 minute class, which is the
+// most common length on campus.
+const HOUR_PX = 46;
+
+const SHORT_DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const SHORT_MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// One class in one room on one day. Unlike blocksToday this does NOT merge:
+// two classes back to back are two things a reader wants to see named, and the
+// grid has room to draw them as two.
+function classesOn(room, date) {
+  const active = activeSessions(state.rooms.sessions, isoDate(date));
+  const day = date.getDay();
+  const seen = new Set();
+  const out = [];
+  for (const b of room.busy ?? []) {
+    if (Number(b[0]) !== day) continue;
+    if (active && b[3] !== undefined && active[b[3]] === false) continue;
+    const [, from, to] = b;
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) continue;
+    const course = Number.isInteger(b[4]) && b[4] >= 0 ? (state.rooms.courses?.[b[4]] ?? null) : null;
+    const key = `${from}|${to}|${course ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ from, to, course });
+  }
+  out.sort((a, b) => a.from - b.from || a.to - b.to);
+  return out;
+}
+
+// The day as a calendar column, which is the shape a student already reads a
+// timetable in.
+//
+// It replaced a list of rows that said "7:00am free 7h00 / 2:00pm in use". That
+// list was accurate and nobody could see the shape of the day in it: the whole
+// point of an empty-room app is that the empty parts are the answer, and on a
+// grid the empty parts are simply the gaps. Every word the list spent saying
+// "free" is now white space.
+//
+// Hours are always published for a shipped room, because a building with no
+// published hours no longer ships at all, so there is exactly one unknown left
+// to draw: a day the building is published as closed.
+function dayGridHtml(room, bname) {
+  const date = dayShown();
+  const hours = hoursFor(room.b, date.getDay());
+  const label = `${SHORT_DAY[date.getDay()]}, ${SHORT_MONTH[date.getMonth()]} ${date.getDate()}`;
+  const head = `<div class="dnav">
+      <button type="button" class="dstep" data-day="-1" aria-label="Previous day">
+        <svg class="ico flip" aria-hidden="true"><use href="#i-chev"/></svg></button>
+      <span>${esc(label)}</span>
+      <button type="button" class="dstep" data-day="1" aria-label="Next day">
+        <svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
+    </div>`;
+
+  if (hours === null) return `${head}<p class="unknown">${esc(bname)} is closed.</p>`;
+
+  const classes = classesOn(room, date);
+  // A shipped room's building always publishes hours, because one that does not
+  // no longer reaches the index. `undefined` still has to be survivable: the
+  // hours table is refetched on its own schedule and can drop a building while
+  // a built index still names it. The grid then runs the classes it can see and
+  // says so, rather than reading undefined[0] and rendering NaN.
+  const doors = Array.isArray(hours);
+  if (!doors && !classes.length) {
+    return `${head}<p class="unknown">No class today, and no published hours.</p>`;
+  }
+  // The grid runs the building's own hours, snapped out to whole hours so the
+  // labels land on the lines. A class that starts before the door officially
+  // opens widens the window rather than being clipped: it happened, and hiding
+  // it would draw the room as free during a class.
+  const first = Math.min(...(doors ? [hours[0]] : []), ...classes.map((c) => c.from));
+  const last = Math.max(...(doors ? [hours[1]] : []), ...classes.map((c) => c.to));
+  const top = Math.floor(first / 60) * 60;
+  const end = Math.ceil(last / 60) * 60;
+  const span = Math.max(60, end - top);
+  const pc = (m) => ((m - top) / span) * 100;
+
+  const marks = [];
+  for (let m = top; m <= end; m += 60) {
+    marks.push(`<li style="top:${pc(m).toFixed(3)}%"><span>${esc(hourLabel(m))}</span></li>`);
+  }
+
+  const blocks = classes.map((c) => {
+    const h = pc(c.to) - pc(c.from);
+    const name = c.course ?? 'In use';
+    const when = `${clock(c.from)} - ${clock(c.to)}`;
+    return `<div class="blk${h < 4.5 ? ' tight' : ''}" style="top:${pc(c.from).toFixed(3)}%;height:${h.toFixed(3)}%"
+      aria-label="${esc(`${name}, ${when}`)}"><b>${esc(name)}</b><span>${esc(when)}</span></div>`;
+  });
+
+  // The now line only means anything on the day it is on.
+  const nowMin = nowMinutes(clockNow());
+  const isToday = roomDayOffset === 0;
+  const nowLine =
+    isToday && nowMin >= top && nowMin <= end
+      ? `<div class="nowline" style="top:${pc(nowMin).toFixed(3)}%" aria-hidden="true"></div>`
+      : '';
+
+  // A fixed height per hour, not a percentage of the sheet. A calendar whose
+  // hour is 6px on a short screen and 30px on a tall one is two different
+  // pictures of the same day; the pane scrolls instead.
+  const px = Math.round((span / 60) * HOUR_PX);
+  return `${head}<div class="day" style="height:${px}px;--hours:${span / 60}">
+      <ul class="hrs">${marks.join('')}</ul>
+      <div class="cols">${blocks.join('')}${nowLine}</div>
+    </div>`;
+}
+
+// 7 AM, noon, 8 PM. No minutes, because every mark is on the hour.
+function hourLabel(m) {
+  const h = Math.floor(m / 60) % 24;
+  if (h === 0) return '12 AM';
+  if (h === 12) return 'noon';
+  return h < 12 ? `${h} AM` : `${h - 12} PM`;
+}
+
 // Today's blocks for one room, session mask applied, overlaps merged but
 // back-to-back classes left as two.
 function blocksToday(room) {
@@ -1072,20 +1232,22 @@ function timelineRows(room, bname, nowMin) {
 // it is the one place where an overstated figure sends somebody across campus.
 function claimFor(tl, nowMin, bname, metres) {
   const c = roomClaim({ ...tl, now: nowMin, metres });
-  const noDoors = (word) => `Nobody publishes when ${bname} ${word}`;
+  // Kept short and kept at all: this only fires if the hours table drops a
+  // building a built index still ships, which the room screen must survive.
+  const noDoors = () => 'Door hours not published';
 
   switch (c.kind) {
     case 'opens':
       return {
-        head: `${bname} opens at ${clock(c.at)}`,
-        sub: c.next != null && c.yours > 0 ? `Free from ${clock(c.next)} for ${dur(c.yours)}` : '',
+        head: `Opens ${clock(c.at)}`,
+        sub: c.next != null && c.yours > 0 ? `Free ${clock(c.next)} \u00b7 ${dur(c.yours)}` : '',
       };
     case 'before-first-class':
-      return { head: `First class in here is at ${clock(c.at)}`, sub: noDoors('unlocks') };
+      return { head: `First class ${clock(c.at)}`, sub: '' };
     case 'closed-for-day':
-      return { head: `${bname} is closed for the day`, sub: '' };
+      return { head: 'Closed for the day', sub: '' };
     case 'after-last-class':
-      return { head: `Last class in here ended at ${clock(c.at)}`, sub: noDoors('locks') };
+      return { head: `Last class ended ${clock(c.at)}`, sub: '' };
     case 'in-class':
       return {
         head: `In use till ${clock(c.until)}`,
@@ -1097,7 +1259,7 @@ function claimFor(tl, nowMin, bname, metres) {
               : `Next free ${clock(c.next)}`,
       };
     case 'no-class-today':
-      return { head: 'No class in here all day', sub: '' };
+      return { head: 'No class today', sub: '' };
     case 'free':
       // With no published hours the sentence about the door outranks the
       // sentence about the window. "Yours for 45 min" under a headline that
@@ -1106,7 +1268,7 @@ function claimFor(tl, nowMin, bname, metres) {
       if (!c.known) {
         return {
           head: c.until == null ? 'No class in here for the rest of today' : `No class in here till ${clock(c.until)}`,
-          sub: noDoors('locks'),
+          sub: noDoors(),
         };
       }
       return {
@@ -1119,7 +1281,7 @@ function claimFor(tl, nowMin, bname, metres) {
               : 'It closes before you could walk there',
       };
     default:
-      return { head: 'Nothing free in here right now', sub: '' };
+      return { head: 'Nothing free now', sub: '' };
   }
 }
 
@@ -1151,7 +1313,7 @@ function roomHtml(id) {
 
   const tl = timelineRows(room, bname, nowMin);
   const claim = tl.closed
-    ? { head: `${bname} is closed today`, sub: '' }
+    ? { head: 'Closed today', sub: '' }
     : tl.nothing
       ? { head: 'No class in here all day', sub: '' }
       : claimFor(tl, nowMin, bname, metres);
@@ -1168,33 +1330,30 @@ function roomHtml(id) {
   // Every fact is its own element. Bare strings next to each other in a flex
   // row become one anonymous flex item, not three, so no gap landed between
   // them and the row rendered as "113 m28 seatsclassroom".
+  // The metres used to sit beside the minutes. The minutes are computed FROM
+  // the metres, so it was one number rendered twice.
   const facts = [
     walk == null ? '' : `<span class="w">${WALK_ICON}${walk} min walk</span>`,
-    Number.isFinite(metres) ? `<span>${metres} m</span>` : '',
     room.cap ? `<span>${room.cap} seats</span>` : '<span>seats unknown</span>',
     type ? `<span>${esc(type)}</span>` : '',
   ].filter(Boolean);
 
-  const body = tl.closed
-    ? `<p class="unknown">${esc(bname)} publishes today as closed, so there is nothing to show.</p>`
-    : tl.nothing
-      ? `<p class="unknown">No class is scheduled in here today, and nobody publishes hours for
-         ${esc(bname)}, so Vacant cannot say when the door is unlocked.</p>`
-      : (tl.known
-          ? ''
-          : `<p class="unknown">${esc(bname)} is not in the Registrar's hours table, so Vacant does
-             not know when the doors are unlocked. The timeline stops at the first and last class.</p>`) +
-        `<ul class="tl">${tl.rows.map(rowHtml).join('')}</ul>`;
+  // The day, drawn. Every paragraph that used to sit here explained an absence
+  // the grid now shows: a closed day is a grid that says closed, an empty day is
+  // an empty grid, and there is no unpublished-hours case left to explain
+  // because those rooms no longer ship.
+  const body = dayGridHtml(room, bname);
 
   const acts =
     b && Number.isFinite(b.lat)
       ? `<p class="acts">
-          <button type="button" id="bearing" class="bar-btn">
+          <button type="button" id="bearing" class="bar-btn" aria-label="Point the arrow at it">
             <svg class="ico" aria-hidden="true" hidden><use href="#i-arrow"/></svg>
-            <span>Point me at it</span>
+            <span>Point me</span>
           </button>
-          <a class="bar-btn" href="geo:${b.lat},${b.lon}?q=${b.lat},${b.lon}(${encodeURIComponent(bname)})">Open in Maps</a>
-          <button type="button" class="bar-btn" data-act="about">What Vacant knows</button>
+          <a class="bar-btn" aria-label="Open this building in Maps"
+             href="geo:${b.lat},${b.lon}?q=${b.lat},${b.lon}(${encodeURIComponent(bname)})">Maps</a>
+          <button type="button" class="bar-btn" data-act="about" aria-label="What Vacant knows">Sources</button>
         </p>`
       : '';
 
@@ -1204,18 +1363,6 @@ function roomHtml(id) {
     ${acts}
     ${body}
     ${CAVEAT}`;
-}
-
-function rowHtml(row) {
-  if (row.kind === 'seam') return '<li class="seam" aria-hidden="true"></li>';
-  if (row.kind === 'free') {
-    return `<li class="free${row.now ? ' now' : ''}"><span class="t">${clock(row.t)}</span>
-      <span class="what">free</span><span class="len">${durShort(row.len)}</span></li>`;
-  }
-  if (row.kind === 'busy') {
-    return `<li class="busy"><span class="t">${clock(row.t)}</span><span>in use</span></li>`;
-  }
-  return `<li class="edge">${row.t != null ? `<span class="t">${clock(row.t)}</span>` : ''}<span>${esc(row.text)}</span></li>`;
 }
 
 // The compass needle. It stays off until it is asked for, because iOS only
@@ -1429,7 +1576,13 @@ function showPane(name) {
   // a chip tap has to unwind a history entry to get back to the list it edits.
   $('chips').hidden = name !== 'list';
   $('find').hidden = name !== 'pick';
-  $('origin').hidden = name !== 'list' && name !== 'near';
+  // The "from <building>" bar is a location CONTROL, and setting your location
+  // by hand is a testing affordance rather than something a student standing on
+  // campus wants a row of the answer spent on. It renders in dev mode only.
+  // The one case a real user needs it, a geolocation fix that never arrived, is
+  // covered by #ask-pick on the question screen, which is where they already
+  // are when it happens.
+  $('origin').hidden = !state.dev || (name !== 'list' && name !== 'near');
   $('ask').hidden = true;
   $('sheet').hidden = false;
   $('back').hidden = false;
@@ -1449,7 +1602,6 @@ function showAsk() {
   state.selected = null;
   state.listScroll = 0;
   state.userMoved = false;
-  state.band = null;
   // The next answer opens at peek, whatever height the last one was dragged to.
   sheetH = 0;
   $('map').classList.remove('settled');
@@ -1497,9 +1649,12 @@ function showAbout() {
   paintAbout();
 }
 
-function showRoom(id) {
+function showRoom(id, { keepDay = false } = {}) {
   const room = state.rooms?.rooms?.[id];
   if (!room) return showList();
+  // A room always opens on today. Stepping to Thursday and then tapping a
+  // different room should not answer a question about Thursday.
+  if (!keepDay) roomDayOffset = 0;
   if (!$('list').hidden) state.listScroll = $('list').scrollTop;
   $('room').innerHTML = roomHtml(id);
   // Both panes stay in the DOM. That is the whole scroll-restoration
@@ -1511,11 +1666,24 @@ function showRoom(id) {
   const r = state.results.find((x) => x.id === id);
   state.selected = r ?? { id, building: room.b, walk: null };
   attachBearing(id);
+  // A week either way. Past the term's own bounds the grid simply comes back
+  // empty, which is the honest answer and needs no guard.
+  for (const el of $('room').querySelectorAll('[data-day]')) {
+    el.onclick = () => {
+      roomDayOffset += Number(el.dataset.day);
+      const at = $('room').scrollTop;
+      showRoom(id, { keepDay: true });
+      $('room').scrollTop = at;
+    };
+  }
   for (const el of $('room').querySelectorAll('[data-act]')) el.onclick = () => openAbout();
   focusHeading($('room-h'));
-  // The sheet does not grow for this screen. Half of all rooms show their whole
-  // day inside the peek height, and the three extra rows a taller sheet buys
-  // are worth less than the highlight they would hide.
+  // The sheet DOES grow for this screen now. It used to hold four or five text
+  // rows and peek was enough; it holds a day as a calendar, and a calendar
+  // whose first two hours are the only ones above the fold is a calendar
+  // nobody scrolls. The map keeps its own composition either way, because the
+  // sheet no longer feeds the viewport.
+  setSheet(ROOM_SHEET * window.innerHeight, true);
   if (r) {
     markRows();
     frame(r);
@@ -1700,9 +1868,12 @@ function locate() {
 // here, before any answer exists.
 function provenance(current) {
   const term = current?.termName;
-  const read = current?.generated ? fmtDay(current.generated.slice(0, 10)) : null;
   if (!term) return;
-  $('prov').innerHTML = `<b>${esc(term)}</b>${read ? `, schedule read ${esc(read)}` : ''}`;
+  // The term, and nothing else. The read date sat here on every load and only
+  // matters when it is OLD, which staleness() already reports on its own at 14
+  // days and shouts at 35. scripts/shoot.mjs fails if this line goes empty, so
+  // it is trimmed rather than removed.
+  $('prov').innerHTML = `<b>${esc(term)}</b>`;
   $('prov').hidden = false;
 }
 
@@ -1961,7 +2132,10 @@ function armDev() {
   } catch {
     /* private mode with storage off is simply not in dev mode */
   }
-  if (armed) openDev();
+  if (armed) {
+    state.dev = true;
+    openDev();
+  }
 
   let hits = [];
   window.addEventListener('keydown', (e) => {
@@ -1977,6 +2151,7 @@ function armDev() {
     } catch {
       /* still opens, just does not survive a reload */
     }
+    state.dev = true;
     openDev();
   });
 }

@@ -58,7 +58,6 @@ export const clock = (m) => {
 };
 
 export const dur = (m) => (m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m} min`);
-export const durShort = (m) => (m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m}m`);
 
 // Spoken forms. A screen reader gets words where the screen gets glyphs, so
 // "7:50p" is read as "7:50 pm" and "2h05" as "2 hours 5 minutes".

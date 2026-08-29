@@ -36,9 +36,12 @@ export const FLOORS = {
   // Summer, which is a seventh of Autumn by busy time and needs its own floor.
   // Measured on 1264: 142 rooms, 39 buildings, 668 blocks, 93,025 minutes.
   4: { rooms: 85, buildings: 23, blocks: 400, minutes: 55000 },
-  // Autumn. Measured on 1268: 581 rooms, 78 buildings, 9,561 blocks,
-  // 708,848 busy minutes.
-  8: { rooms: 349, buildings: 47, blocks: 5700, minutes: 425000 },
+  // Autumn. Re-measured on 1268 after the published-hours rule: 425 rooms, 46
+  // buildings, 8,342 blocks, 601,270 busy minutes. The building count is now
+  // bounded above by the Registrar's hours table rather than by the schedule,
+  // so it cannot exceed the 46 buildings that table names, and the old floor of
+  // 47 sat ABOVE its own ceiling and refused every build.
+  8: { rooms: 255, buildings: 28, blocks: 5000, minutes: 360000 },
 };
 
 export const floorsFor = (term) => FLOORS[Number(String(term).slice(-1))] ?? null;

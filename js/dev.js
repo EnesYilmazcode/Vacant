@@ -21,6 +21,20 @@ import { devApply, devReadout, devState } from './app.js';
 const KEY = 'vacant.dev';
 const KEY_AT = 'vacant.dev.at';
 const KEY_WHERE = 'vacant.dev.where';
+// A dropped pin, written by dev/index.html. Any point on campus, not just a
+// building, because "outside Thompson" and "inside Thompson" are different
+// answers and only one of them is a building centroid.
+const KEY_PIN = 'vacant.dev.pin';
+
+function savedPin() {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(KEY_PIN) || 'null');
+    if (raw && Number.isFinite(raw.lat) && Number.isFinite(raw.lon)) return raw;
+  } catch {
+    /* a corrupt key is the same as no key */
+  }
+  return null;
+}
 
 // The Oval, the app's own fallback origin and the point the screenshots are
 // taken from.
@@ -141,6 +155,7 @@ function panel() {
   const where = el.querySelector('#dev-where');
   const places = buildingOptions();
   where.innerHTML =
+    (savedPin() ? `<option value="pin">the pin you dropped</option>` : '') +
     `<option value="live">my real location</option>` +
     `<option value="oval">the Oval</option>` +
     places
@@ -215,6 +230,15 @@ export function start() {
       if (place === 'live') {
         patch.origin = live;
         patch.note = null;
+      } else if (place === 'pin') {
+        const pin = savedPin();
+        if (pin) {
+          patch.origin = {
+            lat: pin.lat, lon: pin.lon, accuracy: null, source: 'picked',
+            label: pin.label || 'a dropped pin', at: Date.now(),
+          };
+          patch.note = null;
+        }
       } else if (place === 'oval') {
         patch.origin = { ...OVAL, accuracy: null, source: 'picked', label: 'the Oval', at: Date.now() };
         patch.note = 'Dev mode: standing on the Oval';
@@ -271,6 +295,7 @@ export function start() {
     sessionStorage.removeItem(KEY);
     sessionStorage.removeItem(KEY_AT);
     sessionStorage.removeItem(KEY_WHERE);
+    sessionStorage.removeItem(KEY_PIN);
     apply({ at: null, place: 'live' });
     el.remove();
   };
@@ -291,6 +316,7 @@ export function start() {
     if (!where.options.length || where.options.length < 3) {
       const places2 = buildingOptions();
       where.innerHTML =
+        (savedPin() ? `<option value="pin">the pin you dropped</option>` : '') +
         `<option value="live">my real location</option>` +
         `<option value="oval">the Oval</option>` +
         places2.map((b) => `<option value="${b.code}">${b.name} (${b.rooms})</option>`).join('');

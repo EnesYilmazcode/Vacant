@@ -37,7 +37,7 @@ coming at all, and the timeline behind it ends where the building locks.
 
 | | |
 | :--: | :--: |
-| ![The list dragged up to fill the screen, showing ten rooms across three buildings, all two or three minutes away](docs/media/list-full.webp) | ![The room screen for Psychology Building 217: free till 1:50pm, yours for 3h27 once you get there, 3 min walk, 147 m, 30 seats, seminar room, then a timeline reading 7:00am Psychology Building opens, 7:00am free for 7h00, 2:00pm in use, 4:45pm free for 3h45, 8:30pm Psychology Building closes](docs/media/timeline.webp) |
+| ![The list dragged up to fill the screen, showing ten rooms across three buildings, all two or three minutes away](docs/media/list-full.webp) | ![The room screen for Psychology Building 217: free till 1:50pm, yours for 3h27 once you get there, 3 min walk, 30 seats, seminar room, then Wednesday drawn as a calendar from 7 AM with one red block, PSYCH 6650 from 2:00pm to 4:45pm, and everything else empty](docs/media/timeline.webp) |
 | Drag the sheet up for the rest. | Tap a room twice for its whole day, doors included. |
 
 ## Put it on your home screen
@@ -63,17 +63,22 @@ and it is not a door. Three things are true and the app says all three on screen
 **Doors get locked.** This is the failure every other tool in this category ships
 with, and at Ohio State it is avoidable, because the Registrar publishes an open
 and close time per building per weekday. Measured against the committed index,
-**512 of the 515 rooms have no Saturday class at all this term**. A tool that
-stops at the schedule calls all 512 of them free on a Saturday. **367** of those
-sit in a building the Registrar publishes as closed that day, and **88** more sit
-in a building nobody publishes hours for at all. **57** are in a building that is
+**424 of the 425 rooms have no Saturday class at all this term**. A tool that
+stops at the schedule calls all 424 of them free on a Saturday. **367** of those
+sit in a building the Registrar publishes as closed that day, and **57** are in a building that is
 genuinely open.
 
-**Hours are not published everywhere.** The Registrar's table covers 47
-buildings. The index touches 68. So 90 of the 515 rooms, 17%, are in a building
-whose door nobody documents. Those rooms say `hours not published` and rank below
-every room that has real hours. They are never given an assumed window, because
-"usually open" is a guess wearing the clothes of a fact.
+**A door nobody documents is not offered at all.** The Registrar's table covers 47 buildings.
+The index touches 46 of them, and 0 of the 425 rooms sit in a building whose hours are unpublished,
+because a room in one does not ship.
+
+That used to be a label. 90 rooms rode along in their own tier reading `hours not
+published`, which was honest and was still the wrong answer: "here is a room, and
+we cannot tell you whether you can get into the building" is not an answer, and
+it cost four blocks of explanatory text across three screens to say. Over 5,040
+ranked rows measured from four origins across a week, not one of them ever
+reached a top ten. They were paying for themselves in prose and returning
+nothing.
 
 **Clubs book rooms.** A club meeting, a review session or a departmental event is
 invisible to every public source, so it is invisible to Vacant too. Every screen
@@ -123,12 +128,13 @@ node scripts/shoot.mjs          # redraw docs/media from the real app
 
 ### Stand somewhere else, on a different day
 
-Open `http://localhost:8000/?dev=1`, or press **D** three times on any screen.
+Open **`http://localhost:8000/dev/`**. It asks the two questions first: what
+minute, and where are you standing. Tap the campus map to drop a pin anywhere,
+or pick a building, or take one of seven one-tap jumps to Thanksgiving, finals
+week, Saturday at 3am or winter break. Then it hands off to the real app.
 
-A panel appears with a date and time control, a slider for the time of day, one
-tap jumps to Thanksgiving, finals week, Saturday at 3am and winter break, and a
-dropdown of every building in the index. Pick a minute and a place and the app
-answers as if you were standing there.
+Once you are in, `?dev=1` or three presses of **D** opens a panel that changes
+the same two things without leaving the screen you are on.
 
 It is not a preview. It moves the same clock every screen reads and the same
 origin the ranking measures from, then repaints through the same code path a

@@ -169,16 +169,16 @@ test('resolveState is pure: the same inputs twice give the same answer', () => {
 // ------------------------------------------------------------ #20 unscheduled
 
 test('the scheduled window is measured off the index when the build omits it', () => {
-  // Re-measured on the shipped index after the evidence filter cut it to 515
-  // rooms and 9,462 blocks. The weekday shares are Sun 0.00%, Mon 17.43%, Tue
-  // 23.58%, Wed 21.32%, Thu 23.41%, Fri 14.00%, Sat 0.26%, so nothing sits near
-  // the 1% line either side of it. latestEnd moved 1230 -> 1225 because the 66
-  // rooms that left took some of the tail with them; the quantile is a fact
-  // about the shipped file, not a constant.
+  // Re-measured on the shipped index after the published-hours rule cut it to
+  // 425 rooms and 8,329 blocks. The weekday shares are Sun 0.00%, Mon 16.70%,
+  // Tue 23.59%, Wed 21.34%, Thu 23.70%, Fri 14.61%, Sat 0.07%, so nothing sits
+  // near the 1% line either side of it. latestEnd has moved twice now, 1230 to
+  // 1225 to 1215, each time because rooms left and took part of the evening
+  // tail with them. It is a quantile over the shipped file, not a constant.
   const busyDay = busyDayOf({}, INDEX);
   assert.deepEqual(busyDay.weekdays, [false, true, true, true, true, true, false]);
   assert.equal(busyDay.earliestStart, 480);
-  assert.equal(busyDay.latestEnd, 1225);
+  assert.equal(busyDay.latestEnd, 1215);
 });
 
 test('current.json wins over the measurement when it carries busyDay', () => {
@@ -210,9 +210,14 @@ test('a day whose sessions have all ended is not a scheduled day', () => {
   // The measurement, on the shipped index, that the threshold sits on. Every
   // weekday between the first and last day of instruction is either a day the
   // sessions cover or a day they have all left, and there is nothing in the
-  // middle. Re-measured over the 109 weekdays of the 581 room index: 32 dark
-  // days topping out at 0.177% of their weekday's blocks, 77 teaching days
-  // bottoming out at 93.97%, a 531x gap with the 0.5% line inside it.
+  // middle.
+  //
+  // Re-measured after the published-hours rule cut the index to 425 rooms. The
+  // gap is now total rather than merely wide: the seven-session term collapsed
+  // to three, because the four odd windows belonged to rooms in buildings the
+  // Registrar publishes no hours for, so a dark day is exactly 0.000000 and the
+  // thinnest teaching day is 0.9549. The 0.5% line has nothing anywhere near
+  // it in either direction.
   const share = (iso, h = 12) => scheduleShareOn({ now: at(iso, h), index: INDEX });
   for (const iso of ['2026-12-10', '2026-12-11', '2026-12-14', '2026-12-15', '2026-08-17']) {
     assert.ok(share(iso) <= 0.0012, `${iso} came out ${share(iso)}`);
@@ -222,13 +227,13 @@ test('a day whose sessions have all ended is not a scheduled day', () => {
     assert.ok(share(iso) >= 0.9, `${iso} came out ${share(iso)}`);
     assert.equal(scheduleDarkOn({ now: at(iso), index: INDEX }), false, iso);
   }
-  // The two days either side of the gap. Mon Aug 24 used to be the thinnest
-  // teaching day at 1.80%; the build now starts instruction on the 25th and
-  // leaves two small sessions on it, which is 0.177% and dark. The thinnest
-  // teaching day is Wed Oct 14.
-  assert.ok(share('2026-08-24') > 0.0017 && share('2026-08-24') < 0.0018, `Aug 24 came out ${share('2026-08-24')}`);
+  // The two days either side of the gap. Mon Aug 24 is the day before
+  // instruction starts and now carries no block at all; it used to carry two
+  // small sessions in rooms that no longer ship. Wed Oct 14 is the thinnest
+  // teaching day, in the week between the two seven-week sessions.
+  assert.equal(share('2026-08-24'), 0, `Aug 24 came out ${share('2026-08-24')}`);
   assert.equal(scheduleDarkOn({ now: at('2026-08-24'), index: INDEX }), true);
-  assert.ok(share('2026-10-14') > 0.93 && share('2026-10-14') < 0.95, `Oct 14 came out ${share('2026-10-14')}`);
+  assert.ok(share('2026-10-14') > 0.95 && share('2026-10-14') < 0.96, `Oct 14 came out ${share('2026-10-14')}`);
   assert.equal(scheduleDarkOn({ now: at('2026-10-14'), index: INDEX }), false);
 });
 
@@ -244,13 +249,27 @@ test('finals week does not rank rooms even with no exam window in the data', () 
   assert.ok(INDEX.exams, 'the shipped index is meant to carry an exam window');
   const NO_EXAMS = { ...INDEX };
   delete NO_EXAMS.exams;
+  // What must hold on the shipped data is the REFUSAL. Which refusal it is
+  // moved when the published-hours rule ran: the sessions that used to stretch
+  // instruction to 2026-12-11 lived in rooms that no longer ship, so the term
+  // now ends on the 9th and both dates below are out of term. TERM_ENDED is the
+  // more specific answer and the app is right to give it.
   for (const iso of ['2026-12-10', '2026-12-11']) {
     const s = resolveState({ now: at(iso), current: CURRENT, index: NO_EXAMS });
     assert.equal(s.ranked, false, `${iso} still ranks`);
-    assert.equal(s.kind, 'SCHEDULE_DARK');
+    assert.equal(s.kind, 'TERM_ENDED');
     assert.ok(s.action, `${iso} still offers the buildings screen`);
     assert.equal(inScheduledHours({ now: at(iso), current: CURRENT, index: NO_EXAMS }), false, `${iso} is scheduled`);
   }
+  // The SCHEDULE_DARK fallback itself, which no date on the shipped calendar
+  // can reach any more. It is the reason this test exists, so it is exercised
+  // against an index whose term is wide and whose sessions have all ended,
+  // rather than deleted along with the date that used to reach it.
+  const WIDE = { ...NO_EXAMS, teaching: ['2026-08-25', '2027-01-31'] };
+  const dark = resolveState({ now: at('2026-12-14'), current: { ...CURRENT, instruction: ['2026-08-25', '2027-01-31'] }, index: WIDE });
+  assert.equal(dark.ranked, false);
+  assert.equal(dark.kind, 'SCHEDULE_DARK');
+  assert.ok(dark.action);
   // Midday on a real Thursday is untouched.
   assert.equal(resolveState({ now: at('2026-09-03', 12, 15), current: CURRENT, index: NO_EXAMS }).ranked, true);
   assert.equal(inScheduledHours({ now: at('2026-09-03', 12, 15), current: CURRENT, index: INDEX }), true);
@@ -306,7 +325,7 @@ test('the closed table reads in either shape the build might write it', () => {
   });
 });
 
-test('buildings rank in three groups and unknown hours never sort among the open', () => {
+test('no shipped building has unknown hours, and the grouping still holds', () => {
   const counts = roomsPerBuilding(INDEX);
   const term = HOURS.terms['autumn-2026-classroom-pool-building-schedule'];
   const hoursFor = (code, day) => term.buildings[code]?.hours[day];
@@ -319,11 +338,17 @@ test('buildings rank in three groups and unknown hours never sort among the open
     nowMin: 14 * 60,
   });
   assert.ok(groups.open.length > 0);
-  assert.ok(groups.unknown.length > 0);
+  // The published-hours rule made this zero and has to keep it there. A
+  // building the Registrar documents no doors for does not reach the index, so
+  // the buildings screen has no unknown group to render and none of the prose
+  // that used to explain one. If this ever goes above zero the index and the
+  // hours table have drifted apart and the screen is hiding buildings.
+  assert.equal(groups.unknown.length, 0, 'a shipped building has no published hours');
   for (const row of groups.open) assert.ok(Number.isFinite(row.closesAt));
-  for (const row of groups.unknown) assert.equal(row.closesAt, null);
-  // Every building the screen lists carries a classroom count and a walk.
-  for (const row of [...groups.open, ...groups.unknown, ...groups.closed]) {
+  // Every building the screen lists carries a classroom count and a walk. The
+  // count is no longer rendered, and rankBuildings still has to produce it: it
+  // is in the spoken name of every row.
+  for (const row of [...groups.open, ...groups.closed]) {
     assert.ok(row.rooms >= 1);
     assert.ok(Number.isFinite(row.walk));
   }
@@ -696,7 +721,10 @@ test('the room deep link is gated on scheduled hours, not only on rankable', () 
 test('the picker list is the intersection of the harvest and buildings.json', () => {
   const counts = roomsPerBuilding(INDEX);
   const codes = Object.keys(counts).filter((c) => SLICE[c]);
-  assert.ok(codes.length >= 60 && codes.length <= 200, `picker would list ${codes.length} buildings`);
+  // The floor is the Registrar's hours table, not the schedule: a building
+  // with no published doors no longer ships, so the picker can never list more
+  // than the 46 buildings that table names.
+  assert.ok(codes.length >= 30 && codes.length <= 60, `picker would list ${codes.length} buildings`);
   for (const code of codes) {
     assert.ok(SLICE[code], `${code} missing from the term slice`);
     assert.ok(FULL[code], `${code} missing from buildings.json`);

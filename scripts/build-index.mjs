@@ -26,7 +26,13 @@ import {
   toMinutes,
 } from './lib/funnel.mjs';
 import { collectMeetings, projectMeeting } from './fetch-rooms.mjs';
-import { buildSessions, expandMeeting, mergeIntervals, propagateGroups } from './lib/rooms.mjs';
+import {
+  MIXED_COURSE,
+  buildSessions,
+  expandMeeting,
+  mergeIntervals,
+  propagateGroups,
+} from './lib/rooms.mjs';
 import {
   classify,
   DROP,
@@ -285,6 +291,26 @@ export function invert(records, { isKnownBuilding, safety } = {}) {
   let intervalsIn = 0;
   let noSession = 0;
 
+  // Course labels, interned once for the whole term.
+  //
+  // "BUSML 4382" is 10 bytes and the term names 2,836 distinct courses across
+  // 9,462 blocks, so a table plus an integer per block is 3.3 references per
+  // string. Writing the label into every tuple instead costs the difference for
+  // nothing.
+  //
+  // Sorted at the end, not in insertion order, because insertion order is
+  // harvest order and the committed file has to be a function of the schedule
+  // rather than of the order the API answered in.
+  const courseSeen = new Map();
+  const courseOf = (record) => {
+    const subject = record.subject;
+    const number = record.catalogNumber;
+    if (!subject || !number) return null;
+    const label = `${subject} ${number}`;
+    if (!courseSeen.has(label)) courseSeen.set(label, courseSeen.size);
+    return label;
+  };
+
   const sessionOf = (record) => {
     const m = record.m;
     return sessionIndex.get(`${m.startDate ?? record.startDate}|${m.endDate ?? record.endDate}`);
@@ -324,7 +350,14 @@ export function invert(records, { isKnownBuilding, safety } = {}) {
       continue;
     }
 
-    const expanded = expandMeeting(m, toMinutes(m.startTime), toMinutes(m.endTime), si);
+    const label = courseOf(record);
+    const expanded = expandMeeting(
+      m,
+      toMinutes(m.startTime),
+      toMinutes(m.endTime),
+      si,
+      label == null ? MIXED_COURSE : courseSeen.get(label),
+    );
     intervalsIn += expanded.length;
     roomFor(m).busy.push(...expanded);
   }
@@ -352,9 +385,11 @@ export function invert(records, { isKnownBuilding, safety } = {}) {
     const start = toMinutes(m.startTime);
     const end = toMinutes(m.endTime);
     const room = roomFor(m);
+    const label = courseOf(record);
+    const ci = label == null ? MIXED_COURSE : courseSeen.get(label);
     if (!room.unplaceable) room.unplaceable = [];
     room.unplaceable.push([start, end, si]);
-    for (let day = 0; day < 7; day++) room.busy.push([day, start, end, si]);
+    for (let day = 0; day < 7; day++) room.busy.push([day, start, end, si, ci]);
     intervalsIn += 7;
     unplaceableBookings++;
   }
@@ -400,10 +435,12 @@ export function invert(records, { isKnownBuilding, safety } = {}) {
   // points at it. A stranded session is not cosmetic: `instruction` is min and
   // max over the session list, so it stretches the term the app thinks it is in.
   const live = pruneSessions(rooms, sessions);
+  const courses = pruneCourses(rooms, [...courseSeen.keys()]);
 
   return {
     rooms,
     sessions: live,
+    courses,
     counter,
     safety: safetyStats,
     stats: {
@@ -417,6 +454,37 @@ export function invert(records, { isKnownBuilding, safety } = {}) {
       unplaceableIds,
     },
   };
+}
+
+// Drop course labels nothing points at any more, sort what is left, and
+// renumber. Mutates the course index inside every busy tuple.
+//
+// Sorted rather than left in insertion order for the same reason the room keys
+// are sorted: insertion order is harvest order, and a rebuild that found no new
+// class would otherwise rewrite the whole file and hide whether the data moved.
+//
+// The safety filter deletes whole rooms, so this runs after it. Autumn 2026
+// names 2,836 courses before the filter.
+export function pruneCourses(rooms, labels) {
+  const used = new Set();
+  for (const room of Object.values(rooms)) {
+    for (const b of room.busy) {
+      if (Number.isInteger(b[4]) && b[4] >= 0) used.add(labels[b[4]]);
+    }
+  }
+  const live = [...used].filter(Boolean).sort();
+  const renumber = new Map(live.map((label, i) => [label, i]));
+  for (const room of Object.values(rooms)) {
+    for (const b of room.busy) {
+      if (!Number.isInteger(b[4]) || b[4] < 0) {
+        b[4] = MIXED_COURSE;
+        continue;
+      }
+      const at = renumber.get(labels[b[4]]);
+      b[4] = at === undefined ? MIXED_COURSE : at;
+    }
+  }
+  return live;
 }
 
 // Drop sessions nothing points at any more, and renumber what is left.
@@ -449,15 +517,15 @@ export function pruneSessions(rooms, sessions) {
 // `metresFor` returns the distance from the Oval for a building code, or null.
 // It is optional: a caller with no coordinate table skips the distance rule
 // rather than dropping every room for having no distance.
-export function applySafety(rooms, { gaRooms, restricted, metresFor } = {}) {
+export function applySafety(rooms, { gaRooms, restricted, metresFor, publishesHours } = {}) {
   const unknown = new Map();
   const kept = { shown: 0, secondary: 0 };
-  const dropped = { type: 0, restricted: 0, offCampus: 0, farFromCampus: 0, thin: 0 };
+  const dropped = { type: 0, restricted: 0, offCampus: 0, farFromCampus: 0, thin: 0, noHours: 0 };
   const nonGa = [];
   const gaButHidden = [];
   // Every room the two new rules take out, named, so the build prints its own
   // evidence and nobody has to diff two 190 KB JSON files to see what moved.
-  const cut = { farFromCampus: [], thin: [] };
+  const cut = { farFromCampus: [], thin: [], noHours: [] };
 
   for (const id of Object.keys(rooms)) {
     const room = rooms[id];
@@ -471,7 +539,16 @@ export function applySafety(rooms, { gaRooms, restricted, metresFor } = {}) {
         weeklyMeetings: room.busy?.length ?? null,
         metresFromOval: metres,
       },
-      { gaRooms, restricted, unknown, why },
+      {
+        gaRooms,
+        restricted,
+        unknown,
+        why,
+        // undefined, not false, when the caller has no hours table at all. The
+        // rule then does not fire, the same way the evidence rule does not fire
+        // without a GA list: a missing input is not a fact about the room.
+        hoursKnown: publishesHours ? publishesHours(room.b) : undefined,
+      },
     );
     if (!verdict) {
       if (gaRooms && gaRooms.has(id)) gaButHidden.push(`${id} type ${room.type}`);
@@ -485,6 +562,7 @@ export function applySafety(rooms, { gaRooms, restricted, metresFor } = {}) {
       if (reason === DROP.thin) {
         cut.thin.push({ id, b: room.b, type: room.type, week: room.busy?.length ?? 0 });
       }
+      if (reason === DROP.noHours) cut.noHours.push({ id, b: room.b });
       delete rooms[id];
       continue;
     }
@@ -557,6 +635,10 @@ async function main() {
   }
   const restrictedPath = join(ROOT, 'data', 'restricted-buildings.json');
   if (!existsSync(restrictedPath)) die('data/restricted-buildings.json is missing.');
+  const hoursPath = join(ROOT, 'data', 'buildings-hours.json');
+  if (!existsSync(hoursPath)) {
+    die('data/buildings-hours.json is missing. Run fetch-building-hours.mjs first.');
+  }
 
   const icsPath = join(ROOT, 'data', 'vendor', 'academic.ics');
   const fivePath = join(ROOT, 'data', 'cache', 'registrar', 'academic-calendar-5-year-view.html');
@@ -573,10 +655,43 @@ async function main() {
 
   const gaFile = JSON.parse(readFileSync(gaPath, 'utf8'));
   const restrictedFile = JSON.parse(readFileSync(restrictedPath, 'utf8'));
+
+  // The hours table for THIS term, picked by the slug rule js/app.js uses. A
+  // term with no table would drop every room, which is a collapse and not a
+  // filter, so it refuses instead.
+  const hoursFile = JSON.parse(readFileSync(hoursPath, 'utf8'));
+  const wantSlug = (termName(term) ?? '').toLowerCase().replace(/\s+/g, '-');
+  const hoursSlug = Object.keys(hoursFile.terms ?? {}).find((slug) => slug.startsWith(wantSlug));
+  // No table for this term is a MISSING INPUT, not a campus with no doors. The
+  // Registrar publishes the current terms and takes old ones down, so the two
+  // archived terms in data/raw/ have none and never will. Applying the rule
+  // against nothing would drop all 425 rooms and call it a filter.
+  //
+  // Refusing outright is wrong for the same reason. It would mean an archived
+  // term could no longer be rebuilt from the pages committed specifically so
+  // that it could be, which is the one thing data/raw/ exists for.
+  //
+  // So: warn, skip the rule, and let the reader see it. The live term is
+  // checked separately, by scripts/test/terms.test.mjs, because a live term
+  // that quietly lost its doors is a different failure from an archived one
+  // that never had them.
+  const hoursTable = hoursSlug ? hoursFile.terms[hoursSlug] : null;
+  if (!hoursTable) {
+    console.warn(
+      `  warn  data/buildings-hours.json has no table starting "${wantSlug}", so the ` +
+        'published-hours rule is SKIPPED and rooms in undocumented buildings will ship.',
+    );
+  }
+
   const safety = {
     gaRooms: new Set(gaFile.rooms),
     restricted: new Set(Object.keys(restrictedFile.buildings)),
     metresFor: (code) => metresFromOval(buildings[code]),
+    // The same term table the app picks, by the same rule, so a room can never
+    // ship because the build read one term's doors and the phone read another's.
+    publishesHours: hoursTable
+      ? (code) => Object.prototype.hasOwnProperty.call(hoursTable.buildings, code)
+      : null,
   };
   if (gaFile._meta?.term !== term) {
     console.warn(
@@ -584,7 +699,7 @@ async function main() {
     );
   }
 
-  const { rooms, sessions, counter, stats, safety: safetyStats } = invert(harvest.meetings, {
+  const { rooms, sessions, courses, counter, stats, safety: safetyStats } = invert(harvest.meetings, {
     isKnownBuilding,
     safety,
   });
@@ -615,7 +730,8 @@ async function main() {
       `(${dropped.type} by type, ${dropped.restricted} in a restricted building, ` +
       `${dropped.offCampus} off campus, ` +
       `${dropped.farFromCampus} over ${MAX_CAMPUS_M} m from the Oval, ` +
-      `${dropped.thin} under ${MIN_WEEKLY_MEETINGS} meetings a week and not general assignment)`,
+      `${dropped.thin} under ${MIN_WEEKLY_MEETINGS} meetings a week and not general assignment, ` +
+      `${dropped.noHours} in a building with no published hours)`,
   );
   for (const r of cut.farFromCampus) {
     console.log(`  too far: ${r.id} in building ${r.b}, ${r.m} m from the Oval`);
@@ -714,7 +830,9 @@ async function main() {
     // busy is [weekday, startMinute, endMinute, sessionIndex], all integers.
     // cap 0 means unknown, 998 means online.
     schema:
-      'busy=[day,start,end,session] day 0=Sun cap 0=unknown 998=online; ' +
+      'busy=[day,start,end,session,course] day 0=Sun cap 0=unknown 998=online; ' +
+      'course indexes into courses[], and -1 means the block carries no single ' +
+      'course: either the schedule named none, or two classes merged into one block; ' +
       'unplaceable=[start,end,session] is a real booking whose weekday the API never gave, ' +
       'blocked on all seven days of that session; ' +
       'vis shown|secondary from facilityType; ga=false means the Registrar does not list ' +
@@ -742,6 +860,10 @@ async function main() {
     // silently drops the codes it has not heard of. 5C is absent on purpose.
     types: TYPE_WORDS,
     sessions,
+    // Sorted subject and catalog number, "BUSML 4382". No section, no title and
+    // no instructor: the room screen needs to say which class is in the room,
+    // not who is teaching it. See the no-instructor-data note in data/README.md.
+    courses,
     rooms: sorted,
   };
   const json = `${JSON.stringify(payload)}\n`;
@@ -771,7 +893,7 @@ async function main() {
   // The rooms this build's filter deliberately removed. They are excluded from
   // BOTH measurements so the committed comparison stays a comparison of the
   // same population. See the note on measure().
-  const filtered = new Set([...cut.farFromCampus, ...cut.thin].map((r) => r.id));
+  const filtered = new Set([...cut.farFromCampus, ...cut.thin, ...cut.noHours].map((r) => r.id));
   const now = measure(sorted, { exclude: filtered });
   const before = committed ? measure(committed.rooms, { exclude: filtered }) : null;
   // The count the file actually ships, which is not the count the guards read

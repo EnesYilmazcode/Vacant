@@ -93,6 +93,10 @@
     stroke-linecap: round; stroke-linejoin: round;
   }
   [dir="rtl"] .ico-mirror { transform: scaleX(-1); }
+  /* Unconditional, unlike .ico-mirror. A back arrow follows the writing
+     direction; "the day before this one" is left of it in every direction,
+     because the grid it steps through runs top to bottom. */
+  .ico.flip { transform: scaleX(-1); }
 
   .sr {
     position: absolute; width: 1px; height: 1px; margin: -1px;
@@ -130,7 +134,9 @@
     text-shadow: 0 2px 22px rgba(0,0,0,.75);
   }
   #ask h1 span { color: var(--accent); }
-  #ask .q { margin: 0; font-weight: 650; }
+  /* Centred with everything else in the column. It sat left because #ask-q is
+     as wide as the button row and the paragraph inherited the default. */
+  #ask .q { margin: 0; font-weight: 650; text-align: center; }
   /* width:100% is here to make the buttons equal width, nothing more. An
      earlier comment claimed it fixed a max-content overflow that clipped
      "2 hours" at 390px. It did not: measured, the old row was 312px inside a
@@ -440,6 +446,61 @@
      be tapped at all.
      Wrapping fixes the shrink and the height together: the button drops to its
      own line rather than squeezing the sentence to a column. */
+  /* --- the day, as a calendar --- */
+  /* The empty parts of this grid are the answer, which is why it replaced a
+     list of rows that had to write the word "free" on every gap. */
+  .dnav {
+    display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+    padding: .2rem 1.1rem .5rem; color: var(--fg); font-weight: 650; font-size: .92rem;
+  }
+  .dstep {
+    appearance: none; background: none; border: 0; color: var(--dim);
+    min-width: 44px; min-height: 44px; padding: 0; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .day { display: flex; margin: 0 1.1rem 1rem; position: relative; }
+  /* The hour column is sized in ch so it fits "noon" and "12 AM" at any root
+     font size without a magic pixel width. */
+  .hrs {
+    list-style: none; margin: 0; padding: 0; position: relative;
+    flex: none; width: 5.5ch; font-size: .68rem; color: var(--dim);
+    white-space: nowrap;
+  }
+  .hrs li { position: absolute; left: 0; right: 0; transform: translateY(-50%); }
+  .cols {
+    position: relative; flex: 1 1 auto; min-width: 0;
+    border-left: 1px solid var(--line);
+    /* One hairline per hour, drawn by the background rather than by 14 more
+       elements. The size is set inline beside the container height. */
+    background-image: linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+    background-size: 100% calc(100% / var(--hours, 1));
+  }
+  .blk {
+    position: absolute; left: .35rem; right: 0; overflow: hidden;
+    background: var(--accent); color: #0b0d10; border-radius: 8px;
+    padding: .2rem .45rem; font-size: .78rem; line-height: 1.25;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .blk b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .blk span { opacity: .82; font-size: .72rem; }
+  /* A 30 minute class is 23px tall. Two lines do not fit, so the time goes and
+     the code stays: which class it is matters more than when, because the grid
+     already draws when. */
+  .blk.tight { padding: .05rem .45rem; font-size: .68rem; }
+  .blk.tight span { display: none; }
+  .nowline {
+    position: absolute; left: -3px; right: 0; height: 2px;
+    background: var(--you); border-radius: 2px;
+  }
+  .nowline::before {
+    content: ''; position: absolute; left: -3px; top: -3px;
+    width: 8px; height: 8px; border-radius: 50%; background: var(--you);
+  }
+  @media (forced-colors: active) {
+    .blk { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+    .cols { border-left: 1px solid CanvasText; }
+  }
+
   #note {
     position: fixed; top: calc(var(--safe-t) + .7rem); left: 50%;
     transform: translateX(-50%); max-width: min(92vw, 30rem); z-index: 3;
@@ -551,7 +612,7 @@
 <section id="ask">
   <h1>Vacant<span>.</span></h1>
   <div id="ask-q">
-    <p class="q">How long do you need?</p>
+    <p class="q">How long?</p>
     <div class="opts" role="group" aria-label="How long do you need a room for?">
       <button class="opt primary" data-min="30" disabled>30 min</button>
       <button class="opt" data-min="60" disabled>1 hour</button>
@@ -562,8 +623,6 @@
   <p class="loading">finding campus&hellip;</p>
   <p class="prov" id="prov" hidden></p>
   <p class="prov" id="stale" hidden></p>
-  <p class="prov">Class schedule only. Doors get locked, clubs book rooms, and a class with no
-    room recorded does not appear here at all.</p>
   <div id="gate" hidden>
     <h2 id="gate-h" tabindex="-1"></h2>
     <p id="gate-p"></p>
@@ -571,7 +630,7 @@
     <button id="gate-go" class="opt" hidden></button>
   </div>
   <p class="prov" id="ask-where" hidden></p>
-  <button id="ask-pick" class="opt" hidden>Pick your building instead</button>
+  <button id="ask-pick" class="opt" hidden>Pick your building</button>
 </section>
 
 <section id="sheet" hidden>

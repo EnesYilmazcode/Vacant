@@ -112,12 +112,12 @@ test('a first run under the floor is NOT READY, and with a committed file it is 
   assert.ok(first.length);
   assert.equal(notReady(first, false), true, 'nothing committed, so this term is just not ready');
   assert.equal(notReady(first, true), false, 'a committed file makes the same numbers a collapse');
-  assert.match(reasons(first), /busy blocks: got 3, the floor is 5700/);
+  assert.match(reasons(first), /busy blocks: got 3, the floor is 5000/);
 });
 
 test('a floor refusal names the committed count so the loss is visible', () => {
   const out = indexRefusals(base({ now: measure({ A0001: room(1, 3) }), before: measure(healthy()) }));
-  assert.match(reasons(out), /the floor is 5700, and 12000 is already committed/);
+  assert.match(reasons(out), /the floor is 5000, and 12000 is already committed/);
 });
 
 test('a room that had blocks and has none refuses, and FORCE_WRITE does not clear it', () => {

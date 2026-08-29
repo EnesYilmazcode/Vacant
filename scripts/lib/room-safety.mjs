@@ -70,6 +70,44 @@ export const TYPE_WORDS = {
   '6L': 'meeting room',
 };
 
+// How far from the Oval a room can sit and still be a room somebody walks to.
+//
+// The type filter and the restricted list both describe the ROOM. Neither of
+// them describes where it is, so the airport got through. Measured against the
+// Autumn 2026 index: the furthest building the boundary keeps is Waterman at
+// 2,599 m, and the nearest one it drops is Outpatient Care East at 4,995 m. The
+// threshold sits in a 2.4 km gap with nothing in it, so it is not tuned to a
+// building and moving it 20% either way changes nothing.
+//
+// It drops three rooms: an outpatient clinic 5 km east, and two hangars at Don
+// Scott airfield 9.9 km northwest. The engine's own MAX_WALK is 12 minutes,
+// about 720 m, so the ranking could never have offered any of them. They were
+// inflating the room count and sitting on the buildings screen.
+export const MAX_CAMPUS_M = 3000;
+
+// The fewest class meetings a week a room has to host before it counts as a
+// classroom rather than as a room that once appeared in the schedule.
+//
+// Every room in the index got there by being named in at least one booking, so
+// "has a class" was never a filter, only a floor of one. That floor lets in a
+// department's own conference room: TO0038 in Townshend Hall is a 40 seat 5K
+// with exactly one booking a week, and the ranking put it in the top ten 60
+// times out of 504 measured queries and made it the single best answer 9 times.
+// Nobody walks into that room to study.
+//
+// This applies ONLY to rooms the Registrar does not list as general assignment.
+// A GA room is already certified as central pool space that any department can
+// book and anyone can walk into, so its booking count is not evidence about it:
+// 321 of the 326 GA rooms host 10 or more meetings a week, and the 5 that do
+// not are still GA rooms.
+//
+// Measured on Autumn 2026, over 504 queries from 4 origins x 7 days x 6 times
+// x 3 durations: at 3 it drops 65 of 581 rooms (11.2%), leaves every one of the
+// 504 queries with an answer, and moves the best answer further away in 4 of
+// them, by one minute. Two would drop 36 and leave the two-a-week departmental
+// conference rooms in. Four would drop 98 and start eating real classrooms.
+export const MIN_WEEKLY_MEETINGS = 3;
+
 // Report campus Columbus AND location CS-COLMBUS, but sit 126 km away in
 // Wooster. Nothing in the payload flags them.
 //
@@ -79,15 +117,34 @@ export const TYPE_WORDS = {
 // the statement of intent, and it costs three strings.
 export const OFF_CAMPUS = new Set(['WSB300', 'WAB0130', 'SY0203']);
 
+// Why a room was dropped, for the build's own tally. Exported so the counter
+// and the printed line cannot drift apart.
+export const DROP = {
+  offCampus: 'offCampus',
+  type: 'type',
+  restricted: 'restricted',
+  farFromCampus: 'farFromCampus',
+  thin: 'thin',
+};
+
 // Decide one room. Returns null to drop it, or the room with `vis` and `ga`.
 //
 // `unknown` is an optional Map the caller passes in to collect codes this table
 // does not know, so the build can print them and the list can grow on purpose
 // rather than by accident.
-export function classify(room, { gaRooms, restricted, unknown } = {}) {
+//
+// `why` is an optional object the caller passes in to read back which rule
+// dropped the room, because four of the five reasons are now indistinguishable
+// from a null return.
+export function classify(room, { gaRooms, restricted, unknown, why } = {}) {
+  const drop = (reason) => {
+    if (why) why.reason = reason;
+    return null;
+  };
+  if (why) why.reason = null;
   const id = room?.facilityId;
   if (id == null) return null;
-  if (OFF_CAMPUS.has(id)) return null;
+  if (OFF_CAMPUS.has(id)) return drop(DROP.offCampus);
 
   const vis = TYPE_VISIBILITY[room.facilityType];
   if (!vis) {
@@ -97,16 +154,39 @@ export function classify(room, { gaRooms, restricted, unknown } = {}) {
       if (!unknown.has(key)) unknown.set(key, { rooms: 0, example: id });
       unknown.get(key).rooms++;
     }
-    return null;
+    return drop(DROP.type);
   }
 
-  if (restricted && restricted.has(room.buildingCode)) return null;
+  if (restricted && restricted.has(room.buildingCode)) return drop(DROP.restricted);
 
-  // GA absence is a flag, not a filter. Only 326 of the 621 rooms that pass the
-  // type filter are on the Registrar's list, and an unscheduled general
-  // assignment room is the best answer this app can return, so the ranking gets
-  // to know which is which. See DECISIONS.md.
-  return { ...room, vis, ga: Boolean(gaRooms && gaRooms.has(id)) };
+  // Distance is checked before the meeting count so a hangar at the airfield is
+  // reported as the airfield and not as a quiet room.
+  if (Number.isFinite(room.metresFromOval) && room.metresFromOval > MAX_CAMPUS_M) {
+    return drop(DROP.farFromCampus);
+  }
+
+  const ga = Boolean(gaRooms && gaRooms.has(id));
+  // No GA list means "not general assignment" is not a fact about the room, it
+  // is a missing input, and every room would fail the rule at once. The build
+  // already refuses to run without data/ga-rooms.json, so the only callers that
+  // land here are tests and tools working from hand-built rooms. Skipping the
+  // rule is the same fail-open the ga flag itself takes.
+  if (
+    gaRooms &&
+    !ga &&
+    Number.isFinite(room.weeklyMeetings) &&
+    room.weeklyMeetings < MIN_WEEKLY_MEETINGS
+  ) {
+    return drop(DROP.thin);
+  }
+
+  // GA absence is no longer only a flag. It is the filter above for a room with
+  // thin evidence, and below MIN_WEEKLY_MEETINGS it is the whole difference
+  // between a lecture hall the Registrar publishes and a department's own
+  // conference room. It still ships on every kept room, because a non-GA room
+  // with a full teaching week is a perfectly good answer that the ranking
+  // should prefer second. See DECISIONS.md.
+  return { ...room, vis, ga };
 }
 
 // Codes that were looked at and deliberately excluded, so the build's "codes I

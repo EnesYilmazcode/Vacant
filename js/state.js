@@ -21,6 +21,30 @@
 
 import { PACKUP, activeSessions, calendarOn, distanceMetres, refusalFor, walkMinutes } from './engine.js';
 
+// ------------------------------------------------------------------- clock
+
+// The app's clock, in one place, so a simulated minute is a real answer and not
+// a mock.
+//
+// Every function in this file already takes its `now` as an argument, for the
+// reason written at the top: exam week cannot be reached by opening the app.
+// js/app.js was the hole. It called `new Date()` in eleven places, so the only
+// way to see what Vacant says at 9pm on a Saturday in December was to be there.
+//
+// `pinClock` freezes the whole app on one instant. It is not a test seam that
+// ships disabled: js/dev.js drives it from a date and a time control, and
+// pinning rather than offsetting is deliberate, because an offset keeps ticking
+// and a screen you are reading should not move under you.
+let pinnedMs = null;
+
+export const now = () => (pinnedMs == null ? new Date() : new Date(pinnedMs));
+
+export const pinClock = (ms) => {
+  pinnedMs = Number.isFinite(ms) ? ms : null;
+};
+
+export const clockIsPinned = () => pinnedMs != null;
+
 // ---------------------------------------------------------------- formatting
 
 export const isoDate = (d) =>

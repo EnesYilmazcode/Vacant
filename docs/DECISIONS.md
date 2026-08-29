@@ -1667,3 +1667,185 @@ than a page-view count.
 beacon for page counts only, and `privacy.html` has to say what is stored
 **before** the beacon ships, not in the same commit. Never the room-level row: see
 the reports entry above for the join that makes it a movement trail.
+
+---
+
+## 2026-08-29  A room needs a week of evidence, not one booking
+
+**The complaint, in Enes's words.** "There are some classrooms that are marked
+as classrooms even though it's not actually a class and it's just a room, and
+like that can result in our data being off." And: "some classes they're like
+locked behind a door."
+
+**What was actually wrong.** Everything in `data/rooms-<term>.json` got there by
+being named in at least one class booking, so "hosts a class" was never a filter.
+It was a floor of one, and a floor of one lets in a department's own conference
+room. `scripts/lib/room-safety.mjs` decided which rooms were SAFE, from the
+room's `facilityType` and the building it sits in. Nothing decided which rooms
+were REAL.
+
+Measured on the committed Autumn 2026 index, over 504 ranked queries from four
+origins x seven days x six times of day x three durations:
+
+```
+                                       share of the top ten rows
+  rooms hosting <=2 meetings a week
+  and not on the Registrar's GA list         15.9%
+  of which exactly one meeting a week        10.0%
+  5K conference rooms                        14.4%
+```
+
+`TO0038`, a 40 seat conference room in Townshend Hall with exactly one booking a
+week, appeared in the top ten **60 times** and was the single best answer the app
+had **9 times**. `RH0102` in Rightmire Hall is a "conference room" with a
+capacity of **1**. `OCE03081` is in Outpatient Care East, an actual hospital
+clinic five kilometres from the Oval. `KT0255` and `AARL100` are at Don Scott
+airfield, **9.9 km** out.
+
+**Decided.** Three rules, in `scripts/lib/room-safety.mjs`, applied at build
+time so an unusable room is ABSENT from the shipped file rather than ranked low
+in a file anyone can read. That is the same reasoning the type filter already
+used.
+
+1. `MAX_CAMPUS_M = 3000`. A room in a building further than that from the Oval
+   is dropped. Cuts 3 rooms.
+2. `MIN_WEEKLY_MEETINGS = 3`, applied only to rooms the Registrar does not list
+   as general assignment. Cuts 63 rooms.
+3. The `ga` flag stays on every kept room, because a non-GA room with a full
+   teaching week is a good answer and the ranking should be able to see the
+   difference.
+
+**Why general assignment is the exemption and not a second filter.** A GA room
+is already certified by the Registrar as central pool space that any department
+can book, which is as close to "you can walk in" as a public source gets. Its
+booking count says nothing extra about it: 321 of the 326 GA rooms host ten or
+more meetings a week, and the five that do not are still GA rooms. Outside that
+list, the booking count is the only evidence there is.
+
+**Where the thresholds came from.** 3,000 m is not tuned to a building. The
+furthest thing it keeps is Waterman at 2,599 m and the nearest thing it drops is
+Outpatient Care East at 4,995 m, so it sits in a 2.4 km gap and moving it 20%
+either way changes nothing. The engine's own `MAX_WALK` is 12 minutes, about
+720 m, so the ranking could never have offered any of the three anyway.
+
+`MIN_WEEKLY_MEETINGS` was measured at 2, 3 and 4. At 3 it drops 65 rooms and
+**leaves every one of the 504 queries with an answer**; the best answer moved
+further away in 4 of them, by one minute. At 2 the two-a-week departmental
+conference rooms survive. At 4 it drops 98 and starts eating real classrooms.
+
+**What it cost and what it bought.**
+
+```
+                                        before   after
+  rooms in the shipped index               581     515   -11.4%
+  buildings                                 78      68
+  busy blocks                            9,561   9,462
+  top-ten rows from a <=2/week non-GA room 15.9%    0.0%
+  top-ten rows from a general assignment room 59.1%  65.8%
+  top-ten rows from a 5K conference room   14.4%    3.8%
+  queries with no answer at all                0       0
+  index over the wire, gzipped         20.5 KB  18.9 KB
+```
+
+Every remaining room kept **every one** of its busy blocks: 9,462 against 9,462
+once the deliberately dropped rooms are held out of both sides. So this is a
+pure filter change and nothing else moved.
+
+**The locked-door half of the complaint answered itself.** No hand-written list
+of clinical buildings was added. The evidence rule alone removed Prior Hall
+(College of Medicine), McCampbell Hall, Biomedical Research Tower and Outpatient
+Care East, because a badge-controlled room does not host a teaching week. What
+survives is six rooms in Davis Heart and Lung, Graves Hall, Veterinary Medicine
+Academic, Waterman and the Edison Joining Technology Center, and every one of
+them is in a building the Registrar publishes no hours for, which `tierOf`
+already ranks below every room with real hours. Measured: **0 of 5,040** top-ten
+rows came from an unknown-hours building.
+
+**Decided against.** Adding those buildings to `data/restricted-buildings.json`.
+That file's own header says it holds a judgement about access, not a measurement,
+and it should stay small enough to read. A rule that removes the same rooms for a
+reason that can be measured is worth more than eight more hand-written lines.
+
+**The build guard had to learn the difference between a filter and a collapse.**
+`scripts/lib/index-guards.mjs` refuses any build that loses busy blocks against
+the committed file, because a harvest that silently drops a fifth of campus looks
+like good news. Tightening the filter reads as exactly that failure: 66 rooms
+losing all their blocks at once. `measure()` now takes an `exclude` set, and the
+build holds the rooms its own filter named out of BOTH sides of the comparison.
+Every other room stays under the full strength of the guard, so a harvest that
+collapses in the same run still trips it.
+
+---
+
+## 2026-08-29  Two giant ovals, a sentence one word wide, and a dev mode
+
+**What was reported.** A screenshot of the question screen with the wordmark
+missing, "You are off campus, showing from the Oval" rendered one word per line
+inside a pill, and two enormous rounded shapes where two buttons should be.
+
+**Reproduced at 393x852 with the root font at 16px**, which is to say on an
+ordinary phone with no accessibility setting touched. Off-campus, Saturday 03:00:
+
+```
+  button#ask-pick   229 x 371 px    border-radius 999px
+  button#gate-go    208 x  96 px    border-radius 999px
+  span#note-text     47 x 111 px    "You are off campus, showing from the Oval"
+```
+
+**Two causes, and the second one hid the first.**
+
+`.opt` carried `flex: 1 1 6rem`. That is correct for `.opts`, the four-button
+row, and wrong everywhere else: `#ask-pick` and `#gate-go` are `.opt` buttons
+that are direct children of `#ask`, which is a **column** flex container. On a
+column the main axis is vertical, so the `6rem` was a height and the grow factor
+ate the rest of the column. `#cold .opt` in the same stylesheet already carried
+`flex: none` for exactly this reason, so the shape of the bug was known and the
+question screen was simply missed. Fixed by moving the flex to `.opts .opt` and
+giving a standalone `.opt` `flex: none`.
+
+`#note` is a fixed pill holding a sentence and a button. The button was
+`flex: none` and the sentence was a bare `<span>`, so once the pair wanted more
+than the pill's `max-width: 92vw`, every pixel of the shrink landed on the
+sentence and it collapsed to its minimum content width. That made the pill 231 px
+tall, and since it is `position: fixed; z-index: 3` over an `#ask` with no
+`z-index` at all, it then covered the wordmark, the question, and the **1 hour**
+button, which could not be tapped. Verified: a synthetic tap on
+`.opt[data-min="60"]` did not reach it before the fix and does after.
+
+**Decided.** The pill wraps (`flex-wrap`, `#note-text { flex: 1 1 12rem }`) so
+the button drops to its own line instead of squeezing the sentence, and the
+question screen carries the same sentence in its own column as `#ask-where`
+rather than under a floating pill. `body.asking` hides the pill on the question
+screen, with `#note.fatal` exempted, because the "could not load the schedule"
+message has nowhere else to go.
+
+---
+
+**Dev mode, and why the clock had to move first.**
+
+The three answers this project is proudest of are a refusal on Thanksgiving, a
+refusal in exam week, and the buildings screen at 3am on a Saturday. None of them
+could be looked at without waiting for the date. `js/state.js` was written so
+every function takes its `now` as an argument, for exactly this reason, and
+`js/app.js` was the hole: it called `new Date()` in **eleven** places.
+
+**Decided.** One clock in `js/state.js`. `now()` returns the real date until
+`pinClock(ms)` freezes it. All eleven call sites read it. It is imported into
+`js/app.js` as `clockNow`, not as `now`, because six functions there already hold
+a `const now` and importing it under that name is a temporal dead zone error at
+the line that reads it: the app does not boot at all. That was found by making
+the mistake.
+
+Pinned, not offset. An offset keeps ticking, and a screen someone is reading
+should not move under them.
+
+`js/dev.js` is a panel with a datetime control, a time-of-day slider, ten one-tap
+jumps and a dropdown of every building in the index. It moves the same clock the
+app reads and sets the same origin the ranking measures from, then calls the same
+`refresh()` a duration chip calls. It does not stub the ranking, inject rows or
+carry a fixture, so what the panel shows is what the app does.
+
+It is loaded with `import()` from `js/app.js` only when armed, and is absent from
+the service worker's shell list, so a student who never types `?dev=1` never
+downloads it. Checked by `scripts/test/dev.test.mjs`, which also fails if
+`new Date()` reappears in `js/app.js`.

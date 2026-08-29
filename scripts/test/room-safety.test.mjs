@@ -3,7 +3,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { KNOWN_HIDDEN, OFF_CAMPUS, TYPE_VISIBILITY, classify } from '../lib/room-safety.mjs';
+import {
+  KNOWN_HIDDEN,
+  MAX_CAMPUS_M,
+  MIN_WEEKLY_MEETINGS,
+  OFF_CAMPUS,
+  TYPE_VISIBILITY,
+  classify,
+} from '../lib/room-safety.mjs';
 import { applySafety, invert } from '../build-index.mjs';
 import { parseFacilityIds, findTermLink } from '../fetch-ga-rooms.mjs';
 
@@ -144,9 +151,72 @@ test('applySafety reports what it dropped and why, once per room', () => {
   };
   const { kept, dropped } = applySafety(rooms, { restricted: new Set(['049', '306']) });
   assert.deepEqual(kept, { shown: 1, secondary: 0 });
-  assert.deepEqual(dropped, { type: 2, restricted: 1, offCampus: 1 });
+  assert.deepEqual(dropped, { type: 2, restricted: 1, offCampus: 1, farFromCampus: 0, thin: 0 });
   assert.deepEqual(Object.keys(rooms), ['DL0357']);
   assert.equal(rooms.DL0357.vis, 'shown');
+});
+
+test('a room the Registrar does not list needs a week of evidence, a GA room does not', () => {
+  // The whole rule. A department's own conference room reaches the harvest by
+  // being named in one booking; a general assignment room is already certified
+  // as central pool space, so its booking count says nothing about access.
+  const gaRooms = new Set(['EC0018']);
+  const thin = (over) => ({ ...room(over), weeklyMeetings: MIN_WEEKLY_MEETINGS - 1 });
+
+  assert.equal(classify(thin({ facilityId: 'TO0038', facilityType: '5K' }), { gaRooms }), null);
+  assert.ok(classify(thin({ facilityId: 'EC0018' }), { gaRooms }), 'a GA room is exempt');
+  assert.ok(
+    classify({ ...room({ facilityId: 'TO0038' }), weeklyMeetings: MIN_WEEKLY_MEETINGS }, { gaRooms }),
+    'one more meeting and it is a classroom',
+  );
+});
+
+test('the evidence rule is skipped when no GA list was supplied at all', () => {
+  // "Not general assignment" with no list is a missing input, not a fact, and
+  // applying the rule to it would delete the whole index. The build refuses to
+  // run without data/ga-rooms.json, so this only protects hand-built callers.
+  assert.ok(classify({ ...room(), weeklyMeetings: 0 }));
+  assert.ok(classify({ ...room(), weeklyMeetings: 1 }, { restricted: new Set() }));
+});
+
+test('a room with no meeting count is judged on everything else and kept', () => {
+  // A caller that does not know how often the room meets must not have that
+  // read as zero.
+  const gaRooms = new Set();
+  assert.ok(classify(room(), { gaRooms }));
+  assert.ok(classify({ ...room(), weeklyMeetings: null }, { gaRooms }));
+});
+
+test('a building past the campus radius is dropped whatever type its rooms are', () => {
+  const far = { ...room(), metresFromOval: MAX_CAMPUS_M + 1, weeklyMeetings: 40 };
+  assert.equal(classify(far), null);
+  assert.ok(classify({ ...far, metresFromOval: MAX_CAMPUS_M }));
+  // No distance at all is no opinion, not "infinitely far".
+  assert.ok(classify({ ...room(), metresFromOval: null }));
+});
+
+test('applySafety counts the two new rules separately and names what they took', () => {
+  const rooms = {
+    // kept: general assignment, so the meeting count is not evidence about it
+    EC0018: { b: '072', type: '1B', busy: [[1, 480, 535, 0]] },
+    // kept: not GA but a full teaching week
+    DL0357: { b: '279', type: '1B', busy: [[1, 480, 535, 0], [3, 480, 535, 0], [5, 480, 535, 0]] },
+    // dropped: not GA, one booking a week
+    TO0038: { b: '087', type: '5K', busy: [[1, 480, 535, 0]] },
+    // dropped: at the airfield, and the distance rule wins over the thin rule
+    AARL100: { b: '199', type: '1B', busy: [[1, 480, 535, 0]] },
+  };
+  const metres = { '072': 300, '279': 500, '087': 700, '199': 9942 };
+  const { kept, dropped, cut } = applySafety(rooms, {
+    gaRooms: new Set(['EC0018']),
+    restricted: new Set(),
+    metresFor: (code) => metres[code] ?? null,
+  });
+  assert.deepEqual(Object.keys(rooms).sort(), ['DL0357', 'EC0018']);
+  assert.deepEqual(kept, { shown: 2, secondary: 0 });
+  assert.deepEqual(dropped, { type: 0, restricted: 0, offCampus: 0, farFromCampus: 1, thin: 1 });
+  assert.deepEqual(cut.farFromCampus, [{ id: 'AARL100', b: '199', m: 9942 }]);
+  assert.deepEqual(cut.thin, [{ id: 'TO0038', b: '087', type: '5K', week: 1 }]);
 });
 
 test('the committed GA list is a real Registrar pull with a term and a date', () => {

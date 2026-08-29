@@ -61,8 +61,17 @@ export const KNOWN_UNRESOLVED = new Map([
 ]);
 
 // Everything the refusals are decided on, read off one built index.
-export function measure(rooms) {
-  const entries = Object.entries(rooms ?? {});
+//
+// `exclude` is a set of room ids to leave out. It is how a DELIBERATE filter
+// change is told apart from a collapse. Every refusal here is a comparison
+// against the committed file, and the committed file was built by the previous
+// filter, so tightening the filter reads as 66 rooms losing all their blocks:
+// the exact shape of the failure this module exists to catch. Excluding the
+// rooms the new filter names, from BOTH sides, leaves every other room's block
+// count under the full strength of the guard. A harvest that collapses in the
+// same run still trips it, because the collapse lands on rooms nobody excluded.
+export function measure(rooms, { exclude } = {}) {
+  const entries = Object.entries(rooms ?? {}).filter(([id]) => !exclude?.has(id));
   const buildings = new Set();
   const blocksByRoom = new Map();
   const minutesByDay = new Array(7).fill(0);

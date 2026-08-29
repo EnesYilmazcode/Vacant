@@ -25,12 +25,15 @@ import {
   allWeekCodes,
   busyDayOf,
   clock,
+  clockIsPinned,
   diagnosticsBlock,
   dur,
   durShort,
   fmtDay,
   inScheduledHours,
   isoDate,
+  now as clockNow,
+  pinClock,
   rankBuildings,
   resolveState,
   roomsPerBuilding,
@@ -138,7 +141,7 @@ const state = {
   needed: 30,
   results: [],
   total: 0,
-  day: new Date().getDay(),
+  day: clockNow().getDay(),
   soonest: null,
   selected: null,
   settled: false,
@@ -490,7 +493,7 @@ function answer() {
   // deciding it again here is how one screen ends up offering 450 rooms while
   // the one behind it says nobody knows.
   if (!state.ready || !state.rankable) return;
-  const now = new Date();
+  const now = clockNow();
   const minutes = nowMinutes(now);
   state.day = now.getDay();
   state.needed = neededMinutes(now);
@@ -739,7 +742,7 @@ function attachChips() {
 // answer. The unit here is the building, because the real question is which
 // door is even unlocked.
 function paintNear(reason) {
-  const now = new Date();
+  const now = clockNow();
   state.day = now.getDay();
   const groups = rankBuildings({
     origin: state.origin,
@@ -956,9 +959,15 @@ function useOrigin(origin, note) {
   // The one place the app branches on where the origin came from. Nothing in
   // ranking, the off-campus gate or the buildings screen reads it.
   state.originIsGuess = origin.source === 'oval';
+  // The same sentence in two places, because it belongs to two screens.
+  // #note floats over the map and answers "why is the walk measured from
+  // there". #ask-where sits in the question column, because a fixed pill on
+  // top of the wordmark, the question and the "1 hour" button was the bug.
   $('note-text').textContent = note ?? '';
   $('note').hidden = !note;
   $('note-pick').hidden = !note;
+  $('ask-where').textContent = note ?? '';
+  $('ask-where').hidden = !note;
   $('ask-pick').hidden = !note;
   paintOriginBar();
 }
@@ -977,7 +986,7 @@ function paintOriginBar() {
 // Today's blocks for one room, session mask applied, overlaps merged but
 // back-to-back classes left as two.
 function blocksToday(room) {
-  const active = activeSessions(state.rooms.sessions, isoDate(new Date()));
+  const active = activeSessions(state.rooms.sessions, isoDate(clockNow()));
   const raw = [];
   for (const b of room.busy ?? []) {
     if (Number(b[0]) !== state.day) continue;
@@ -1128,7 +1137,7 @@ function roomHtml(id) {
   const room = state.rooms.rooms[id];
   const b = state.buildings?.[room.b];
   const bname = shortName(b?.name ?? room.b);
-  const now = new Date();
+  const now = clockNow();
   const nowMin = nowMinutes(now);
   const r = state.results.find((x) => x.id === id);
   // The walk belongs in the claim, so it has to be here whether or not the room
@@ -1277,7 +1286,7 @@ function rememberPick(id) {
   if (!room) return;
   const r = state.results.find((x) => x.id === id);
   const busy = blocksToday(room);
-  const active = activeSessions(state.rooms.sessions, isoDate(new Date()));
+  const active = activeSessions(state.rooms.sessions, isoDate(clockNow()));
   // Which session's class closes the gap. That is the number a maintainer needs
   // to tell a stale session mask from a wrong gap.
   const closer = (room.busy ?? []).find(
@@ -1302,7 +1311,7 @@ function rememberPick(id) {
       // The minute the row was tapped, so the block can print the departure
       // deadline behind the usable figure. Reading the clock when the panel
       // opens instead would date-stamp a walk that already happened.
-      nowMin: nowMinutes(new Date()),
+      nowMin: nowMinutes(clockNow()),
       busy,
       dayName: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][state.day],
       at: Date.now(),
@@ -1335,7 +1344,7 @@ async function paintAbout() {
     pick = null;
   }
 
-  const now = new Date();
+  const now = clockNow();
   const stale = staleness({ now, current: state.current });
   const block = diagnosticsBlock({
     build,
@@ -1424,6 +1433,7 @@ function showPane(name) {
   $('ask').hidden = true;
   $('sheet').hidden = false;
   $('back').hidden = false;
+  document.body.classList.remove('asking');
   state.screen = name;
   syncPaneTouch();
 }
@@ -1431,6 +1441,7 @@ function showPane(name) {
 function showAsk() {
   state.screen = 'ask';
   $('ask').hidden = false;
+  document.body.classList.add('asking');
   $('sheet').hidden = true;
   $('back').hidden = true;
   for (const id of PANES) $(id).hidden = id !== 'list';
@@ -1564,7 +1575,7 @@ function openNear() {
 // foreground, when the duration changes, and when the user asks.
 function refresh() {
   if (!state.rooms) return;
-  const now = new Date();
+  const now = clockNow();
   state.situation = resolveState({ now, current: state.current, index: state.rooms });
   state.rankable = state.situation.ranked;
   state.scheduled = inScheduledHours({ now, current: state.current, index: state.rooms });
@@ -1586,7 +1597,7 @@ function refresh() {
 // before any room is ranked.
 function paintGate() {
   const s = state.situation;
-  const stale = staleness({ now: new Date(), current: state.current });
+  const stale = staleness({ now: clockNow(), current: state.current });
   $('stale').hidden = stale.level === 'silent' || stale.level === 'gated';
   $('stale').textContent = stale.text;
   $('stale').classList.toggle('banner', stale.level === 'banner');
@@ -1771,7 +1782,7 @@ async function boot() {
   state.hoursTerm = table;
   useOrigin(located.origin, located.note);
 
-  const now = new Date();
+  const now = clockNow();
   state.situation = resolveState({ now, current, index: rooms });
   state.rankable = state.situation.ranked;
   state.scheduled = inScheduledHours({ now, current, index: rooms });
@@ -1857,8 +1868,115 @@ window.addEventListener('DOMContentLoaded', () => {
     },
   });
 
+  armDev();
+
   boot().catch(() => {
     $('note-text').textContent = 'Could not load the schedule. Check your connection and reload.';
+    // The one note with nowhere else to go: no answer screen to float over and
+    // no origin sentence to sit beside, so it stays on the question screen.
+    $('note').classList.add('fatal');
     $('note').hidden = false;
   });
 });
+
+// ------------------------------------------------------------- the dev seam
+//
+// Three functions, imported by js/dev.js and by nothing else. They exist
+// because the interesting states of this app are all somewhere else: exam week,
+// Thanksgiving, 9pm on a Saturday, standing in Kottman Hall. Every one of them
+// used to need a plane ticket or a December.
+//
+// Nothing here is a mock. devApply moves the same clock the app reads and the
+// same origin the ranking measures from, and then calls the same refresh() the
+// duration chips call. What the panel shows is what the app does.
+
+export { state as devState };
+
+// Move the clock, the place, or both, and repaint whatever screen is up.
+export function devApply({ at, origin, note } = {}) {
+  if (at !== undefined) pinClock(at);
+  if (origin !== undefined) useOrigin(origin, note ?? null);
+  if (!state.ready) return;
+  state.day = clockNow().getDay();
+  refresh();
+  if (state.screen === 'ask') paintGate();
+}
+
+// What the app currently believes, for the panel's readout. A copy, so the
+// panel cannot write to it by accident.
+export function devReadout() {
+  return {
+    ready: state.ready,
+    screen: state.screen,
+    when: clockNow().toString(),
+    // Whether the minute on screen is the real one. The panel says so out
+    // loud, because a simulated clock that looks live is how you end up
+    // reporting a bug against a Tuesday in November.
+    simulated: clockIsPinned(),
+    day: state.day,
+    rankable: state.rankable,
+    scheduled: state.scheduled,
+    refused: state.situation?.refused ?? null,
+    heading: state.situation?.heading ?? null,
+    duration: state.duration,
+    total: state.total ?? null,
+    origin: state.origin ? { ...state.origin } : null,
+    top: (state.results ?? []).slice(0, 3).map((r) => ({
+      id: r.id,
+      name: r.name,
+      walk: r.walk,
+      usable: r.usable,
+      hoursKnown: r.hoursKnown,
+    })),
+  };
+}
+
+// --------------------------------------------------------------- arming dev
+//
+// js/dev.js is loaded on demand and is not in the service worker's shell list,
+// so a student who never asks for it never downloads it: it costs the shipped
+// app one import() call and nothing over the wire. Ask for it with ?dev=1 in
+// the URL, with #dev, or by pressing D three times.
+//
+// The choice is remembered in sessionStorage, because the app rewrites its own
+// URL on the first history entry it pushes and a query string does not survive
+// that.
+const DEV_KEY = 'vacant.dev';
+
+function openDev() {
+  if (document.getElementById('dev')) return;
+  import('./dev.js')
+    .then((m) => m.start())
+    .catch(() => {
+      /* a dev panel that will not load is not worth breaking the app over */
+    });
+}
+
+function armDev() {
+  let armed = false;
+  try {
+    const url = new URLSearchParams(location.search);
+    if (url.get('dev') === '1' || location.hash === '#dev') sessionStorage.setItem(DEV_KEY, '1');
+    armed = sessionStorage.getItem(DEV_KEY) === '1';
+  } catch {
+    /* private mode with storage off is simply not in dev mode */
+  }
+  if (armed) openDev();
+
+  let hits = [];
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'd' && e.key !== 'D') return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+    const t = Date.now();
+    hits = hits.filter((h) => t - h < 2000);
+    hits.push(t);
+    if (hits.length < 3) return;
+    hits = [];
+    try {
+      sessionStorage.setItem(DEV_KEY, '1');
+    } catch {
+      /* still opens, just does not survive a reload */
+    }
+    openDev();
+  });
+}

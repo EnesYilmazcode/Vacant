@@ -169,14 +169,16 @@ test('resolveState is pure: the same inputs twice give the same answer', () => {
 // ------------------------------------------------------------ #20 unscheduled
 
 test('the scheduled window is measured off the index when the build omits it', () => {
-  // Re-measured on the shipped index after the room safety filter cut it to 581
-  // rooms and 9,561 blocks. The weekday shares are Sun 0.00%, Mon 17.73%, Tue
-  // 22.47%, Wed 22.03%, Thu 22.33%, Fri 15.39%, Sat 0.06%, so nothing sits near
-  // the 1% line either side of it.
+  // Re-measured on the shipped index after the evidence filter cut it to 515
+  // rooms and 9,462 blocks. The weekday shares are Sun 0.00%, Mon 17.43%, Tue
+  // 23.58%, Wed 21.32%, Thu 23.41%, Fri 14.00%, Sat 0.26%, so nothing sits near
+  // the 1% line either side of it. latestEnd moved 1230 -> 1225 because the 66
+  // rooms that left took some of the tail with them; the quantile is a fact
+  // about the shipped file, not a constant.
   const busyDay = busyDayOf({}, INDEX);
   assert.deepEqual(busyDay.weekdays, [false, true, true, true, true, true, false]);
   assert.equal(busyDay.earliestStart, 480);
-  assert.equal(busyDay.latestEnd, 1230);
+  assert.equal(busyDay.latestEnd, 1225);
 });
 
 test('current.json wins over the measurement when it carries busyDay', () => {

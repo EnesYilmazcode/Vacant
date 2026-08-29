@@ -27,7 +27,13 @@ import {
 } from './lib/funnel.mjs';
 import { collectMeetings, projectMeeting } from './fetch-rooms.mjs';
 import { buildSessions, expandMeeting, mergeIntervals, propagateGroups } from './lib/rooms.mjs';
-import { classify, OFF_CAMPUS, TYPE_VISIBILITY, TYPE_WORDS } from './lib/room-safety.mjs';
+import {
+  classify,
+  DROP,
+  MAX_CAMPUS_M,
+  MIN_WEEKLY_MEETINGS,
+  TYPE_WORDS,
+} from './lib/room-safety.mjs';
 import { indexRefusals, measure, notReady } from './lib/index-guards.mjs';
 import { refusalMessage } from './guards.mjs';
 import {
@@ -43,6 +49,26 @@ import {
 } from './lib/calendar.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// The Thompson Library steps, the middle of the Oval. Same point the
+// screenshots are taken from, so "distance from campus" means one thing in this
+// repo and not two.
+const OVAL = { lat: 39.99944, lon: -83.01502 };
+
+// Haversine, in metres. A copy of the engine's, because the build must not
+// import a browser module and 12 lines is cheaper than a shared package.
+// Returns null for a building with no usable coordinate, which is the same
+// answer as "no opinion" to the caller.
+function metresFromOval(building) {
+  if (!building || !Number.isFinite(building.lat) || !Number.isFinite(building.lon)) return null;
+  const rad = (d) => (d * Math.PI) / 180;
+  const p1 = rad(OVAL.lat);
+  const p2 = rad(building.lat);
+  const dp = rad(building.lat - OVAL.lat);
+  const dl = rad(building.lon - OVAL.lon);
+  const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(a));
+}
 
 // Bookings with no recoverable weekday get their clock window blocked on all
 // seven days, so a handful of them is honest and a flood of them would delete
@@ -419,27 +445,46 @@ export function pruneSessions(rooms, sessions) {
 
 // Drop every room a student should not be sent to, and flag what is left.
 // Mutates `rooms` and returns what it did, so the build can print it.
-export function applySafety(rooms, { gaRooms, restricted } = {}) {
+//
+// `metresFor` returns the distance from the Oval for a building code, or null.
+// It is optional: a caller with no coordinate table skips the distance rule
+// rather than dropping every room for having no distance.
+export function applySafety(rooms, { gaRooms, restricted, metresFor } = {}) {
   const unknown = new Map();
   const kept = { shown: 0, secondary: 0 };
-  const dropped = { type: 0, restricted: 0, offCampus: 0 };
+  const dropped = { type: 0, restricted: 0, offCampus: 0, farFromCampus: 0, thin: 0 };
   const nonGa = [];
   const gaButHidden = [];
+  // Every room the two new rules take out, named, so the build prints its own
+  // evidence and nobody has to diff two 190 KB JSON files to see what moved.
+  const cut = { farFromCampus: [], thin: [] };
 
   for (const id of Object.keys(rooms)) {
     const room = rooms[id];
+    const why = {};
+    const metres = metresFor ? metresFor(room.b) : null;
     const verdict = classify(
-      { facilityId: id, facilityType: room.type, buildingCode: room.b },
-      { gaRooms, restricted, unknown },
+      {
+        facilityId: id,
+        facilityType: room.type,
+        buildingCode: room.b,
+        weeklyMeetings: room.busy?.length ?? null,
+        metresFromOval: metres,
+      },
+      { gaRooms, restricted, unknown, why },
     );
     if (!verdict) {
       if (gaRooms && gaRooms.has(id)) gaButHidden.push(`${id} type ${room.type}`);
-      // Attributed in the order classify decides, so a wet lab inside a
-      // restricted building counts once, against the reason that actually
-      // dropped it.
-      if (OFF_CAMPUS.has(id)) dropped.offCampus++;
-      else if (!TYPE_VISIBILITY[room.type]) dropped.type++;
-      else dropped.restricted++;
+      // Attributed by the rule that actually fired. The old code re-derived the
+      // reason here and could only tell three of them apart.
+      const reason = why.reason ?? DROP.type;
+      dropped[reason]++;
+      if (reason === DROP.farFromCampus) {
+        cut.farFromCampus.push({ id, b: room.b, m: Math.round(metres) });
+      }
+      if (reason === DROP.thin) {
+        cut.thin.push({ id, b: room.b, type: room.type, week: room.busy?.length ?? 0 });
+      }
       delete rooms[id];
       continue;
     }
@@ -449,7 +494,7 @@ export function applySafety(rooms, { gaRooms, restricted } = {}) {
     if (!verdict.ga) nonGa.push(id);
   }
 
-  return { kept, dropped, unknown, nonGa, gaButHidden };
+  return { kept, dropped, unknown, nonGa, gaButHidden, cut };
 }
 
 // Rebuild a harvest from the committed page archive.
@@ -531,6 +576,7 @@ async function main() {
   const safety = {
     gaRooms: new Set(gaFile.rooms),
     restricted: new Set(Object.keys(restrictedFile.buildings)),
+    metresFor: (code) => metresFromOval(buildings[code]),
   };
   if (gaFile._meta?.term !== term) {
     console.warn(
@@ -561,13 +607,29 @@ async function main() {
     console.warn(`  warn  ${stats.noSession} meeting(s) passed the funnel but matched no session`);
   }
 
-  const { kept, dropped, unknown, nonGa, gaButHidden } = safetyStats;
+  const { kept, dropped, unknown, nonGa, gaButHidden, cut } = safetyStats;
+  const totalDropped = Object.values(dropped).reduce((a, b) => a + b, 0);
   console.log(
     `\nsafety filter: ${kept.shown} shown, ${kept.secondary} secondary, ` +
-      `${dropped.type + dropped.restricted + dropped.offCampus} dropped ` +
+      `${totalDropped} dropped ` +
       `(${dropped.type} by type, ${dropped.restricted} in a restricted building, ` +
-      `${dropped.offCampus} off campus)`,
+      `${dropped.offCampus} off campus, ` +
+      `${dropped.farFromCampus} over ${MAX_CAMPUS_M} m from the Oval, ` +
+      `${dropped.thin} under ${MIN_WEEKLY_MEETINGS} meetings a week and not general assignment)`,
   );
+  for (const r of cut.farFromCampus) {
+    console.log(`  too far: ${r.id} in building ${r.b}, ${r.m} m from the Oval`);
+  }
+  if (cut.thin.length) {
+    const byBuilding = new Map();
+    for (const r of cut.thin) byBuilding.set(r.b, (byBuilding.get(r.b) ?? 0) + 1);
+    const worst = [...byBuilding].sort((a, b) => b[1] - a[1]).slice(0, 6);
+    console.log(
+      '  thin evidence, by building: ' +
+        worst.map(([b, n]) => `${b}:${n}`).join(' ') +
+        (byBuilding.size > worst.length ? ` and ${byBuilding.size - worst.length} more` : ''),
+    );
+  }
   console.log(
     `${nonGa.length} of ${kept.shown + kept.secondary} kept rooms are absent from ` +
       `data/ga-rooms.json and ship ga:false`,
@@ -706,8 +768,15 @@ async function main() {
   // that decides whether a harvest that PARSED is a harvest worth shipping.
   const indexPath = join(ROOT, 'data', `rooms-${term}.json`);
   const committed = existsSync(indexPath) ? JSON.parse(readFileSync(indexPath, 'utf8')) : null;
-  const now = measure(sorted);
-  const before = committed ? measure(committed.rooms) : null;
+  // The rooms this build's filter deliberately removed. They are excluded from
+  // BOTH measurements so the committed comparison stays a comparison of the
+  // same population. See the note on measure().
+  const filtered = new Set([...cut.farFromCampus, ...cut.thin].map((r) => r.id));
+  const now = measure(sorted, { exclude: filtered });
+  const before = committed ? measure(committed.rooms, { exclude: filtered }) : null;
+  // The count the file actually ships, which is not the count the guards read
+  // once anything is excluded. Printed so the two can never be confused.
+  const shipping = measure(sorted);
 
   const clockStrings = { parsed: 0, failed: 0 };
   const unresolved = new Set();
@@ -741,6 +810,13 @@ async function main() {
       `${now.buildings} buildings, weekday balance ${now.weekdayBalance.toFixed(2)}` +
       (before ? `  (committed: ${before.blocks} blocks, ${before.minutes} minutes)` : '  (no committed file)'),
   );
+  if (filtered.size) {
+    console.log(
+      `  ${filtered.size} room(s) held out of the comparison because this build's filter ` +
+        `removed them on purpose. The file ships ${shipping.rooms} rooms, ` +
+        `${shipping.buildings} buildings, ${shipping.blocks} blocks.`,
+    );
+  }
   console.log(
     `  ${clockStrings.parsed} clock strings parsed, ${clockStrings.failed} failed; ` +
       `${unresolved.size} unresolved building code(s); ${noCoordRooms} room building(s) with no lat/lon`,

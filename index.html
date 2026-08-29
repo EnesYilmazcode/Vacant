@@ -150,7 +150,25 @@
   .opt {
     appearance: none; border: 1px solid var(--line); background: var(--card); color: var(--fg);
     font: inherit; font-weight: 650; padding: .95rem min(1rem, 4vw); border-radius: 999px;
-    min-height: 52px; flex: 1 1 6rem; cursor: pointer;
+    min-height: 52px; cursor: pointer;
+  }
+  /* `flex: 1 1 6rem` belongs to the row and only to the row.
+     It was on `.opt` itself, and #ask-pick and #gate-go are `.opt` buttons that
+     are direct children of #ask, which is a COLUMN flex container. On a column
+     the main axis is vertical, so the 6rem was a HEIGHT and the grow factor ate
+     the leftover column. Measured at 393x852 with the root at 16px, nothing
+     exotic: "Pick your building instead" rendered 229x371 and "Show nearest
+     buildings" 208x96, both as 999px pill radii, so they came out as two giant
+     ovals covering the lower two thirds of the screen. */
+  .opts .opt { flex: 1 1 6rem; }
+  /* A standalone .opt is a button, not a column. flex:none stops it growing and
+     max-width stops it running the full width on a tablet.
+     The radius is half the 52px min-height rather than 999px, which is the same
+     pill on one line and stops being an egg when the label wraps: at a 32px root
+     "Show nearest buildings" is three lines and 202px tall, and a 999px radius
+     on that box is an oval. */
+  #ask > .opt, #gate > .opt {
+    flex: none; max-width: 22rem; width: 100%; border-radius: 26px;
   }
   /* White on this red measures 3.29:1, under the 4.5 floor, on the one control
      every session goes through. Near-black on the same red is 6.38:1. */
@@ -412,14 +430,30 @@
   }
   .optin input { width: 22px; height: 22px; accent-color: var(--accent); }
 
+  /* The pill is a flex ROW holding a sentence and a button, and the button was
+     `flex: none` while the sentence was a bare span. Once the pair wanted more
+     than 92vw, every pixel of the shrink landed on the sentence: measured at
+     393px, "You are off campus, showing from the Oval" rendered 47.3px wide and
+     111.3px tall, one word per line. That made the pill 231px tall, and since
+     it is fixed at z-index 3 over an #ask that had no z-index at all, it then
+     covered the wordmark, the question and the "1 hour" button, which could not
+     be tapped at all.
+     Wrapping fixes the shrink and the height together: the button drops to its
+     own line rather than squeezing the sentence to a column. */
   #note {
     position: fixed; top: calc(var(--safe-t) + .7rem); left: 50%;
-    transform: translateX(-50%); max-width: 92vw; z-index: 3;
+    transform: translateX(-50%); max-width: min(92vw, 30rem); z-index: 3;
     background: var(--card); border: 1px solid var(--line); color: var(--dim);
-    font-size: .8rem; padding: .4rem .6rem .4rem .85rem; border-radius: 999px; text-align: center;
-    display: flex; align-items: center; gap: .6rem;
+    font-size: .8rem; padding: .5rem .85rem; border-radius: 16px; text-align: center;
+    display: flex; align-items: center; justify-content: center;
+    flex-wrap: wrap; gap: .5rem .6rem;
   }
-  #note-pick { flex: none; }
+  #note-text { flex: 1 1 12rem; min-width: 0; }
+  #note-pick { flex: 0 0 auto; }
+  /* The question screen carries the same sentence in its own column, as
+     #ask-where, so the floating pill is redundant there as well as in the way.
+     The exception is the fatal load error, which has nowhere else to go. */
+  body.asking #note:not(.fatal) { display: none !important; }
   /* --- the display cutout, in landscape --- */
   /* viewport-fit=cover plus black-translucent draws the page under the status
      bar, which the top and bottom rows already answer with --safe-t and
@@ -489,7 +523,7 @@
   .cold-say { color: var(--warn) !important; }
 </style>
 </head>
-<body>
+<body class="asking">
 
 <svg width="0" height="0" aria-hidden="true" style="position:absolute">
   <symbol id="i-walk" viewBox="0 0 24 24">
@@ -536,6 +570,7 @@
     <p id="gate-d" class="prov" hidden></p>
     <button id="gate-go" class="opt" hidden></button>
   </div>
+  <p class="prov" id="ask-where" hidden></p>
   <button id="ask-pick" class="opt" hidden>Pick your building instead</button>
 </section>
 

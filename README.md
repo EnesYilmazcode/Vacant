@@ -9,7 +9,7 @@ asks one question, and hands you rooms you can walk to, nearest first.
 
 | | | |
 | :--: | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark campus map, the question "How long do you need?", and three buttons reading 30 min, 1 hour and 2 hours](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. 251 rooms free, 40 shown. Townshend Hall 038, 2 min walk, no class rest of today, 40 seats. Townshend Hall 245, 2 min, free till 2:35pm, 20 seats.](docs/media/list.webp) | ![One room picked, Townshend Hall 245. Its building footprint is outlined in red on the map and a dashed line runs from the blue dot to it, labelled 2 min walk.](docs/media/room.webp) |
+| ![The opening screen: the word Vacant over a dark campus map, the question "How long do you need?", and three buttons reading 30 min, 1 hour and 2 hours](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. 185 rooms free, 40 shown. Psychology Building 115, 3 min walk, no class rest of today, 26 seats. Psychology Building 217, 3 min, free till 1:50pm, 30 seats.](docs/media/list.webp) | ![One room picked, Psychology Building 217. Its building footprint is outlined in red on the map and a dashed line runs from the blue dot to it, labelled 3 min walk.](docs/media/room.webp) |
 | One question. | The answer. | Where it is. |
 
 ## Yours for, not free until
@@ -22,12 +22,12 @@ in the room's schedule, subtracts the walk, and leaves ten minutes at the end so
 you are not packing up while the next class files in. Walk time is straight line
 distance times 1.3 for the fact that campus paths bend, at 78 metres a minute.
 
-Read the second row of the middle screenshot. Townshend Hall 245 says **free
-till 2:35pm**. The next class in that room starts at 2:45pm, you are two minutes
-away, and 2:35pm is when you have to be packed up.
+Read the third row of the middle screenshot. Psychology Building 217 says **free
+till 1:50pm**. The next class in that room starts at 2:00pm, you are three minutes
+away, and 1:50pm is when you have to be packed up.
 
 Tap it and the room screen says the same minute, then spells the rest out:
-**Yours for 4h13 once you get there.** The two screens agreeing is the point.
+**Yours for 3h27 once you get there.** The two screens agreeing is the point.
 They did not for a while: the room screen printed 2:45pm, the raw class start,
 handing back the ten minutes the row had already taken off
 ([#77](https://github.com/EnesYilmazcode/Vacant/issues/77)).
@@ -37,7 +37,7 @@ coming at all, and the timeline behind it ends where the building locks.
 
 | | |
 | :--: | :--: |
-| ![The list dragged up to fill the screen, showing ten rooms across three buildings, all two or three minutes away](docs/media/list-full.webp) | ![The room screen for Townshend Hall 245: free till 2:35pm, yours for 4h13 once you get there, 2 min walk, 76 m, 20 seats, conference room, then a timeline reading 7:00am Townshend Hall opens, 7:00am free for 7h45, 2:45pm in use, 4:45pm free for 2h15, 7:00pm Townshend Hall closes](docs/media/timeline.webp) |
+| ![The list dragged up to fill the screen, showing ten rooms across three buildings, all two or three minutes away](docs/media/list-full.webp) | ![The room screen for Psychology Building 217: free till 1:50pm, yours for 3h27 once you get there, 3 min walk, 147 m, 30 seats, seminar room, then a timeline reading 7:00am Psychology Building opens, 7:00am free for 7h00, 2:00pm in use, 4:45pm free for 3h45, 8:30pm Psychology Building closes](docs/media/timeline.webp) |
 | Drag the sheet up for the rest. | Tap a room twice for its whole day, doors included. |
 
 ## Put it on your home screen
@@ -50,7 +50,7 @@ sits at the bottom, then **Add to Home Screen**. iOS 26 defaults to that Compact
 layout, which is why the app offers you both. On Android, Chrome has **Install
 app** in its menu.
 
-Installed, the whole app is 69 KB of shell and 66 KB of schedule, gzipped, and
+Installed, the whole app is 70 KB of shell and 63 KB of schedule, gzipped, and
 none of it is fetched again to answer a question. Turn the network off, open it,
 and it still ranks rooms. That matters because the moment you want it most is the
 moment you are in a basement with one bar.
@@ -63,14 +63,14 @@ and it is not a door. Three things are true and the app says all three on screen
 **Doors get locked.** This is the failure every other tool in this category ships
 with, and at Ohio State it is avoidable, because the Registrar publishes an open
 and close time per building per weekday. Measured against the committed index,
-**578 of the 581 rooms have no Saturday class at all this term**. A tool that
-stops at the schedule calls all 578 of them free on a Saturday. **398** of those
-sit in a building the Registrar publishes as closed that day, and **123** more sit
+**512 of the 515 rooms have no Saturday class at all this term**. A tool that
+stops at the schedule calls all 512 of them free on a Saturday. **367** of those
+sit in a building the Registrar publishes as closed that day, and **88** more sit
 in a building nobody publishes hours for at all. **57** are in a building that is
 genuinely open.
 
 **Hours are not published everywhere.** The Registrar's table covers 47
-buildings. The index touches 78. So 125 of the 581 rooms, 22%, are in a building
+buildings. The index touches 68. So 90 of the 515 rooms, 17%, are in a building
 whose door nobody documents. Those rooms say `hours not published` and rank below
 every room that has real hours. They are never given an assumed window, because
 "usually open" is a guess wearing the clothes of a fact.
@@ -90,9 +90,10 @@ room-keyed list of busy intervals. The page downloads that file, subtracts today
 intervals from the building's published opening hours, and ranks what is left by
 walk time. There is no server, no database, no build step and no dependencies.
 
-Everything the page fetches to produce a ranked list is **ten files, 470 KB, or
-102 KB over the wire once gzipped**. Measured with `node:zlib` over the tree as
-committed.
+Everything the page fetches to produce a ranked list is **fourteen files, 472 KB,
+or 108 KB over the wire once gzipped**. Measured with `node:zlib` over the tree
+as committed. The campus map is another 98 KB, 38 KB gzipped, and is warmed after
+the first answer rather than before it.
 
 | Where | What is in it |
 | --- | --- |
@@ -116,9 +117,27 @@ Then open `http://localhost:8000`. It has to be served rather than opened as a
 file, because the page is ES modules and it fetches JSON.
 
 ```sh
-npm test                        # node --test, 224 tests, no network
+npm test                        # node --test, 589 tests, no network
 node scripts/shoot.mjs          # redraw docs/media from the real app
 ```
+
+### Stand somewhere else, on a different day
+
+Open `http://localhost:8000/?dev=1`, or press **D** three times on any screen.
+
+A panel appears with a date and time control, a slider for the time of day, one
+tap jumps to Thanksgiving, finals week, Saturday at 3am and winter break, and a
+dropdown of every building in the index. Pick a minute and a place and the app
+answers as if you were standing there.
+
+It is not a preview. It moves the same clock every screen reads and the same
+origin the ranking measures from, then repaints through the same code path a
+duration chip uses, so the answer on screen is the answer a student would get.
+The readout at the bottom of the panel says whether the clock is live or
+simulated, and it says which rooms came back and why the app refused if it did.
+
+`js/dev.js` is loaded on demand and is not in the service worker's shell list, so
+a phone that never asks for it never downloads it.
 
 ## Rebuild the data
 

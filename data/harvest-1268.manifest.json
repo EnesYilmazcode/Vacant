@@ -1,43 +1,57 @@
 {
   "term": "1268",
-  "runs": 3,
-  "facetTotal": 26283,
-  "passes": 4,
+  "runs": 4,
+  "facetTotal": 26294,
+  "passes": 6,
   "history": [
     {
       "pass": 1,
-      "saw": 26599,
-      "added": 26599,
-      "addedWithRoom": 8465,
-      "unionAfter": 26599
+      "saw": 26253,
+      "added": 26253,
+      "addedWithRoom": 8467,
+      "unionAfter": 26253
     },
     {
       "pass": 2,
-      "saw": 26639,
-      "added": 453,
-      "addedWithRoom": 1,
-      "unionAfter": 27052
+      "saw": 26336,
+      "added": 574,
+      "addedWithRoom": 0,
+      "unionAfter": 26827
     },
     {
       "pass": 3,
-      "saw": 26681,
-      "added": 5,
-      "addedWithRoom": 0,
-      "unionAfter": 27057
+      "saw": 26204,
+      "added": 216,
+      "addedWithRoom": 2,
+      "unionAfter": 27043
     },
     {
       "pass": 4,
-      "saw": 26617,
-      "added": 4,
+      "saw": 26550,
+      "added": 29,
+      "addedWithRoom": 1,
+      "unionAfter": 27072
+    },
+    {
+      "pass": 5,
+      "saw": 26254,
+      "added": 0,
       "addedWithRoom": 0,
-      "unionAfter": 27061
+      "unionAfter": 27072
+    },
+    {
+      "pass": 6,
+      "saw": 26383,
+      "added": 0,
+      "addedWithRoom": 0,
+      "unionAfter": 27072
     }
   ],
-  "distinctMeetings": 27061,
-  "meetingsInARealRoom": 8466,
-  "missedBySinglePass": 462,
-  "roomedMissedBySinglePass": 1,
-  "requests": 545,
+  "distinctMeetings": 27072,
+  "meetingsInARealRoom": 8470,
+  "missedBySinglePass": 819,
+  "roomedMissedBySinglePass": 3,
+  "requests": 817,
   "buckets": [
     {
       "slug": "1xxx",
@@ -45,7 +59,7 @@
     },
     {
       "slug": "2xxx",
-      "facetCount": 2415
+      "facetCount": 2417
     },
     {
       "slug": "3xxx",
@@ -57,15 +71,15 @@
     },
     {
       "slug": "5xxx",
-      "facetCount": 2274
+      "facetCount": 2278
     },
     {
       "slug": "6xxx",
-      "facetCount": 2301
+      "facetCount": 2305
     },
     {
       "slug": "7xxx",
-      "facetCount": 2987
+      "facetCount": 2988
     },
     {
       "slug": "8xxx",

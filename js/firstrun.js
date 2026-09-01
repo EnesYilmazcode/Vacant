@@ -16,6 +16,20 @@ export const OFFLINE = 'offline';
 
 const BASE = '/Vacant/';
 
+// When a request has waited long enough that it is not coming. A stalled network
+// never rejects, so without this both this card's probe and the app's boot wait
+// on it for the length of the visit.
+//
+// MEASURED, because the direction of the error is the point: too short and a
+// slow load that IS working gets called dead, which is the lie this app exists
+// not to tell. The 379,144 bytes boot() reads, uncompressed off a local server
+// with the worker out of the way, took 9.59 s over CDP at Chrome's Slow 3G
+// preset (51,200 B/s down, 2,000 ms latency) and 2.69 s at Fast 3G, worst of
+// five runs each. Pages gzips those five to 85,151, so a deployed load has more
+// room than that. 20 s is twice the measurement, and still refuses a link a
+// tenth of Slow 3G, where the same fetch needs 77.1 s.
+export const NETWORK_TIMEOUT_MS = 20000;
+
 async function cachedJson(store, url) {
   try {
     const hit = await store.match(url);
@@ -112,7 +126,10 @@ export function initFirstRun(options = {}) {
   // network works. Only a request that came back decides that.
   async function reachable() {
     try {
-      const response = await fetch(`${BASE}data/current.json`, { cache: 'no-store' });
+      const response = await fetch(`${BASE}data/current.json`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
+      });
       return response.ok;
     } catch {
       return false;
@@ -136,6 +153,10 @@ export function initFirstRun(options = {}) {
 
   function open() {
     if (showing || ready) return;
+    // app.js races the same dead network and can arm its own refusal first. This
+    // card covers it, and card() says nothing behind it is focusable.
+    const gate = doc.getElementById('gate');
+    if (gate) gate.hidden = true;
     showing = card(doc, retry);
     doc.body.append(showing);
     showing.querySelector('button').focus({ preventScroll: true });

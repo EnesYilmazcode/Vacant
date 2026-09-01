@@ -1737,4 +1737,108 @@ test('the footer spends the two counts the right way round', () => {
   assert.match(foot, /const past = state\.bounds \? state\.bounds\.beyond\.count \+ state\.bounds\.beyond\.waiting\.count : 0;/);
   assert.match(foot, /const inside = rest \? `<b>\$\{rest\} more<\/b> within a \$\{MAX_WALK\} minute walk`/);
   assert.match(foot, /const outside = past\s*\?\s*`<b>\$\{past\} more<\/b> \$\{rest \? 'past it'/);
+// ------- the origin bar, and the two refusal cards
+
+test('the origin bar costs nothing on the screen a phone with a fix sees', () => {
+  // The rule is lifted out of js/app.js and run. That file reaches for document
+  // at import time, so it cannot be imported here, but the expression is pure,
+  // so it is pulled out of the source and handed a state of its own.
+  const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const at = app.indexOf('const originBarOn = (screen) =>');
+  assert.ok(at > 0, 'js/app.js no longer has an origin bar rule to pin');
+  const barRule = new Function('state', `${app.slice(at, app.indexOf(';', at) + 1)} return originBarOn;`);
+  const on = (state, screen) => barRule(state)(screen);
+  const gps = { origin: { source: 'gps' }, originIsGuess: false };
+  const picked = { origin: { source: 'picked', label: 'Enarson' }, originIsGuess: false };
+  const oval = { origin: { source: 'oval' }, originIsGuess: true };
+
+  // docs/DECISIONS.md cut this bar because it cost a full row at the top of the
+  // most-used screen for everyone. A real position still pays nothing for it.
+  assert.equal(on(gps, 'list'), false);
+  assert.equal(on(gps, 'near'), false);
+  assert.equal(on({ ...gps, dev: true }, 'list'), true, 'dev mode lost its bar');
+
+  // The two origins the app chose FOR the student. A picked building is
+  // otherwise permanent, with no visible way to say "no, use my location".
+  assert.equal(on(picked, 'list'), true);
+  assert.equal(on(picked, 'near'), true);
+  assert.equal(on(oval, 'list'), true);
+
+  // And nowhere else. The room screen, the picker and the question are not
+  // places anyone corrects where they are standing.
+  for (const screen of ['ask', 'room', 'pick', 'about']) {
+    assert.equal(on(picked, screen), false, `the bar is on the ${screen} screen`);
+  }
+
+  // The rule is applied in both places the bar can change. showPane covers a
+  // screen change; paintOriginBar covers the origin changing without one, which
+  // is exactly what tapping the X does.
+  const pane = app.slice(app.indexOf('function showPane(name)'), app.indexOf('function showList()'));
+  assert.match(pane, /\$\('origin'\)\.hidden = !originBarOn\(name\)/);
+  const paint = app.slice(app.indexOf('function paintOriginBar()'), app.indexOf('// ------', app.indexOf('function paintOriginBar()')));
+  assert.match(paint, /\$\('origin'\)\.hidden = !originBarOn\(state\.screen\)/, 'clearing a picked origin leaves the row on screen');
+});
+
+test('a boot that failed stops the line that says it is still looking', () => {
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const spinner = css.indexOf('#ask:not(.ready) .loading');
+  const failed = css.indexOf('#ask.failed .loading');
+  assert.ok(spinner > 0, 'the loading rule is gone');
+  assert.ok(failed > 0, 'nothing stops the loading line on a failed boot');
+  // Both are one id and two classes, so source order is the whole of the win.
+  assert.ok(failed > spinner, `the failed rule is at ${failed}, above the rule it has to beat`);
+  assert.match(css.slice(failed, failed + 60), /opacity: 0/);
+});
+
+// The X is the undo for a picked origin, so it always goes. The ROW it sits in
+// only goes when locate() came back with a real position: on the Oval fallback
+// state.originIsGuess keeps the row up with the button gone. Measured headless
+// at the shoot's clock and position with geolocation denied, guarding on the row
+// put focus on document.body, which is the loss the guard is there to stop, on
+// the branch a picked-origin user is most likely to be on.
+test('clearing a picked origin moves focus to whichever control survives', () => {
+  const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const clear = app.slice(app.indexOf('function clearPickedOrigin()'), app.indexOf('function useOrigin('));
+  assert.match(clear, /\$\('origin'\)\.hidden \? \$\('back'\) : \$\('origin-where'\)/);
+  assert.match(clear, /\.focus\(\{ preventScroll: true \}\)/);
+  // Guarding on the row alone is the bug, so it must not be what is written.
+  assert.equal(
+    /if \(\$\('origin'\)\.hidden\) \$\('back'\)\.focus/.test(clear),
+    false,
+    'the focus guard watches the row again, and the row survives the Oval fallback',
+  );
+});
+
+// Both cards answer the same dead network, and which one gets there first
+// changes run to run: measured 3 of 5 runs on a refused server and 2 of 3 on a
+// stalled one. So both stand down for the other, not just the slower one.
+test('the two refusal cards never end up stacked on each other', () => {
+  const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const first = readFileSync(join(ROOT, 'js', 'firstrun.js'), 'utf8');
+
+  const failed = app.slice(app.indexOf('function bootFailed()'), app.indexOf("window.addEventListener('DOMContentLoaded'"));
+  assert.match(failed, /if \(\$\('cold'\)\) return;/, 'bootFailed() paints under the first-run card');
+  assert.ok(
+    failed.indexOf("$('cold')") < failed.indexOf("$('gate').hidden = false"),
+    'bootFailed() has already started painting before it checks',
+  );
+
+  // And the other order. js/firstrun.js says nothing behind its card is usable
+  // or focusable; an enabled #gate-go underneath would make that false.
+  const open = first.slice(first.indexOf('function open() {'), first.indexOf('function close() {'));
+  assert.match(open, /getElementById\('gate'\)/, 'the cold card leaves the gate showing underneath it');
+  assert.match(open, /gate\.hidden = true/);
+});
+
+test('a boot that never loaded says so, and offers the one button that can help', () => {
+  const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const failed = app.slice(app.indexOf('function bootFailed()'), app.indexOf("window.addEventListener('DOMContentLoaded'"));
+  assert.match(failed, /'Could not load the schedule\.'/);
+  assert.match(failed, /'Try again'/);
+  assert.match(failed, /location\.reload\(\)/);
+  // The four duration buttons are dead on this path, so they leave with the
+  // question rather than sitting there dimmed under a refusal.
+  assert.match(failed, /\$\('ask-q'\)\.hidden = true/);
+  assert.match(failed, /classList\.add\('failed'\)/);
+  assert.match(failed, /focusHeading\(\$\('gate-h'\)\)/);
 });

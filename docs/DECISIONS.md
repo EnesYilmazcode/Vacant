@@ -2285,3 +2285,54 @@ past 40. The spike now builds its shown set from `shape(usable).rows`, and over
 2.130 km out at bearing 288 along the bearing and 2.123 km by the gate's own
 crude conversion. And `distanceMetres` is equirectangular, not haversine;
 haversine is only the reference the tests check it against.
+## 2026-09-01  A start that cannot finish says so, and a picked origin can be undone
+
+**The `from <building>` bar comes back, for two origins out of three.** The
+2026-08-29 entry above cut it to dev mode because it cost a full row at the top
+of the most-used screen. That still holds for a phone that answered with a real
+position, and that phone still never sees the bar: measured at the shoot's
+pinned minute on a 393x852 screen, the first row of the ranked list sits at
+y 555 with 40 rows on both branches. It renders for the two origins the app
+chose FOR the student. A picked building was permanent and invisible: it
+survived every visit in `vacant.origin`, and `origin-clear` was already wired to
+a working handler inside a row nothing ever showed. Tapping the X now re-ranks
+with no reload: at the shoot's pinned clock and position, with McCampbell Hall
+picked and the 2 hour ask, the first row stays `Psychology Building 115` and its
+walk goes 11 min to 3 min. Focus follows whichever control survives the tap,
+because the X always goes and the row it sits in only goes when a real position
+came back: measured with geolocation working the row leaves and focus lands on
+Back, and with it denied the row stays reading `from the Oval` and focus lands on
+the row's own button. Guarding on the row instead put focus on `document.body`
+on the second of those, which is the branch a picked-origin user is most likely
+to be on, since the reason to pick a building is that the phone had no fix.
+
+**A boot that cannot finish gets the refusal card, not a floating note.** The
+old catch wrote one sentence into `#note` and left four dimmed duration buttons
+under a spinner that never stopped. Measured against a server answering 503 for
+the room index: the app reached `ready` and blamed its own weekly build, because
+`fetch` resolves on a 5xx and the body `503` is valid JSON, so `state.rooms`
+became the number 503. Non-ok responses now throw, and the catch refuses in
+`#gate`, the card every other refusal already uses, with `Try again`. Decided
+against a second `boot()` behind that button: boot starts a render loop and a
+position request, and running it twice on one page is not a state this app has.
+`js/firstrun.js` raises its own card for the same dead network, and which of the
+two gets there first changes run to run: measured 3 of 5 runs on a refused server
+and 2 of 3 on a stalled one. Two refusals stacked put the buried one under an
+`aria-modal` card, with its button still in the tab order, so each stands down
+for the other. The first-run card wins the tie, because its `Try again` re-probes
+where `#gate`'s reloads.
+
+**One measured deadline on everything the first answer waits on.** A network
+that stalls instead of failing never rejects, so the app sat on it for the
+length of the visit: measured at 3, 8, 15 and 25 seconds against a server that
+accepted every request and answered none, the screen still said `finding
+campus...` over four disabled buttons. `NETWORK_TIMEOUT_MS` is 20 s, and it is
+measured, not picked. Over CDP `Network.emulateNetworkConditions` with the
+service worker out of the way, the 379,144 bytes `boot()` reads uncompressed off
+a local server took 9.59 s at Chrome's Slow 3G preset (51,200 B/s, 2,000 ms
+latency) and 2.69 s at Fast 3G, worst of five runs each. Pages gzips those same
+five files to 85,151 bytes, so the deployed load has more room than that figure,
+not less; the local one is the pessimistic side and that is the side to be on. Decided against 8 s, which would have cut that
+Slow 3G load off with 1.6 s of its download still to come. A deadline shorter
+than a load that is working turns a slow connection into a false "no
+connection", which is this app's own lie pointed the other way.

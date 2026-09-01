@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CACHED, FETCHING, OFFLINE, pickTier } from '../../js/firstrun.js';
+import { CACHED, FETCHING, NETWORK_TIMEOUT_MS, OFFLINE, pickTier } from '../../js/firstrun.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const source = readFileSync(join(ROOT, 'js', 'firstrun.js'), 'utf8');
@@ -128,6 +128,14 @@ test('navigator.onLine picks the starting tier and never proves the network work
   assert.match(reachable, /return response\.ok;/);
   assert.match(reachable, /return false;/);
   assert.equal(reachable.includes('onLine'), false, 'reachable() trusts the flag');
+  // A request that is accepted and never answered never rejects, so this probe
+  // is one of the two places the app can wait forever. The catch above turns
+  // the abort back into "no network", which is what it means.
+  assert.match(reachable, /signal: AbortSignal\.timeout\(NETWORK_TIMEOUT_MS\)/);
+  // Still exactly one file, and the cheap one. Probing the room index instead
+  // would re-download 222 KB to decide whether the network is up.
+  assert.equal((reachable.match(/fetch\(/g) ?? []).length, 1, 'reachable() asks for more than one file');
+  assert.match(reachable, /data\/current\.json/);
 });
 
 test('the retry button tries, and says so when there is still nothing', () => {
@@ -179,4 +187,77 @@ test('geolocation starts before any data fetch resolves, and only one module ask
     const other = readFileSync(join(ROOT, 'js', file), 'utf8');
     assert.equal(/geolocation|getCurrentPosition/.test(other), false, `js/${file} asks for a position too`);
   }
+});
+
+// ------- the deadline, and what counts as an answer
+
+// A stalled network is not a failed one. Nothing rejects, so a fetch without a
+// deadline waits on it for the length of the visit, and this app's first answer
+// hangs off four of them. One deadline covers them all, which means a fetch
+// added to boot() without the signal is a fetch that can still hang forever.
+test('every fetch on the path to a first answer carries the boot deadline', () => {
+  const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const boot = app.slice(app.indexOf('async function boot()'), app.indexOf('function bootFailed()'));
+  assert.match(boot, /const signal = AbortSignal\.timeout\(NETWORK_TIMEOUT_MS\)/);
+  const calls = boot.match(/fetch\([^)]*\)/g) ?? [];
+  assert.ok(calls.length >= 2, `boot() has ${calls.length} fetches, the scan is wrong`);
+  for (const call of calls) assert.match(call, /signal/, `${call} has no deadline on it`);
+
+  // The one fetch on that path boot() does not make itself.
+  const parsed = app.slice(app.indexOf('async function parsedIndex('), app.indexOf('async function boot()'));
+  assert.match(parsed, /fetch\(url, \{ signal \}\)/);
+
+  // And the deadline needs somewhere to land, or it swaps a hang for a silence.
+  assert.match(app, /boot\(\)\.catch\(bootFailed\)/);
+
+  // Not on the picker's building table. That one is fetched when the picker
+  // opens, which can be long after boot(), and the boot deadline would abort it.
+  const shorts = app.slice(app.indexOf('function loadShorts()'), app.indexOf('async function parsedIndex('));
+  assert.equal(shorts.includes('signal'), false, 'the picker fetch is on the boot deadline');
+
+  // The other half of the same rule. A deadline covers a request that never
+  // comes back; this covers one that comes back wrong. fetch resolves on a 5xx,
+  // so without the check a 503 body reaches JSON.parse as the schedule and the
+  // app blames its own weekly build for someone else's server. The guard is
+  // lifted out and run rather than matched, because it is the throw that matters.
+  const guard = app.slice(app.indexOf('function answered(r)'), app.indexOf('async function boot()'));
+  const answered = new Function(`${guard}\nreturn answered;`)();
+  assert.throws(() => answered({ ok: false, status: 503, url: '/data/rooms-1268.json' }), /503/);
+  assert.equal(answered({ ok: true }).ok, true, 'a good response no longer passes through');
+
+  // And every fetch on the path to a first answer goes through it. Two in
+  // boot(), the json() helper and the buildings table, plus the room index.
+  assert.match(parsed, /\.then\(answered\)/, 'a 503 body reaches JSON.parse as the schedule');
+  assert.equal((boot.match(/\.then\(answered\)/g) ?? []).length, 2, 'a boot fetch skips the status check');
+});
+
+// The number, not just its name. A deadline shorter than the load it is
+// watching calls every working connection dead, which is the lie the comment
+// beside it exists not to tell.
+// data/rooms-1268.json is 60 percent of the figure and is rebuilt every week, so
+// this number goes stale on its own with nobody touching the file it is in.
+// scripts/test/sw.test.mjs holds its own byte figures the same way.
+test('the byte figure beside the deadline is still the size of what boot() reads', () => {
+  const prose = source.replace(/^\s*\/\/ ?/gm, '').replace(/\s+/g, ' ');
+  const claimed = Number((prose.match(/The ([0-9,]+) bytes boot\(\) reads/) ?? [])[1]?.replace(/,/g, ''));
+  assert.ok(claimed, 'no measured payload figure beside NETWORK_TIMEOUT_MS');
+  const current = JSON.parse(readFileSync(join(ROOT, 'data', 'current.json'), 'utf8'));
+  const real = ['data/current.json', 'data/campus.json', 'data/buildings-hours.json', current.rooms, current.buildings]
+    .reduce((total, file) => total + readFileSync(join(ROOT, file)).length, 0);
+  // One percent wide, because a Windows checkout carries CRLF and the server
+  // that produced the figure served exactly that: measured 379,144 with the CR
+  // in and 375,776 with it out, which is 0.9 percent.
+  const off = Math.abs(claimed - real) / real;
+  assert.ok(off < 0.01, `the comment says ${claimed} bytes and the five files are ${real}, ${(off * 100).toFixed(1)}% out`);
+});
+
+test('the boot deadline still clears the slowest load it was measured against', () => {
+  const slow3g = 9590; // ms, the Slow 3G figure the comment on the constant carries
+  assert.ok(
+    NETWORK_TIMEOUT_MS >= 2 * slow3g,
+    `${NETWORK_TIMEOUT_MS} ms does not leave room over the ${slow3g} ms it was measured against`,
+  );
+  // Unwrapped first, so a reflowed comment does not read as a deleted one.
+  const prose = source.replace(/^\s*\/\/ ?/gm, '').replace(/\s+/g, ' ');
+  assert.match(prose, /9\.59 s over CDP at Chrome's Slow 3G preset/, 'the measurement behind the number is gone');
 });

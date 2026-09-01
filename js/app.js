@@ -22,6 +22,9 @@ import { toGrid } from './campus.js';
 import { roomClaim } from './claim.js';
 import { blocksOn, classesOn, dayClaim } from './day.js';
 import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, rank, shape, walkMinutes } from './engine.js';
+// The deadline every request on the path to a first answer shares. It lives in
+// js/firstrun.js because that is the module holding the rule it comes from.
+import { NETWORK_TIMEOUT_MS } from './firstrun.js';
 import {
   busyDayOf,
   clock,
@@ -1112,6 +1115,9 @@ function clearPickedOrigin() {
   locate().then((got) => {
     useOrigin(got.origin, got.note);
     refresh();
+    // The X always goes; on the Oval fallback the row it sits in stays. Focus
+    // moves to whichever survives, or it lands on the body and is lost.
+    ($('origin').hidden ? $('back') : $('origin-where')).focus({ preventScroll: true });
   });
 }
 
@@ -1134,6 +1140,15 @@ function useOrigin(origin, note) {
   paintOriginBar();
 }
 
+// Whether the "from <building>" row belongs on screen. It is a location CONTROL
+// costing a full row at the top of the most-used screen, which is why
+// docs/DECISIONS.md cut it to dev mode, and a phone with a real position has
+// nothing to correct. It comes back for the two origins the app chose FOR them:
+// a picked building is otherwise permanent, with no visible undo.
+const originBarOn = (screen) =>
+  (screen === 'list' || screen === 'near') &&
+  (state.dev || state.origin?.source === 'picked' || state.originIsGuess);
+
 function paintOriginBar() {
   const picked = state.origin?.source === 'picked';
   const label = picked ? state.origin.label : state.originIsGuess ? 'the Oval' : 'your location';
@@ -1141,6 +1156,9 @@ function paintOriginBar() {
   where.querySelector('span').innerHTML = `from <b>${esc(label)}</b>`;
   where.setAttribute('aria-label', `Measuring from ${label}. Pick a different building.`);
   $('origin-clear').hidden = !picked;
+  // Clearing a picked origin changes who the bar is for without changing screen,
+  // so the row is hidden here as well as in showPane.
+  $('origin').hidden = !originBarOn(state.screen);
 }
 
 // -------------------------------------------------------------- the room
@@ -1684,13 +1702,7 @@ function showPane(name) {
   // a chip tap has to unwind a history entry to get back to the list it edits.
   $('chips').hidden = name !== 'list';
   $('find').hidden = name !== 'pick';
-  // The "from <building>" bar is a location CONTROL, and setting your location
-  // by hand is a testing affordance rather than something a student standing on
-  // campus wants a row of the answer spent on. It renders in dev mode only.
-  // The one case a real user needs it, a geolocation fix that never arrived, is
-  // covered by #ask-pick on the question screen, which is where they already
-  // are when it happens.
-  $('origin').hidden = !state.dev || (name !== 'list' && name !== 'near');
+  $('origin').hidden = !originBarOn(name);
   $('ask').hidden = true;
   $('sheet').hidden = false;
   $('back').hidden = false;
@@ -2038,8 +2050,8 @@ function loadShorts() {
 // it is the parse worth naming. `r.json()` hides it inside the fetch, and a
 // cold phone spends real time in there. The engine marks the answer and the
 // session mask with the same two calls.
-async function parsedIndex(url) {
-  const text = await fetch(url).then((r) => r.text());
+async function parsedIndex(url, signal) {
+  const text = await fetch(url, { signal }).then(answered).then((r) => r.text());
   mark('vacant:parse:start');
   const out = JSON.parse(text);
   mark('vacant:parse:end');
@@ -2047,8 +2059,21 @@ async function parsedIndex(url) {
   return out;
 }
 
+// fetch resolves on a 5xx, so an error page reaches JSON.parse as if it were the
+// schedule. Measured against a server answering 503 with the body "503": that is
+// valid JSON, state.rooms became the number 503, and the app went on to blame
+// its own weekly build for reading too few rooms.
+function answered(r) {
+  if (!r.ok) throw new Error(`${r.status} for ${r.url}`);
+  return r;
+}
+
 async function boot() {
-  const json = (f) => fetch(`${BASE}data/${f}`).then((r) => r.json());
+  // A network that stalls does not fail. Nothing rejects, so every step below
+  // sits on it forever. One deadline covers the whole path to a first answer and
+  // rejects into the same catch a 503 does. The position carries its own.
+  const signal = AbortSignal.timeout(NETWORK_TIMEOUT_MS);
+  const json = (f) => fetch(`${BASE}data/${f}`, { signal }).then(answered).then((r) => r.json());
 
   flyoverStart = performance.now();
   raf = requestAnimationFrame(render);
@@ -2077,8 +2102,8 @@ async function boot() {
   provenance(current);
 
   const [rooms, buildings, hours, located] = await Promise.all([
-    parsedIndex(`${BASE}${current.rooms}`),
-    fetch(`${BASE}${current.buildings}`).then((r) => r.json()).then((d) => d.buildings),
+    parsedIndex(`${BASE}${current.rooms}`, signal),
+    fetch(`${BASE}${current.buildings}`, { signal }).then(answered).then((r) => r.json()).then((d) => d.buildings),
     json('buildings-hours.json').catch(() => null),
     fix,
   ]);
@@ -2120,6 +2145,29 @@ async function boot() {
     }
     openRoom(wanted);
   }
+}
+
+// Nothing came back, or what came back was not a schedule. The old catch left
+// the spinner turning over four dead buttons and one sentence with no button on
+// it, so the only exit was knowing to reload. It refuses in the card every other
+// refusal uses instead, with the one control that can still change the answer.
+function bootFailed() {
+  // js/firstrun.js owns the refusal when nothing is cached, and its card is
+  // modal and opaque. A second one under it is unreadable and still tabbable.
+  if ($('cold')) return;
+  $('ask-q').hidden = true;
+  $('gate-h').textContent = 'Could not load the schedule.';
+  $('gate-p').textContent = 'Vacant needs the network once to read this term.';
+  $('gate-d').hidden = true;
+  $('gate-go').hidden = false;
+  $('gate-go').textContent = 'Try again';
+  // A reload, not a second boot(): boot() starts a render loop and a position
+  // request, and running it twice on one page is not a state this app has.
+  $('gate-go').onclick = () => location.reload();
+  $('gate').hidden = false;
+  // "finding campus..." is keyed to #ask:not(.ready), which never clears here.
+  $('ask').classList.add('failed');
+  focusHeading($('gate-h'));
 }
 
 window.addEventListener('DOMContentLoaded', () => {
@@ -2182,13 +2230,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   armDev();
 
-  boot().catch(() => {
-    $('note-text').textContent = 'Could not load the schedule. Check your connection and reload.';
-    // The one note with nowhere else to go: no answer screen to float over and
-    // no origin sentence to sit beside, so it stays on the question screen.
-    $('note').classList.add('fatal');
-    $('note').hidden = false;
-  });
+  boot().catch(bootFailed);
 });
 
 // ------------------------------------------------------------- the dev seam

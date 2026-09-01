@@ -9,6 +9,10 @@
 // iOS 26 also defaults the tab layout to Compact, which hides Share behind a
 // "..." button, and the setting is not readable from JS. The copy covers both
 // layouts rather than guessing which one is on.
+//
+// The room screen's maps hand-off lives here too. It is the same question this
+// file already answers, which phone is this, and the answer was wrong there for
+// the same reason it would be wrong here: a silent iOS difference nobody sees.
 
 const BASE = '/Vacant/';
 
@@ -38,6 +42,38 @@ export function isIOSSafari(ua, maxTouchPoints = 0) {
 
 export function needsSafari(ua, maxTouchPoints = 0) {
   return isIOS(ua, maxTouchPoints) && !isIOSSafari(ua, maxTouchPoints);
+}
+
+// The room screen's hand-off to something that actually routes, next to isIOS
+// because the whole question is which platform is asking. Getting it wrong is
+// silent: an unhandled scheme fires no error and no navigation, so the button
+// just does nothing. One geo: URI used to serve everyone, and Apple has never
+// registered a geo: handler, so on the platform this file exists to serve, it
+// was inert.
+//
+// An anchor carries one href and a dead scheme raises no event to fall through
+// on, so the ranked chain is decided here, when the screen renders, rather than
+// tried in order when it is tapped. Both branches are https, so neither can
+// land nowhere: iOS gets the app an iPhone is guaranteed to have, everything
+// else gets the link Android's Google Maps claims and a desktop opens as a web
+// route. Checked against the live hosts 2026-09-01: Apple redirects the
+// saddr/daddr/dirflg form to /directions?mode=walking, so it still parses them,
+// and Google answers api=1 with a 200.
+//
+// The origin goes in only on a GPS fix. A route drawn from the Oval fallback or
+// from a building picked off a list starts where the student is not standing.
+export function mapsHref({ lat, lon, origin, ua = '', maxTouchPoints = 0 }) {
+  const q = (pairs) => new URLSearchParams(pairs.filter(([, v]) => v != null)).toString();
+  const to = `${lat},${lon}`;
+  const from = origin?.source === 'gps' ? `${origin.lat},${origin.lon}` : null;
+  return isIOS(ua, maxTouchPoints)
+    ? `https://maps.apple.com/?${q([['saddr', from], ['daddr', to], ['dirflg', 'w']])}`
+    : `https://www.google.com/maps/dir/?${q([
+        ['api', '1'],
+        ['origin', from],
+        ['destination', to],
+        ['travelmode', 'walking'],
+      ])}`;
 }
 
 // navigator.standalone first: it is the only signal iOS gives before the

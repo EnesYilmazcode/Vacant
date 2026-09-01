@@ -3,7 +3,7 @@
 // deliberate: the parts that need a DOM are verified headlessly instead.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,6 +16,7 @@ import {
   isIOS,
   isIOSSafari,
   isStandalone,
+  mapsHref,
   needsSafari,
   mountBar,
   readState,
@@ -284,4 +285,108 @@ test('the rail raises the sheet rather than being paid for out of it', () => {
   assert.match(block, /padding-bottom: 0/, 'the home indicator inset is counted twice');
   // One rule only. A second would have the sheet and a pane both paying.
   assert.equal(css.split('body.has-bar').length - 1, 1, 'the rail is compensated twice');
+// ---- maps-handoff
+
+// The one thing about the room screen's hand-off that cannot be seen by opening
+// the app: which scheme each platform gets. It was a geo: URI for everyone, and
+// Apple has never registered a geo: handler, so on an iPhone it did nothing at
+// all. A link to a scheme nobody claims fires no error and no navigation, which
+// is why this is a test rather than something a person would notice.
+
+const WIN_CHROME =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+
+const THERE = { lat: 39.99852017, lon: -83.01626613 };
+const GPS = { lat: 39.99944, lon: -83.01502, source: 'gps' };
+const OVAL = { lat: 39.9995, lon: -83.013, source: 'oval', label: 'the Oval' };
+const PICKED = { lat: 40.00052277, lon: -83.01443196, source: 'picked', label: 'University Hall' };
+
+const href = (extra) => mapsHref({ ...THERE, ...extra });
+
+// Every platform the sniff has a branch for, plus the two it has to keep apart:
+// iPadOS sends a desktop Safari UA, and only maxTouchPoints separates them.
+const PLATFORMS = [
+  ['an iPhone', SAFARI, 1, 'maps.apple.com'],
+  ['Chrome on iOS', CHROME, 1, 'maps.apple.com'],
+  ['an iOS webview', WEBVIEW, 1, 'maps.apple.com'],
+  ['iPadOS', IPADOS, 5, 'maps.apple.com'],
+  ['a Mac', DESKTOP, 0, 'www.google.com'],
+  ['Android', ANDROID, 5, 'www.google.com'],
+  ['desktop Chrome', WIN_CHROME, 0, 'www.google.com'],
+];
+
+test('iOS gets Apple Maps walking directions, and never a geo: URI', () => {
+  for (const [name, ua, touch, host] of PLATFORMS.filter((p) => p[3] === 'maps.apple.com')) {
+    const url = new URL(href({ ua, maxTouchPoints: touch, origin: GPS }));
+    assert.equal(url.host, host, `${name} got ${url.host}`);
+    // dirflg=w is Apple's own walking flag. maps.apple.com answers this exact
+    // form with a redirect to /directions?mode=walking, measured 2026-09-01,
+    // which is how we know the parameters are still read.
+    assert.equal(url.searchParams.get('dirflg'), 'w', `${name} did not ask for walking`);
+    assert.equal(url.searchParams.get('daddr'), '39.99852017,-83.01626613');
+    assert.equal(url.searchParams.get('saddr'), '39.99944,-83.01502');
+  }
+});
+
+test('everything that is not iOS gets Google walking directions', () => {
+  for (const [name, ua, touch, host] of PLATFORMS.filter((p) => p[3] === 'www.google.com')) {
+    const url = new URL(href({ ua, maxTouchPoints: touch, origin: GPS }));
+    assert.equal(url.host, host, `${name} got ${url.host}`);
+    assert.equal(url.pathname, '/maps/dir/', `${name} got ${url.pathname}`);
+    assert.equal(url.searchParams.get('api'), '1', `${name} lost the api=1 that names the format`);
+    assert.equal(url.searchParams.get('travelmode'), 'walking', `${name} did not ask for walking`);
+    assert.equal(url.searchParams.get('destination'), '39.99852017,-83.01626613');
+    assert.equal(url.searchParams.get('origin'), '39.99944,-83.01502');
+  }
+});
+
+test('no branch of the chain can land nowhere, and none of them drives', () => {
+  // The whole defect was a scheme with no handler. https has one everywhere, so
+  // the worst case is a web page rather than a tap that does nothing. A driving
+  // route across the Oval would be the other way to be wrong out loud.
+  for (const [name, ua, touch] of PLATFORMS) {
+    for (const origin of [GPS, OVAL, PICKED, null, undefined]) {
+      const raw = href({ ua, maxTouchPoints: touch, origin });
+      const url = new URL(raw);
+      assert.equal(url.protocol, 'https:', `${name} got ${url.protocol}`);
+      assert.equal(/walking|dirflg=w/.test(raw), true, `${name} did not ask for walking: ${raw}`);
+    }
+  }
+});
+
+test('the route starts from the user only when the fix is GPS', () => {
+  // The Oval fallback and a picked building are both places the student is not
+  // standing. Routing from one of them is a wrong first instruction, which is
+  // worse than starting the route wherever the maps app thinks you are.
+  for (const [name, ua, touch] of PLATFORMS) {
+    for (const [what, origin] of [['the Oval', OVAL], ['a picked building', PICKED], ['no fix', null]]) {
+      const url = new URL(href({ ua, maxTouchPoints: touch, origin }));
+      assert.equal(url.searchParams.has('saddr'), false, `${name} routed from ${what}`);
+      assert.equal(url.searchParams.has('origin'), false, `${name} routed from ${what}`);
+      // The destination still has to survive, or the button loses its point.
+      const to = url.searchParams.get('daddr') ?? url.searchParams.get('destination');
+      assert.equal(to, '39.99852017,-83.01626613', `${name} lost the destination with ${what}`);
+    }
+  }
+});
+
+// #52's done-when was `grep -c 'Open in Maps' js/` returns 0. It passed at
+// ccd4db5 because the label had been shortened to "Maps" while the button was
+// still there, so the check reported the feature gone and the feature was not.
+// These two grep the capability instead of the wording.
+const code = (src) => src.replace(/^\s*\/\/.*$/gm, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+test('nothing in js/ hands off a geo: URI', () => {
+  const bad = [];
+  for (const name of readdirSync(join(ROOT, 'js'))) {
+    const hits = code(readFileSync(join(ROOT, 'js', name), 'utf8')).match(/geo:/g);
+    if (hits) bad.push(`js/${name} (${hits.length})`);
+  }
+  assert.deepEqual(bad, [], `geo: is inert on iOS and it is back in ${bad.join(', ')}`);
+});
+
+test('the room screen hands off, and says what it hands off to', () => {
+  const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  assert.match(app, /href="\$\{esc\(mapsHref\(/, 'the room screen builds its own maps URL again');
+  assert.match(app, />Directions<\/a>/, '"Maps" is a place, "Directions" is what the button does');
 });

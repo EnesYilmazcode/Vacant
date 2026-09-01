@@ -25,6 +25,7 @@ import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, ra
 // The deadline every request on the path to a first answer shares. It lives in
 // js/firstrun.js because that is the module holding the rule it comes from.
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
+import { mapsHref } from './install.js';
 import {
   busyDayOf,
   clock,
@@ -1476,6 +1477,11 @@ function roomHtml(id) {
   // because those rooms no longer ship.
   const body = dayGridHtml(room, bname);
 
+  // The one control on this screen that leaves the app, and the reason #44's
+  // straight line is allowed to stay a direction rather than a route: it is a
+  // refusal to route only while there is a visible way out to something that
+  // does. It says "Directions" because that is what it opens; "Maps" named a
+  // place. js/install.js picks the URL, which is a question about the phone.
   const acts =
     b && Number.isFinite(b.lat)
       ? `<p class="acts">
@@ -1483,8 +1489,8 @@ function roomHtml(id) {
             <svg class="ico" aria-hidden="true" hidden><use href="#i-arrow"/></svg>
             <span>Point me</span>
           </button>
-          <a class="bar-btn" aria-label="Open this building in Maps"
-             href="geo:${b.lat},${b.lon}?q=${b.lat},${b.lon}(${encodeURIComponent(bname)})">Maps</a>
+          <a class="bar-btn" aria-label="Walking directions to ${esc(bname)}, in your maps app"
+             href="${esc(mapsHref({ lat: b.lat, lon: b.lon, origin: state.origin, ua: navigator.userAgent, maxTouchPoints: navigator.maxTouchPoints }))}">Directions</a>
           <button type="button" class="bar-btn" data-act="about" aria-label="What Vacant knows">Sources</button>
         </p>`
       : '';

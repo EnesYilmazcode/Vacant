@@ -261,3 +261,27 @@ test('a bar has no fixed position of its own', () => {
   const bar = rule('\n  .bar {');
   assert.equal(/position: fixed|bottom: 0|z-index/.test(bar), false, 'a .bar positions itself');
 });
+
+// ---- the rail and the sheet
+
+test('the rail raises the sheet rather than being paid for out of it', () => {
+  // The duration chips sit below the pane, so padding #list moved them nowhere:
+  // with both bars up, elementFromPoint at all four chip centres returned an
+  // element inside #bars in every one of the 36 rail cases measured. Padding
+  // #sheet moves them but spends the answer, because the box is border-box with
+  // a pixel height, so the pane pays: 375x667 with both bars took #list from
+  // 165px to 18px and left no whole room on the ranked list at all. Raised, the
+  // pane keeps its size and the chips are hittable in 33 of the 36.
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const at = css.indexOf('body.has-bar');
+  assert.ok(at > 0, 'nothing gives the rail height back');
+  const block = css.slice(at, css.indexOf('}', at) + 1);
+  assert.match(block, /^body\.has-bar #sheet[ {]/, 'a pane inside the sheet is paying for the rail');
+  assert.match(block, /bottom: var\(--bar-h, 0px\)/, 'the sheet is not standing on the rail');
+  // #bars already carries padding-bottom: var(--safe-b). Counting it in the
+  // sheet as well left a 34.9px dead gap above the rail, measured at 393x852
+  // with --safe-b forced to 34px.
+  assert.match(block, /padding-bottom: 0/, 'the home indicator inset is counted twice');
+  // One rule only. A second would have the sheet and a pane both paying.
+  assert.equal(css.split('body.has-bar').length - 1, 1, 'the rail is compensated twice');
+});

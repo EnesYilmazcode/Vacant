@@ -163,8 +163,8 @@ function rail(doc) {
   return holder;
 }
 
-// A fixed rail sits over the last row or two of the ranked list. The list gets
-// that height back as padding rather than losing it, measured off the rail
+// A fixed rail sits over the bottom of the sheet, duration chips and all. The
+// sheet is raised by that height rather than losing it, measured off the rail
 // itself: the copy wraps differently at different text sizes, and two bars are
 // twice the debt of one.
 function measure(doc) {

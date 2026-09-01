@@ -2336,3 +2336,91 @@ not less; the local one is the pessimistic side and that is the side to be on. D
 Slow 3G load off with 1.6 s of its download still to come. A deadline shorter
 than a load that is working turns a slow connection into a false "no
 connection", which is this app's own lie pointed the other way.
+## 2026-09-01  The sheet stops covering the question, and the room screen frames its own band
+
+**The install rail carries the sheet, it is not paid for out of it.**
+`body.has-bar` padded `#list` and `#room`. Those are panes INSIDE `#sheet`, and
+the duration chips are the pane's sibling below it, so they moved nowhere: with
+a bar up, `elementFromPoint` at the centre of all four chips returned an element
+inside `#bars` in all 36 rail cases measured, six sizes from 320x568 to 430x932
+plus landscape 667x375, at root 16, 20 and 32, with one bar and with two.
+
+Padding `#sheet` instead moves the chips but spends the answer on them. `#sheet`
+is border-box with a pixel height from `setSheet`, so the padding comes out of
+the pane rather than raising anything: at 375x667 with both bars `#list` went
+165 px to 18 px with no whole room left on it, and on Thanksgiving it cut the
+refusal sentence to 35.5 of its 101.3 px. `bottom: var(--bar-h)` stands the sheet
+on the rail. Over the same 36 cases the chips are hittable in 33, the readable
+strip of the ranked list is never smaller than main's and is larger in 32 of
+them, and the sheet's rendered height matches the height `setSheet` gave it in
+all 54 cells rather than outgrowing it by up to 546 px.
+
+The `padding-bottom` goes with it, because `#bars` already carries
+`padding-bottom: var(--safe-b)`. With `--safe-b` forced to 34 px at 393x852 the
+old rule counted the home indicator twice and left a 34.9 px dead gap above the
+rail. It is 0.9 px now.
+
+The 3 of 36 that stay unhittable are the ones the sheet cannot reach: at root 32
+the install hint alone is 529 px on a 568 px screen, 612 on 640, and 761 on 568
+with both bars, so the rail's own top edge lands at y 39.4, 28.5 and -192.1 and a
+97 px row of chips has nowhere above it to be. The rail is what is too tall
+there, and main is 0 of 4 in those cells as well.
+
+**Only the grip can throw the answer away.** The dismiss was 44 px below peek and
+every pointerdown on the sheet could reach it. 44 px does not fire it, measured
+on main at 393x852 where the sheet went 324 to 324; 60 px does, and a 60 px pull
+on a row at the top of the list, where the pane has nothing left to scroll so the
+gesture turns into a sheet drag, ended on the question screen with the list, the
+selection and the scroll position gone. A drag that starts on a pane now bottoms
+out at peek, and the grip has to be pulled through the whole 88 px below peek
+before a release means anything. Driven at 393x852 on the fix: 60 px on the grip
+keeps the answer, 100 px throws it away, and a pull from a row leaves the sheet
+at 324 whatever the distance.
+
+`showAsk()` was NOT touched. js/app.js documents that dismiss as the same action
+the back arrow fires, so teaching it to keep `state.listScroll` would have
+redefined the back arrow with it. Only the trigger narrowed.
+
+**The map's band belongs to the screen, not to the sheet.** `viewport()` held a
+second copy of the resting height that said peek on every screen, so the room
+screen composed the walk line for a 324 px sheet and then drew it under a 613 px
+one. Measured off the canvas at 393x852, 164 of the 206 px of target ink came out
+under the panel and 0 of 122 does now; 77.8% at 375x667 and 80.7% at 430x932 both
+go to 0 as well. `REST` is where each screen's resting height is written down and
+`bandFor` is the only thing that turns it into a band.
+
+`bandFor` takes the rail off as well, because the rail now stands the sheet up
+and the map has that much less. Left out, the room screen with both bars up put
+112 of its 122 px of walk line straight back under the panel, which is the
+defect this whole section exists to delete. It costs a live re-compose: mounting
+one bar at 393x852 moved the list frame from y 197..402.5 to y 157..362.5, and
+the second bar to y 126..325, each while a bar was animating up under it.
+
+**A height belongs to a screen too.** `sheetHeight()` kept whatever height was on
+the sheet, so leaving a room held its 613 px while `viewport()` had already moved
+to the list's 528 px band. That is the same second copy one screen over, and it
+shipped a camera jump: the band flipped 239 to 528 with `state.view` untouched
+and the walk line stretched 1.69x under the Back tap. `openAt` hands a screen its
+own rest whenever the height came from somewhere else, and `showPane` re-composes
+on arrival. Driven at 393x852, the list frame after Back is now the frame the
+list had before the room was opened, walk line at y 197..402.5 either side with
+none of it behind the panel, and the same holds at 375x667 and 430x932.
+
+**js/sheet.js.** `PEEK`, `FULL`, `ROOM_SHEET`, `REST` and the 88 px live in their
+own module now, with the five derivations over them, so the suite can check the
+numbers instead of the spelling. Fifteen mutations were applied one at a time to
+a copy: `ROOM_SHEET = 0.50`, `room: PEEK`, a flat `restFor`, a band with no rail
+in it, `viewport()` deciding the band itself, `DISMISS_PX = 44`, the drag floor
+back to main's, the per-gesture floor dropped, the release comparison back to
+`<`, the gesture no longer asking js/sheet.js, three ways of paying for the rail
+out of the sheet, a height carried between screens, and no re-compose on a screen
+change. Every one of them turned the suite red. `FIT_PAD` 0.18 to 0.14 was run
+as a control and stays green, which is right: it is a fit constant, not a band.
+
+The cost, taken deliberately: the band is keyed to where the screen RESTS and not
+to the sheet's live height, so a room sheet dragged back down to peek uncovers
+528 px of map with the target still composed for the 239 the screen rests at,
+framed high rather than centred. Keying it to the live height is the bug the
+entry above fixed, where the map zoomed out and slid upward under the thumb every
+time the sheet moved. scripts/test/map.test.mjs builds its two fixtures out of
+`bandFor`, so moving where a screen rests moves that assertion with it.

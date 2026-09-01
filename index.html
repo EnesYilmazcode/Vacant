@@ -584,9 +584,13 @@
   }
   .bar-go { background: var(--accent); border: 1px solid var(--accent); color: #fff; font-weight: 650; padding: 0 1rem; }
   .bar-x { background: transparent; border: 1px solid var(--line); color: var(--dim); }
-  /* A fixed bar covers the last row or two of the list. js/install.js measures
-     the whole rail, so two bars give back two bars worth rather than one. */
-  body.has-bar #list, body.has-bar #room { padding-bottom: calc(1rem + var(--bar-h, 0px)); }
+  /* The rail stands the sheet on top of it. Padding the sheet instead spends
+     the answer on the rail, because the box is border-box with a pixel height,
+     so the pane pays: measured at 375x667 with both bars, #list went 165px to
+     18px and the ranked list showed no whole room at all. The inset goes with
+     it, since the rail already carries `padding-bottom: var(--safe-b)` and
+     counting it twice left a 34.9px dead gap above the rail. */
+  body.has-bar #sheet { bottom: var(--bar-h, 0px); padding-bottom: 0; }
 
   /* The cold card sits above everything, including the note pill, because when
      it is up there is nothing underneath it worth reading. */

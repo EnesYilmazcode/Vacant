@@ -474,25 +474,36 @@ export function scheduleDarkOn({ now, index }) {
   return scheduleShareOn({ now, index }) < DARK_SHARE;
 }
 
-// True when the class schedule constrains this minute at all. Outside it every
-// room in the index reads free and the ranked list quietly becomes a distance
-// sort wearing the clothes of a schedule answer.
-export function inScheduledHours({ now, current, index }) {
+// True when the class schedule covers this DATE at all, with nothing said about
+// the minute. Split out of inScheduledHours because the night gate asks it about
+// days that have not happened yet, where busyDay.weekdays on its own says yes to
+// Labor Day, Veterans Day and Thanksgiving.
+export function scheduleCoversDate({ now, current, index, busyDay = busyDayOf(current, index) }) {
   const today = isoDate(now);
-  const busyDay = busyDayOf(current, index);
   if (!busyDay) return false;
   if (!inTermOn(today, current, index)) return false;
   // A no-classes day still ranks, with the quiet-campus line saying why. Only a
-  // day the university itself is shut takes the schedule off the table, and
-  // resolveState has already refused by the time that reaches here.
+  // day the university itself is shut takes the schedule off the table.
   if (closedDayFor(today, current, index)?.state === 'offices-closed') return false;
+  const exams = windowOf(calendar('exams', current, index));
+  if (exams && today >= exams.start && today <= exams.end) return false;
   if (!busyDay.weekdays[now.getDay()]) return false;
   // Finals week is the case this catches without needing a calendar. Ohio State
   // stops publishing rooms once exams start, so every busy list empties out and
   // the ranked list reads 871 rooms free, a 727 seat lecture hall first. An
   // index with no exam window cannot name the reason, but it can see that its
   // own schedule has gone dark, and that is enough to stop it answering.
-  if (scheduleDarkOn({ now, index })) return false;
+  return !scheduleDarkOn({ now, index });
+}
+
+// True when the class schedule constrains this minute at all. Outside it every
+// room in the index reads free and the ranked list quietly becomes a distance
+// sort wearing the clothes of a schedule answer.
+export function inScheduledHours({ now, current, index }) {
+  // Measured once and handed down: busyDayOf sorts every block in the index and
+  // this path runs on every repaint.
+  const busyDay = busyDayOf(current, index);
+  if (!scheduleCoversDate({ now, current, index, busyDay })) return false;
   const minute = now.getHours() * 60 + now.getMinutes();
   return minute >= busyDay.earliestStart && minute < busyDay.latestEnd;
 }
@@ -560,16 +571,13 @@ export function rankBuildings({ origin, buildings, counts, hoursFor, day, nowMin
   }
 
   const byWalk = (a, b) => a.walk - b.walk || a.metres - b.metres;
-  // Two shut doors the same distance away are not the same answer: the one
-  // that opens sooner is, and a door published closed all day has no opening
-  // minute at all, so it sorts under every door that opens. Not decorative,
-  // measured: over a 144 point grid on the campus box at every quarter hour of
-  // every day, 4,066 of 96,768 closed lists (4.20%) come out in a different
-  // order, and no row moves more than two places. The case it catches is
-  // Cockins Hall and Agricultural Engineering, both 1,003 m from the south of
-  // campus, one opening at 12:30pm on a Sunday and the other shut all day.
-  const byDoor = (a, b) =>
-    byWalk(a, b) || (a.opensAt ?? MINUTES_IN_DAY + 1) - (b.opensAt ?? MINUTES_IN_DAY + 1);
+  // Two shut doors the same distance away are not the same answer: the one that
+  // opens sooner is. The key is the NEXT door and not opensAt, which for a row
+  // already shut for the day is the minute it opened this morning. Moves 2,984
+  // of 96,768 closed lists, 3.08%, never by more than one place, and
+  // scripts/test/screens.test.mjs asserts both figures.
+  const nextDoor = (r) => (r.when === 'before' ? r.opensAt : MINUTES_IN_DAY + 1);
+  const byDoor = (a, b) => byWalk(a, b) || nextDoor(a) - nextDoor(b);
   open.sort(byWalk);
   unknown.sort(byWalk);
   closed.sort(byDoor);
@@ -578,26 +586,19 @@ export function rankBuildings({ origin, buildings, counts, hoursFor, day, nowMin
 
 // ------------------------------------------------------------ the first door
 
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-// The first door to open after this minute, anywhere the index holds rooms.
+// The first door to open after this minute, anywhere the index holds rooms. Both
+// night screens knew every opening time in the table and neither said one.
 //
-// The buildings screen already knows every opening time in the table and never
-// says one out loud: between midnight and 5am it prints "Everything is closed
-// right now." and stops. This is the sentence after that one.
+// It walks DAYS, not hours, because the weekend needs it: 5 of the 46 buildings
+// publish Saturday hours and 11 publish Sunday, so on a Saturday night the next
+// door is three of them at 7:00am on the Sunday. A day already under way counts
+// from the next minute on, never from the start of it.
 //
-// It walks DAYS, not hours, up to a week, because the weekend is the case that
-// needs it: only 5 of the 46 buildings publish Saturday hours, so on a Saturday
-// night the next door is 46 of them opening Monday. A day already under way
-// counts from the next minute on, never from the start of it. That is the same
-// mistake the DOOR phrases in js/app.js record fixing once: at 9:40pm every row
-// read "open till 6:00pm", three hours forty after the door had locked.
-//
-// Three buildings open together at 7:00am on both weekend days, so `ties`
-// carries how many share the named minute. Nothing here knows where the reader
-// is standing, so it cannot call one of the three the nearest; it names the
-// first the index reaches and the count carries the other two, rather than
-// picking one and hiding the rest.
+// ties carries how many share the named minute. Nothing here knows where the
+// reader is standing, so it cannot call one of three the nearest; js/app.js
+// swaps in the closest on the screen that does know.
 export function nextOpening({ buildings, counts, hoursFor, day, nowMin }) {
   if (typeof hoursFor !== 'function') return null;
   for (let ahead = 0; ahead < 7; ahead++) {
@@ -623,67 +624,97 @@ export function nextOpening({ buildings, counts, hoursFor, day, nowMin }) {
   return null;
 }
 
+// How many doors are unlocked at this minute. rankBuildings answers the same
+// question but only for a reader whose position is known, and whether campus is
+// shut is not a fact about where anybody is standing.
+export function openDoorCount({ counts, hoursFor, day, nowMin }) {
+  if (typeof hoursFor !== 'function') return 0;
+  let n = 0;
+  for (const code of Object.keys(counts ?? {})) {
+    const hours = hoursFor(code, day);
+    if (Array.isArray(hours) && nowMin >= hours[0] && nowMin < hours[1]) n += 1;
+  }
+  return n;
+}
+
 // The clause that names a door: who opens it, when, and which day if that is
 // not today. Both screens say it, so it is written once and neither can drift
 // into naming a different door for the same minute.
 export function openingPhrase(opening, day) {
   if (!opening) return null;
   const who = opening.ties > 1 ? `${opening.name} and ${opening.ties - 1} more` : opening.name;
-  const lead = opening.day === day ? '' : `On ${WEEKDAYS[opening.day]} `;
+  const lead = opening.day === day ? '' : `On ${DAY_NAMES[opening.day]} `;
   return `${lead}${who} ${opening.ties > 1 ? 'open' : 'opens'} at ${clock(opening.opensAt)}`;
 }
 
-// The next minute the class schedule covers, which is a different question from
-// the next open door and has to stay one: on a Saturday the first door is
-// 7:00am the same morning and the first ranked room is 8:00am on Monday, 49
-// hours apart. Only 5 buildings publish Saturday hours and busyDay.weekdays[6]
-// is false, so a Saturday sentence that promised rooms would promise them out
-// of a day the schedule says nothing about.
-function nextScheduled({ busyDay, day, nowMin }) {
+// The next minute the class schedule covers, a different question from the next
+// open door: on a Saturday the first door is 7:00am that morning and the first
+// ranked room is 8:00am on Monday, 49 hours apart.
+//
+// It steps DATES. busyDay.weekdays is a weekly mask with no calendar in it, and
+// reading it alone promised the ranked list back on days the app refuses on:
+// 3,780 of the 94,665 gate minutes of Autumn 2026, 3.99%, on Labor Day, Veterans
+// Day, Thanksgiving or the day after the term ended.
+//
+// Seven days and no further, so the weekday it names can only mean one date, and
+// nothing found means the sentence drops the clause rather than guessing.
+function nextScheduled({ now, current, index, busyDay }) {
   if (!busyDay) return null;
+  const nowMin = now.getHours() * 60 + now.getMinutes();
   for (let ahead = 0; ahead < 7; ahead++) {
-    const on = (day + ahead) % 7;
-    if (!busyDay.weekdays[on]) continue;
     if (ahead === 0 && nowMin >= busyDay.earliestStart) continue;
-    return { day: on, at: busyDay.earliestStart };
+    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + ahead, 12, 0);
+    if (!scheduleCoversDate({ now: date, current, index, busyDay })) continue;
+    return { day: date.getDay(), at: busyDay.earliestStart, ahead };
   }
   return null;
 }
 
-// The ordinary night was the one state in the app with no explanation on it.
-// Every holiday got a paragraph; 11:40pm on a Monday got a heading that
-// repeated its own button and an empty paragraph under it, inside a border
-// that everywhere else means something is broken.
+// The ordinary night was the one state in the app with no explanation on it:
+// every holiday got a paragraph, and 11:40pm on a Monday got a heading that
+// repeated its own button over an empty one.
 //
 // The heading is the minute, because the whole answer is a function of it and
-// this is the one screen with no list underneath saying so. The body is three
-// facts in one line: what the clock is doing, which door opens first, and when
-// the ranked list comes back. The last two are separate facts because they are
-// separate: 5:00am and 8:00am on a Tuesday, 7:00am Saturday and 8:00am Monday.
-//
-// No room count. docs/DECISIONS.md 2026-08-29 took the per-building count off
-// this screen and that stands; this line is not a way back in.
-export function unscheduledGate({ busyDay, day, nowMin, opening }) {
-  const heading = `${WEEKDAYS[day]}, ${clock(nowMin)}`;
-  const campus = !busyDay?.weekdays?.[day]
-    ? 'No classes are scheduled today.'
-    : nowMin < busyDay.earliestStart
-      ? 'Classes have not started yet.'
-      : 'Classes are done for the day.';
-  const door = openingPhrase(opening, day);
-  const back = nextScheduled({ busyDay, day, nowMin });
+// this is the one screen with no list underneath saying so. The body is up to
+// three facts: what the clock is doing, which door opens first if campus is
+// shut, and when the ranked list comes back. No room count, because
+// docs/DECISIONS.md 2026-08-29 took that off this screen.
+export function unscheduledGate({ now, current, index, busyDay, opening, openNow = 0 }) {
+  const day = now.getDay();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const heading = `${DAY_NAMES[day]}, ${clock(nowMin)}`;
+
+  // A registrar no-classes day is a weekday the mask says yes to, so without the
+  // calendar it read as a teaching day whose classes were pending, or finished.
+  // resolveState names the day on the ranked screen; this says the same words.
+  const off = closedDayFor(isoDate(now), current, index);
+  const campus =
+    off?.state === 'no-classes'
+      ? `${off.name ? `${off.name}. ` : ''}No classes are meeting today.`
+      : !busyDay?.weekdays?.[day]
+        ? 'No classes are scheduled today.'
+        : nowMin < busyDay.earliestStart
+          ? 'Classes have not started yet.'
+          : 'Classes are done for the day.';
+
+  // Only when no door is open already, the way the buildings screen guards the
+  // same sentence on groups.open.length. Without it the gate named the first
+  // door on 3,885 of the week's 6,405 gate minutes with campus open behind it,
+  // including 7:30am on a Tuesday with all 46 unlocked.
+  const door = openNow > 0 ? null : openingPhrase(opening, day);
+  const doorAhead = door ? (opening.day - day + 7) % 7 : null;
+  const back = nextScheduled({ now, current, index, busyDay });
   if (!back) return { heading, body: door ? `${campus} ${door}.` : campus };
   // One day word, not two. When the door and the ranked list land on the same
-  // day the clause has already named it, so the two join into one sentence.
-  if (door && opening.day === back.day) {
+  // date the clause has already named it, so the two join into one sentence.
+  if (doorAhead === back.ahead) {
     return { heading, body: `${campus} ${door} and Vacant ranks rooms again at ${clock(back.at)}.` };
   }
-  // Otherwise the ranked list carries its own day word, and it needs one even
-  // when the answer is today: the last weekday door opens at 7:00am, so from
-  // 7:00 to 7:59 the door named is tomorrow's, and a bare "at 8:00am" sitting
-  // behind "On Saturday" reads as Saturday when it means 59 minutes from now.
-  // 300 minutes of the week, one hour every weekday, right before class.
-  const on = back.day !== day ? ` on ${WEEKDAYS[back.day]}` : opening && opening.day !== day ? ' today' : '';
+  // Otherwise the clause carries its own day word, and needs one even when the
+  // answer is today: a bare "at 8:00am" sitting behind "On Wednesday" reads as
+  // Wednesday. No shipped minute reaches that now, because a door is open in
+  // every window that would, so the tests drive it from a door handed in.
+  const on = back.ahead === 0 ? (door ? ' today' : '') : ` on ${DAY_NAMES[back.day]}`;
   const rooms = `Vacant ranks rooms again${on} at ${clock(back.at)}.`;
   return { heading, body: door ? `${campus} ${door}. ${rooms}` : `${campus} ${rooms}` };
 }

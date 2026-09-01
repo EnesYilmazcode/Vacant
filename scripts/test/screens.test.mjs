@@ -19,7 +19,9 @@ import {
   inScheduledHours,
   inTermOn,
   indexFloorCheck,
+  isoDate,
   nextOpening,
+  openDoorCount,
   openingPhrase,
   rankBuildings,
   resolveState,
@@ -880,8 +882,98 @@ test('past the cap the busy list is what loses entries, and it says how many', (
 const TERM = HOURS.terms['autumn-2026-classroom-pool-building-schedule'];
 const DOORS = (code, day) => TERM.buildings[code]?.hours[day];
 const COUNTS = roomsPerBuilding(INDEX);
+const BUSY = busyDayOf(CURRENT, INDEX);
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const HERE = { lat: 39.99944, lon: -83.01502 }; // the Thompson Library steps
 const opening = (day, nowMin) =>
   nextOpening({ buildings: SLICE, counts: COUNTS, hoursFor: DOORS, day, nowMin });
+
+// A date walked forward by whole days, at a wall-clock minute.
+const on = (d, plus, min = 0) =>
+  new Date(d.getFullYear(), d.getMonth(), d.getDate() + plus, Math.floor(min / 60), min % 60);
+
+// firstDoor in js/app.js, minus the short name. The calendar lives at the call
+// site because data/buildings-hours.json is weekly and knows no holidays.
+const firstDoor = (now) => {
+  const first = opening(now.getDay(), now.getHours() * 60 + now.getMinutes());
+  if (!first) return null;
+  const day = on(now, (first.day - now.getDay() + 7) % 7);
+  return closedDayFor(isoDate(day), CURRENT, INDEX)?.state === 'offices-closed' ? null : first;
+};
+
+// The gate as paintGate builds it, against the shipped index and hours table.
+const gateAt = (now) => {
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  return unscheduledGate({
+    now,
+    current: CURRENT,
+    index: INDEX,
+    busyDay: BUSY,
+    opening: firstDoor(now),
+    openNow: openDoorCount({ counts: COUNTS, hoursFor: DOORS, day: now.getDay(), nowMin }),
+  });
+};
+
+// Whether the app answers at all is a fact about the DATE: refusalFor reads the
+// minute only to check it is a wall clock, and inScheduledHours is that same day
+// filter plus one comparison against the day's own window. So each date is asked
+// once and the answer reused across its minutes, which is what makes a 118 day
+// walk affordable at all.
+const dayCache = new Map();
+const dayFacts = (d) => {
+  const iso = isoDate(d);
+  if (!dayCache.has(iso)) {
+    dayCache.set(iso, {
+      ranked: resolveState({ now: on(d, 0, 12 * 60), current: CURRENT, index: INDEX }).ranked,
+      covers: inScheduledHours({ now: on(d, 0, BUSY.earliestStart), current: CURRENT, index: INDEX }),
+    });
+  }
+  return dayCache.get(iso);
+};
+const isGateMinute = (d, m) => {
+  const day = dayFacts(d);
+  return day.ranked && !(day.covers && m >= BUSY.earliestStart && m < BUSY.latestEnd);
+};
+
+// For every gate minute in the range: read the sentence the way a person would,
+// turn that into a date, and ask resolveState and inScheduledHours whether the
+// app will really rank on it. Neither of those reads busyDay.weekdays on its
+// own, which is the whole point; the old sweep asserted against the same mask
+// that wrote the sentence.
+function walkGate(from, to, step) {
+  const wrong = [];
+  const silent = [];
+  let visited = 0;
+  for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+    for (let m = 0; m < MINUTES_IN_DAY; m += step) {
+      if (!isGateMinute(d, m)) continue;
+      const now = on(d, 0, m);
+      visited += 1;
+      const body = gateAt(now).body;
+      const cut = body.indexOf('Vacant ranks rooms again');
+      if (cut < 0) {
+        silent.push(isoDate(now));
+        continue;
+      }
+      // The clause's own day word wins; "today" means today; and with neither,
+      // the last day named before it carries over, because two adjacent
+      // sentences are read as one thought.
+      const clause = body.slice(cut);
+      const before = DAYS.filter((x) => body.slice(0, cut).includes(x));
+      const own = DAYS.find((x) => clause.includes(x));
+      const name = own ?? (/ today at /.test(clause) ? null : (before[before.length - 1] ?? null));
+      let target = null;
+      for (let ahead = 0; ahead < 7 && !target; ahead++) {
+        if (ahead === 0 && m >= BUSY.earliestStart) continue;
+        const c = on(now, ahead, BUSY.earliestStart);
+        if (name === null ? ahead === 0 : DAYS[c.getDay()] === name) target = c;
+      }
+      const day = target && dayFacts(target);
+      if (!day?.ranked || !day.covers) wrong.push(`${isoDate(now)} ${clock(m)}: ${body}`);
+    }
+  }
+  return { visited, wrong, silent };
+}
 
 test('the first door after 11:40pm on a Monday is not one that opened this morning', () => {
   // PAES at 5:00am is the earliest opening the Autumn table holds on any
@@ -936,60 +1028,145 @@ test('every minute of the week, the first door is still ahead of you', () => {
   assert.equal(checked, 7 * MINUTES_IN_DAY);
 });
 
-test('the gate names a weekday it can actually rank on', () => {
-  // A door and a ranked list are different promises, and on a Saturday they are
-  // 49 hours apart: the first door is 7:00am that morning, the first ranked
-  // room is 8:00am on Monday, because busyDay.weekdays[6] is false.
-  const busyDay = busyDayOf(CURRENT, INDEX);
-  assert.equal(busyDay.weekdays[6], false, 'Saturday carries no schedule');
-  assert.equal(busyDay.weekdays[0], false, 'nor does Sunday');
-  assert.equal(busyDay.earliestStart, 480);
-
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  // The day a reader takes the promise to mean. The clause's own day word wins;
-  // "today" means today; and with neither, the last day named before it carries
-  // over, because two adjacent sentences are read as one thought.
-  const readAs = (body, day) => {
-    const cut = body.indexOf('Vacant ranks rooms again');
-    const clause = body.slice(cut);
-    const before = body.slice(0, cut);
-    const own = days.find((d) => clause.includes(d));
-    if (own) return days.indexOf(own);
-    if (/ today at /.test(clause)) return day;
-    const carried = days.filter((d) => before.includes(d));
-    return carried.length ? days.indexOf(carried[carried.length - 1]) : day;
-  };
-  let promises = 0;
+test('the doors published on each weekday are what the walk crosses a day for', () => {
+  // The measurement the nextOpening header rests on. Saturday is the thin day
+  // and Sunday is not far behind it, which is why the walk steps days at all.
+  const published = [0, 1, 2, 3, 4, 5, 6].map(
+    (d) => Object.keys(COUNTS).filter((c) => Number.isFinite(DOORS(c, d)?.[0])).length,
+  );
+  assert.deepEqual(published, [11, 46, 46, 46, 46, 46, 5]);
+  // From a Saturday night the answer is three doors at 7:00am on the Sunday.
+  // Monday is unreachable from any Saturday minute, and Monday's own earliest
+  // door is PAES on its own, so "46 of them opening Monday" was wrong twice.
+  assert.deepEqual(opening(6, 1420), { code: '274', name: 'Hitchcock Hall', day: 0, opensAt: 420, ties: 3 });
+  assert.equal(opening(1, 0).ties, 1);
+  assert.match(opening(1, 0).name, /PAES/);
+  // And the walk never needs more than one day boundary anywhere in the week.
   for (let day = 0; day < 7; day++) {
     for (let m = 0; m < MINUTES_IN_DAY; m++) {
-      const said = unscheduledGate({ busyDay, day, nowMin: m, opening: opening(day, m) });
-      if (!said.body.includes('Vacant ranks rooms again')) continue;
-      promises += 1;
-      const on = readAs(said.body, day);
-      assert.ok(busyDay.weekdays[on], `${days[day]} ${clock(m)} promises rooms on ${days[on]}: ${said.body}`);
-      // And it is the day the app actually means, not merely a teaching day.
-      let meant = null;
-      for (let ahead = 0; ahead < 7 && meant === null; ahead++) {
-        const d = (day + ahead) % 7;
-        if (busyDay.weekdays[d] && !(ahead === 0 && m >= busyDay.earliestStart)) meant = d;
-      }
-      assert.equal(on, meant, `${days[day]} ${clock(m)}: ${said.body}`);
+      assert.ok((opening(day, m).day - day + 7) % 7 <= 1, `day ${day} minute ${m} walked past tomorrow`);
     }
   }
-  assert.equal(promises, 7 * MINUTES_IN_DAY, 'every minute outside the schedule promises the list back');
+});
+
+test('openDoorCount agrees with the group the buildings screen renders', () => {
+  // The gate has no origin and must not need one to know whether campus is shut.
+  // rankBuildings answers the same question for a reader standing somewhere, so
+  // the two are held together across a week.
+  for (let day = 0; day < 7; day++) {
+    for (let m = 0; m < MINUTES_IN_DAY; m += 5) {
+      const groups = rankBuildings({ origin: HERE, buildings: SLICE, counts: COUNTS, hoursFor: DOORS, day, nowMin: m });
+      assert.equal(
+        openDoorCount({ counts: COUNTS, hoursFor: DOORS, day, nowMin: m }),
+        groups.open.length,
+        `day ${day} minute ${m}`,
+      );
+    }
+  }
+  assert.equal(openDoorCount({ counts: COUNTS, hoursFor: undefined, day: 1, nowMin: 0 }), 0);
+});
+
+test('the day the gate promises rooms back is a day the app will actually rank on', () => {
+  // The assertion busyDay.weekdays cannot make. It is a weekly Mon-Fri mask
+  // built out of block counts with no calendar in it, so reading it alone named
+  // Labor Day, Veterans Day, Thanksgiving and the day after the term ended:
+  // 3,780 of the 94,665 gate minutes of Autumn 2026 at one minute resolution,
+  // 3.99%. Quarter hours here, because unscheduledGate walks the calendar itself
+  // and every minute of all 118 days costs 65 seconds; the week that carried
+  // 3,105 of those wrong minutes is walked minute by minute below.
+  const walked = walkGate(new Date(2026, 7, 25), new Date(2026, 11, 20), 15);
+  assert.equal(walked.visited, 6311);
+  assert.deepEqual(walked.wrong, []);
+  // The clause is dropped, not guessed, when there is no day left to name: the
+  // term's last class meets on 2026-12-09 and the index holds nothing after it.
+  assert.deepEqual([...new Set(walked.silent)], ['2026-12-09']);
+});
+
+test('every minute of the Labor Day weekend, the gate names a day it can rank on', () => {
+  // Where 3,105 of the old sentence's 3,780 wrong minutes were, all of them
+  // pointing at the Monday: Friday from 20:15, then the Saturday and Sunday
+  // whole. Walked one minute at a time.
+  const walked = walkGate(new Date(2026, 8, 4), new Date(2026, 8, 6), 1);
+  assert.equal(walked.visited, 3585);
+  assert.deepEqual(walked.wrong, []);
+  assert.deepEqual(walked.silent, []);
+  // All three skip the Monday.
+  for (const day of [4, 5, 6]) {
+    assert.match(gateAt(new Date(2026, 8, day, 23, 0)).body, /rooms again on Tuesday at 8:00am\.$/, `Sep ${day}`);
+  }
+  assert.equal(
+    resolveState({ now: new Date(2026, 8, 7, 8, 0), current: CURRENT, index: INDEX }).heading,
+    'Labor Day, campus is closed',
+  );
+});
+
+test('the gate names no door while a door is open', () => {
+  // The buildings screen guards this sentence on groups.open.length and the gate
+  // did not, so it named the first door on 3,885 of the 6,405 gate minutes of a
+  // week with campus open behind it, including 7:30am on a Tuesday with all 46
+  // unlocked, under a button leading straight to a list of them.
+  const week = new Date(2026, 8, 13); // Sunday 2026-09-13, an ordinary week
+  let gateMinutes = 0;
+  let openMinutes = 0;
+  let named = 0;
+  for (let d = 0; d < 7; d++) {
+    for (let m = 0; m < MINUTES_IN_DAY; m++) {
+      const now = on(week, d, m);
+      if (!isGateMinute(now, m)) continue;
+      gateMinutes += 1;
+      const body = gateAt(now).body;
+      const open = rankBuildings({
+        origin: HERE, buildings: SLICE, counts: COUNTS, hoursFor: DOORS, day: now.getDay(), nowMin: m,
+      }).open.length;
+      if (open === 0) {
+        if (/opens? at /.test(body)) named += 1;
+        continue;
+      }
+      openMinutes += 1;
+      assert.doesNotMatch(body, /opens? at /, `${DAYS[now.getDay()]} ${clock(m)} with ${open} open: ${body}`);
+    }
+  }
+  assert.equal(gateMinutes, 6405);
+  assert.equal(openMinutes, 3885);
+  assert.equal(named, 2520, 'the door clause still fires on the minutes campus really is shut');
+});
+
+test('a registrar no-classes day is not read as an ordinary teaching day', () => {
+  // Three weekdays the mask says yes to and the registrar publishes as closed to
+  // classes. resolveState flags them and names them on the ranked screen, while
+  // the gate said the opposite on both sides of the day: "Classes have not
+  // started yet" in the morning, "Classes are done for the day" at night. 705
+  // gate minutes on each of the three, 2,115 a term.
+  for (const [iso, name] of [
+    ['2026-10-15', 'Autumn Break'],
+    ['2026-10-16', 'Autumn Break'],
+    ['2026-11-25', 'Thanksgiving Break begins'],
+  ]) {
+    const [y, mo, d] = iso.split('-').map(Number);
+    assert.equal(closedDayFor(iso, CURRENT, INDEX).state, 'no-classes');
+    const noon = resolveState({ now: new Date(y, mo - 1, d, 12, 0), current: CURRENT, index: INDEX });
+    assert.equal(noon.classesSuspended, true, iso);
+    assert.ok(noon.note.startsWith(`${name}. No classes are meeting today,`), noon.note);
+    for (const h of [3, 23]) {
+      const body = gateAt(new Date(y, mo - 1, d, h, 0)).body;
+      assert.ok(body.startsWith(`${name}. No classes are meeting today.`), `${iso} ${h}:00 said ${body}`);
+    }
+  }
+  // A weekday with nothing on the calendar keeps the ordinary reading.
+  assert.match(gateAt(new Date(2026, 8, 15, 3, 0)).body, /^Classes have not started yet\./);
+  assert.match(gateAt(new Date(2026, 8, 15, 23, 0)).body, /^Classes are done for the day\./);
 });
 
 test('the gate says what the clock is doing without repeating its own button', () => {
-  const busyDay = busyDayOf(CURRENT, INDEX);
   const button = 'Show nearest buildings';
-  for (const [day, m, want] of [
-    [1, 23 * 60 + 40, /^Classes are done for the day\./],
-    [2, 120, /^Classes have not started yet\./],
-    [6, 180, /^No classes are scheduled today\./],
+  for (const [now, want] of [
+    [new Date(2026, 8, 14, 23, 40), /^Classes are done for the day\./],
+    [new Date(2026, 8, 15, 2, 0), /^Classes have not started yet\./],
+    [new Date(2026, 8, 12, 3, 0), /^No classes are scheduled today\./],
   ]) {
-    const said = unscheduledGate({ busyDay, day, nowMin: m, opening: opening(day, m) });
+    const said = gateAt(now);
     assert.match(said.body, want);
-    assert.ok(said.body.length > 0, 'the paragraph is not empty');
+    assert.equal(said.heading, `${DAYS[now.getDay()]}, ${clock(now.getHours() * 60 + now.getMinutes())}`);
     assert.equal(said.body.split('\n').length, 1, 'one line');
     assert.notEqual(said.heading, button);
     assert.ok(!said.heading.includes(button) && !button.includes(said.heading), said.heading);
@@ -1000,26 +1177,66 @@ test('the gate says what the clock is doing without repeating its own button', (
 });
 
 test('a Saturday night names Monday for rooms and Saturday morning for the door', () => {
-  const busyDay = busyDayOf(CURRENT, INDEX);
-  const said = unscheduledGate({ busyDay, day: 6, nowMin: 180, opening: opening(6, 180) });
+  const said = gateAt(new Date(2026, 8, 12, 3, 0));
   assert.equal(said.heading, 'Saturday, 3:00am');
   assert.equal(
     said.body,
     'No classes are scheduled today. Hitchcock Hall and 2 more open at 7:00am. ' +
       'Vacant ranks rooms again on Monday at 8:00am.',
   );
+  // 11:40pm on a Monday, the minute the whole screen was written for. The
+  // Journalism Building publishes hours to midnight on weeknights, so one door
+  // is open and the sentence does not offer tomorrow's.
+  const night = gateAt(new Date(2026, 8, 14, 23, 40));
+  assert.equal(night.heading, 'Monday, 11:40pm');
+  assert.equal(night.body, 'Classes are done for the day. Vacant ranks rooms again on Tuesday at 8:00am.');
+  assert.equal(openDoorCount({ counts: COUNTS, hoursFor: DOORS, day: 1, nowMin: 1420 }), 1);
+});
+
+test('the ranked clause says today when the door clause has named tomorrow', () => {
+  // Two adjacent sentences are read as one thought, so a bare "at 8:00am"
+  // sitting behind "On Wednesday" reads as Wednesday when it means 30 minutes
+  // away. The shipped table never reaches this any more, because a door is
+  // always open in the window that produced it, so it is driven from a door
+  // handed in rather than looked up.
+  const now = new Date(2026, 8, 15, 7, 30);
+  const tomorrow = { code: '245', name: 'PAES', day: 3, opensAt: 300, ties: 1 };
+  const said = unscheduledGate({ now, current: CURRENT, index: INDEX, busyDay: BUSY, opening: tomorrow, openNow: 0 });
+  assert.equal(
+    said.body,
+    'Classes have not started yet. On Wednesday PAES opens at 5:00am. Vacant ranks rooms again today at 8:00am.',
+  );
+  // The same door today, and the two join into one sentence with one day word.
+  const later = unscheduledGate({
+    now,
+    current: CURRENT,
+    index: INDEX,
+    busyDay: BUSY,
+    opening: { ...tomorrow, day: 2, opensAt: 450 },
+    openNow: 0,
+  });
+  assert.equal(later.body, 'Classes have not started yet. PAES opens at 7:30am and Vacant ranks rooms again at 8:00am.');
+  // And with a door open there is no door clause and no day word to carry.
+  const open = unscheduledGate({ now, current: CURRENT, index: INDEX, busyDay: BUSY, opening: tomorrow, openNow: 46 });
+  assert.equal(open.body, 'Classes have not started yet. Vacant ranks rooms again at 8:00am.');
 });
 
 test('the closed group breaks a distance tie on which door opens first', () => {
-  // A sort key that never moves a row is decoration. Measured over a 12x12 grid
-  // on the campus box at every quarter hour of every day: 4,066 of 96,768
-  // closed lists come out in a different order, 4.20%.
+  // A sort key that never moves a row is decoration, so it is measured, and the
+  // figure is pinned here rather than left in a comment to rot. Over a 12x12
+  // grid on the campus box at every quarter hour of every day: 2,984 of 96,768
+  // closed lists come out in a different order, 3.08%, and no row moves more
+  // than one place. The commonest case is Hayes Hall over Derby Hall, 240 of
+  // them, both a 42 minute walk and both 2,492 m out, Hayes opening 6:00am and
+  // Derby 7:00am.
   const lats = Object.values(SLICE).map((b) => b.lat);
   const lons = Object.values(SLICE).map((b) => b.lon);
   const box = { s: Math.min(...lats), n: Math.max(...lats), w: Math.min(...lons), e: Math.max(...lons) };
   const byWalk = (a, b) => a.walk - b.walk || a.metres - b.metres;
+  const order = Object.fromEntries(Object.keys(COUNTS).map((code, i) => [code, i]));
   let lists = 0;
   let moved = 0;
+  let furthest = 0;
   for (let i = 0; i < 12; i++) {
     for (let j = 0; j < 12; j++) {
       const origin = { lat: box.s + ((box.n - box.s) * i) / 11, lon: box.w + ((box.e - box.w) * j) / 11 };
@@ -1027,20 +1244,112 @@ test('the closed group breaks a distance tie on which door opens first', () => {
         for (let m = 0; m < MINUTES_IN_DAY; m += 15) {
           const { closed } = rankBuildings({ origin, buildings: SLICE, counts: COUNTS, hoursFor: DOORS, day, nowMin: m });
           lists += 1;
+          // Only rows that tie on the walk can have moved, so the comparison is
+          // run by run: inside each tie the walk alone would leave them in the
+          // index's own order, and the sorted list says where they went.
+          let move = 0;
+          for (let i0 = 0; i0 < closed.length; ) {
+            let j0 = i0;
+            while (j0 + 1 < closed.length && byWalk(closed[j0], closed[j0 + 1]) === 0) j0 += 1;
+            if (j0 > i0) {
+              const run = closed.slice(i0, j0 + 1);
+              const walkOnly = [...run].sort((a, b) => order[a.code] - order[b.code]);
+              for (let k = 0; k < run.length; k++) move = Math.max(move, Math.abs(walkOnly.indexOf(run[k]) - k));
+            }
+            i0 = j0 + 1;
+          }
+          if (move > 0) moved += 1;
+          furthest = Math.max(furthest, move);
           for (let k = 0; k + 1 < closed.length; k++) {
             const [a, b] = [closed[k], closed[k + 1]];
             assert.ok(byWalk(a, b) <= 0, 'the walk still leads');
             if (byWalk(a, b) !== 0) continue;
-            moved += 1;
+            // The key is the NEXT door. An `after` row's opensAt is the minute
+            // it opened this morning and then locked, so keying on that put a
+            // building shut for the rest of the day above one still to open:
+            // four of those, all Sullivant Hall over Hagerty Hall on a Sunday
+            // evening.
             assert.ok(
-              (a.opensAt ?? MINUTES_IN_DAY + 1) <= (b.opensAt ?? MINUTES_IN_DAY + 1),
-              `${a.code} opens ${a.opensAt} above ${b.code} opens ${b.opensAt}`,
+              a.when === 'before' || b.when !== 'before',
+              `${a.code} (${a.when}) sorts above ${b.code} (${b.when}) at the same distance`,
             );
+            if (a.when === 'before' && b.when === 'before') {
+              assert.ok(a.opensAt <= b.opensAt, `${a.code} opens ${a.opensAt} above ${b.code} opens ${b.opensAt}`);
+            }
           }
         }
       }
     }
   }
   assert.equal(lists, 96768);
-  assert.ok(moved > 0, 'the tiebreak decided nothing, so it is decoration');
+  assert.equal(moved, 2984);
+  assert.equal(furthest, 1);
+});
+
+// ---- the screens that say it
+
+// Everything above is a pure function in js/state.js, and the bug in this
+// branch's own title lives in js/app.js. These read the two files as text, the
+// way dev.test.mjs and the container-query test already do, so putting any one
+// of the screen changes back turns something here red.
+
+test('paintGate says the night out loud instead of borrowing the buildings screen', () => {
+  const app = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
+  const from = app.indexOf('function paintGate(');
+  const gate = app.slice(from, app.indexOf('\n// ---', from));
+  assert.ok(gate.length > 200, 'paintGate not found');
+  assert.match(gate, /unscheduledGate\(\{/);
+  assert.doesNotMatch(gate, /UNSCHEDULED\.(head|body)/, 'the buildings screen pair is back on the question screen');
+  // Orange is a refusal, not a clock.
+  assert.match(gate, /classList\.remove\('refusal'\)/);
+  assert.match(gate, /classList\.add\('refusal'\)/);
+  assert.ok(
+    gate.indexOf("classList.remove('refusal')") < gate.indexOf('if (!s || s.ranked)'),
+    'the class has to be cleared before the branch, or a gate hidden by a ranked minute keeps it',
+  );
+});
+
+test('the gate card is only orange when it refuses', () => {
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const rules = html.slice(html.indexOf('\n  #gate {'), html.indexOf('#gate p {'));
+  assert.match(rules, /border: 1px solid var\(--line\)/, '#gate wears --warn on every state again');
+  assert.doesNotMatch(rules.slice(0, rules.indexOf('#gate.refusal')), /var\(--warn\)/);
+  assert.match(rules, /#gate\.refusal \{ border-color: var\(--warn\); \}/);
+  assert.match(rules, /#gate\.refusal h2 \{ color: var\(--warn\); \}/);
+  // The two colours in docs/DECISIONS.md were read off the running app: Labor
+  // Day at 2:00pm comes out rgb(255, 176, 46) and Monday at 11:40pm
+  // rgb(29, 35, 44). These are the tokens they resolve from.
+  assert.match(html, /--warn:\s*#ffb02e/i);
+  assert.match(html, /--line:\s*#1d232c/i);
+});
+
+test('the question screen is repainted when the app comes back to the foreground', () => {
+  // The gate heading is a live minute now. Left off this list, a card booted at
+  // 11:40pm on a Monday still read "Monday, 11:40pm" at 10:00am on the Tuesday,
+  // on a minute the app is willing to rank.
+  const app = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
+  const hook = app.slice(app.indexOf("addEventListener('visibilitychange'"));
+  assert.match(hook.slice(0, 500), /state\.screen === 'ask'/);
+});
+
+test('the buildings screen names the door it is already holding the hours for', () => {
+  const app = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
+  const near = app.slice(app.indexOf('function paintNear('), app.indexOf("$('near').innerHTML"));
+  assert.match(near, /openingPhrase\(/);
+  assert.match(near, /Everything is closed\. \$\{door\}\./);
+  assert.match(near, /Everything is closed right now\./);
+  // The nearest of the tied doors, not the first one the index reaches.
+  assert.match(near, /groups\.closed\.find\(/);
+  // And no door named at all on a day the university is shut.
+  const first = app.slice(app.indexOf('function firstDoor('), app.indexOf('function paintNear('));
+  assert.match(first, /closedDayFor\([\s\S]*?'offices-closed'/);
+});
+
+test('a focused heading does not wear the ring that means you can press it', () => {
+  const app = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
+  assert.match(app, /el\.focus\(\{ preventScroll: true, focusVisible: false \}\)/);
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  // Scoped to h2, so the roving-tabindex chips, which are buttons carrying the
+  // same attribute, keep their ring.
+  assert.match(html, /h2\[tabindex="-1"\]:focus-visible \{ outline: none; \}/);
 });

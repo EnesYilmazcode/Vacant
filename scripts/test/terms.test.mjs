@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { diffTerms, normalise } from '../check-terms.mjs';
+import { departure, diffTerms, fieldDrift, normalise } from '../check-terms.mjs';
 
 // Trimmed from a real GET of searchableTermsV2, fields and order untouched.
 const LIVE = {
@@ -93,6 +93,84 @@ test('the committed baseline parses and matches what normalise produces', () => 
   for (const t of file.terms) {
     assert.deepEqual(Object.keys(t), ['strm', 'descr', 'searchableFrom', 'searchableUntil']);
   }
-  // Three terms are searchable at all times, every year. Seen 2026-08-27.
-  assert.equal(file.terms.length, 3);
+  // Not a fixed count. Three on 2026-08-27, two on 2026-09-01 once Spring 2026
+  // reached its searchableUntil and before Spring 2027 opened. The count dips
+  // through a rollover, so the membership check at the bottom is the one with
+  // teeth.
+});
+
+// ---- ops-terms
+
+// Verbatim from a GET on 2026-09-01, the run that re-baselined data/terms.json.
+// Spring 2026 is gone; it published searchableUntil 2026-08-31. Nothing else
+// moved, and _rev went 91 to 92 for that single edit.
+const LIVE_2026_09_01 = {
+  data: {
+    _id: 'sis:searchableTerms',
+    _rev: '92-6b17acb70881338b3b99f6ad729e5872',
+    data: [
+      { strm: '1264', descr: 'Summer 2026', descrlong: '2026 Sum', classSearch: 'Y', startDate: '2026-01-26', endDate: '2027-01-01' },
+      { strm: '1268', descr: 'Autumn 2026', descrlong: '2026 Autmn', classSearch: 'Y', startDate: '2026-02-09', endDate: '2027-01-31' },
+    ],
+    updated: '2026-09-01T14:57:12.743Z',
+  },
+};
+
+test('the wire still names the two date fields startDate and endDate', () => {
+  // Not searchableFrom and searchableUntil. Those are this repo's renames and
+  // appear nowhere in a response, which is what makes reading the raw body for
+  // them look like the fields have gone. Six keys, same order, on both bodies.
+  for (const row of [...LIVE.data.data, ...LIVE_2026_09_01.data.data]) {
+    assert.deepEqual(Object.keys(row), ['strm', 'descr', 'descrlong', 'classSearch', 'startDate', 'endDate']);
+  }
+  assert.deepEqual(fieldDrift(LIVE), []);
+  assert.deepEqual(fieldDrift(LIVE_2026_09_01), []);
+});
+
+test('a renamed date field is caught, and named by the keys the row really has', () => {
+  // The silent failure this exists for. normalise reads both by name, so a
+  // rename does not throw: it is two nulls in the committed baseline, and the
+  // strm diff the watcher runs never looks at them.
+  const renamed = {
+    data: {
+      data: LIVE_2026_09_01.data.data.map(({ startDate, endDate, ...rest }) => ({
+        ...rest,
+        searchableFrom: startDate,
+        searchableUntil: endDate,
+      })),
+    },
+  };
+  assert.deepEqual(normalise(renamed).map((t) => t.searchableFrom), [null, null]);
+  assert.deepEqual(fieldDrift(renamed), [
+    '1264 carries strm, descr, descrlong, classSearch, searchableFrom, searchableUntil',
+    '1268 carries strm, descr, descrlong, classSearch, searchableFrom, searchableUntil',
+  ]);
+});
+
+test('a date that is present but null is drift, and no rows at all is not', () => {
+  assert.deepEqual(fieldDrift({ data: { data: [{ strm: '1272', startDate: null, endDate: '2027-09-01' }] } }), [
+    '1272 carries strm, startDate, endDate',
+  ]);
+  assert.deepEqual(fieldDrift({}), []);
+  assert.deepEqual(fieldDrift({ data: { data: [] } }), []);
+});
+
+test('a departure on the published date reads differently from an early one', () => {
+  const spring = { strm: '1262', searchableUntil: '2026-08-31' };
+  assert.match(departure(spring, '2026-09-01'), /ordinary expiry/);
+  assert.match(departure(spring, '2026-08-31'), /ordinary expiry/);
+  assert.match(departure(spring, '2026-08-30'), /left early/);
+  assert.match(departure({ strm: '1272' }, '2026-09-01'), /nothing predicted this/);
+});
+
+test('the term the app serves is still in the committed searchable list', () => {
+  // The state that ends the app quietly: current.json points at a term that has
+  // left searchableTermsV2, so the index it names returns zero sections forever
+  // and can never be rebuilt.
+  const terms = JSON.parse(readFileSync(new URL('../../data/terms.json', import.meta.url), 'utf8')).terms;
+  const current = JSON.parse(readFileSync(new URL('../../data/current.json', import.meta.url), 'utf8'));
+  assert.ok(
+    terms.some((t) => t.strm === current.term),
+    `current.json serves ${current.term}, and the searchable list is ${terms.map((t) => t.strm).join(', ')}`,
+  );
 });

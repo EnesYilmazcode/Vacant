@@ -41,6 +41,26 @@ export function normalise(payload) {
     .sort((a, b) => a.strm.localeCompare(b.strm));
 }
 
+// normalise reads startDate and endDate by name, so an upstream rename does not
+// throw. It lands as null in the baseline and the strm diff below never looks at
+// it. Both fields were on every row on 2026-08-27 (3 terms) and 2026-09-01 (2).
+export function fieldDrift(payload) {
+  return (payload?.data?.data ?? [])
+    .filter((r) => r && typeof r === 'object' && (r.startDate == null || r.endDate == null))
+    .map((r) => `${r.strm ?? '?'} carries ${Object.keys(r).join(', ') || 'no fields'}`);
+}
+
+// A term that leaves on the date it published is the annual rollover, and one
+// that leaves early is a surprise. On the last day itself, call it ordinary: the
+// window closes that day either way, and a wrong "left early" sends someone
+// hunting for a problem that is not there.
+export function departure(term, today) {
+  const until = term?.searchableUntil ?? null;
+  if (!until) return 'published no searchableUntil, so nothing predicted this';
+  if (until <= today) return `published searchableUntil ${until}, so this is the ordinary expiry`;
+  return `published searchableUntil ${until}, which has not passed. This one left early`;
+}
+
 export function diffTerms(committed, live) {
   const before = new Set((committed ?? []).map((t) => t.strm));
   const after = new Set((live ?? []).map((t) => t.strm));
@@ -66,9 +86,9 @@ function fail(alert, lines) {
 async function main() {
   const write = process.argv.includes('--write');
 
-  let live;
+  let payload;
   try {
-    live = normalise(await fetchJson(TERMS_URL));
+    payload = await fetchJson(TERMS_URL);
   } catch (err) {
     // Rule 8 of the refusal list in docs/research/ops-freshness.md. Every
     // downstream decision reads from this endpoint, so a failure here is not a
@@ -76,19 +96,29 @@ async function main() {
     fail('Term list endpoint is not answering', [`FATAL  searchableTermsV2 did not answer: ${err.message}`]);
   }
 
+  const live = normalise(payload);
   if (live === null) {
     fail('Term list endpoint is not answering', ['FATAL  searchableTermsV2 answered, but data.data was not an array.']);
   }
   if (live.length === 0) {
     fail('Term list endpoint is not answering', [
-      'FATAL  searchableTermsV2 returned an empty term list. Three terms are searchable at all times.',
+      'FATAL  searchableTermsV2 returned an empty term list. It held 3 terms on 2026-08-27 and 2 on 2026-09-01.',
     ]);
   }
 
   console.log(`${requests()} request. ${live.length} searchable: ${live.map((t) => `${t.strm} ${t.descr}`).join(', ')}`);
 
+  const drift = fieldDrift(payload);
+  if (drift.length) {
+    fail('Term list is missing its date fields', [
+      'FATAL  searchableTermsV2 rows have no startDate/endDate, which normalise reads by name.',
+      '       Baselining this would write nulls over the only record of the visibility windows.',
+      ...drift.map((d) => `       ${d}`),
+    ]);
+  }
+
   if (write) {
-    const payload = {
+    const baseline = {
       source: TERMS_URL,
       checked: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
       note: 'searchableFrom and searchableUntil are search visibility windows, not academic dates.',
@@ -97,7 +127,7 @@ async function main() {
     // Temp then rename. A truncate-in-place write that dies half way leaves the
     // watcher with no baseline at all, which reads as "nothing changed".
     const tmp = `${TERMS_PATH}.tmp`;
-    writeFileSync(tmp, `${JSON.stringify(payload, null, 1)}\n`);
+    writeFileSync(tmp, `${JSON.stringify(baseline, null, 1)}\n`);
     renameSync(tmp, TERMS_PATH);
     console.log('wrote data/terms.json');
     return;
@@ -122,6 +152,10 @@ async function main() {
   if (appeared.length) lines.push(`       appeared: ${appeared.join(', ')}`);
   if (left.length) {
     lines.push(`       left:     ${left.join(', ')}`);
+    const today = new Date().toISOString().slice(0, 10);
+    for (const t of committed.filter((c) => !live.some((l) => l.strm === c.strm))) {
+      lines.push(`                 ${t.strm} ${departure(t, today)}`);
+    }
     lines.push('       A term that left the list returns zero sections forever. The committed');
     lines.push('       rooms file is now the only copy of that grid, so do not force a rebuild.');
   }

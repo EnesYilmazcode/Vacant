@@ -1953,3 +1953,119 @@ the per-row spoken name stay at full length. The visible row is glyphs; the
 spoken name is the only place it states its own caveat in words, and shrinking
 the visible layer is exactly the reason the spoken one must not shrink with it.
 `docs/a11y-contract.md` specifies the order.
+
+## 2026-09-01  The maps hand-off stays, stops being a `geo:` URI, and #52's line is struck
+
+**Decided.** The room screen keeps its one control that leaves the app, and that
+control now opens walking directions instead of dropping a pin.
+[#52](https://github.com/EnesYilmazcode/Vacant/issues/52) said the opposite, in
+writing, with a done-when of `grep -c 'Open in Maps' js/` returns 0. This entry
+reverses that line for this one button. The rest of #52 stands: no calendar
+button, no share, no favourite, no second row of controls.
+
+The reason is [#44](https://github.com/EnesYilmazcode/Vacant/issues/44). Vacant
+draws a straight dashed line to the building and refuses to call it a route,
+because there is no offline routing engine here and there will not be one. That
+refusal reads as honesty only while there is a visible way out to something that
+does route. Take the button away and "we will not route you" quietly becomes "we
+cannot route you and we will not tell you where to go either", which is a
+smaller app wearing a principle. The line itself is untouched and #44 stands.
+
+**The button did nothing on an iPhone, for its whole life.** That is the fact
+that settles it rather than the argument.
+[#18](https://github.com/EnesYilmazcode/Vacant/issues/18)'s spec asked for a
+`geo:` URI and `js/app.js` shipped one. Apple has never registered a handler for
+`geo:`, on any iOS version; Apple's own Map Links reference documents
+`maps.apple.com` and lists no `geo:` anywhere. An anchor pointing at a scheme
+nobody claims raises no error and performs no navigation, so the failure is
+completely silent, which is why it survived a screenshot, a review and a
+release. On the one platform `js/install.js` exists to serve, the button was
+furniture.
+
+Driving the real app headlessly at Wed 2026-09-16 10:20 from the Thompson
+Library steps, four user agents, reading the anchor back out of the room screen:
+
+```
+before, every platform, iOS included
+  geo:39.99852017,-83.01626613?q=39.99852017,-83.01626613(Psychology%20Building)
+
+after
+  iPhone, iPad, Chrome-on-iOS, an iOS webview
+    https://maps.apple.com/?saddr=39.99944,-83.01502&daddr=39.99852017,-83.01626613&dirflg=w
+  Android, Mac, Windows
+    https://www.google.com/maps/dir/?api=1&origin=39.99944,-83.01502&destination=39.99852017,-83.01626613&travelmode=walking
+```
+
+**The chain is decided when the screen renders, not when the button is tapped.**
+[#86](https://github.com/EnesYilmazcode/Vacant/issues/86) asks for a ranked chain
+that falls through on failure. An anchor carries one `href`, and a scheme with no
+handler fires no event to fall through on, so there is nothing to catch and
+nothing to retry. The ranking therefore happens in `mapsHref` in `js/install.js`,
+beside `isIOS`, because the whole question is which platform is asking.
+
+Both branches are `https`, so neither can land nowhere. On iOS and Android the
+OS claims the URL and opens the app without a request going out; a browser with
+no map app gets a working web route instead. Checked against the live hosts on
+2026-09-01: `maps.apple.com` answers the `saddr`/`daddr`/`dirflg=w` form with a
+redirect to `/directions?mode=walking&source=...&destination=...` and a page
+titled "Get Directions: Driving & Walking", which is how we know Apple still
+parses those parameters rather than ignoring them, and
+`google.com/maps/dir/?api=1` answers 200 with and without an origin.
+
+**`geo:` is gone entirely, including on Android.** #86 ranked keeping it there as
+option 3, since it is the correct Android intent and respects whichever map app
+the student already chose. It is dropped anyway, because `geo:` has no notion of
+a destination or a travel mode: `geo:lat,lon?q=lat,lon(Name)` is a pin, and a pin
+is the thing the in-app highlight already does, offline, better. A button whose
+whole justification is "there is an exit to something that routes" cannot hand
+over something that does not route. Android link handling is per app in Settings,
+so the student can still take the Google link somewhere else.
+
+**The route starts from the student only on a real GPS fix.** `state.origin`
+carries three shapes: a `gps` fix, the Oval fallback when the fix fails or the
+student is off campus, and a building they picked by hand. Only the first goes in
+as `saddr` or `origin`. A route from the Oval to a building 200 m away, handed to
+someone standing in Baker, opens with a first instruction that is wrong, and a
+wrong first instruction is worse than letting the maps app start from wherever it
+thinks you are. Verified by pinning the location to Cleveland, which trips the
+off-campus branch: the anchor comes back as
+`https://maps.apple.com/?daddr=40.00052277,-83.01443196&dirflg=w`, with no
+`saddr`.
+
+**The label changed with it.** "Maps" is a place; "Directions" is what happens
+when you press it. The accessible name says the rest, since this is the one
+control on the screen that leaves: "Walking directions to University Hall, in
+your maps app". `docs/research/icons-and-a11y.md` already asked for that.
+
+**#52's done-when is struck and replaced with two tests.** `grep -c 'Open in
+Maps' js/` returned 0 at ccd4db5 while the button was still on screen, because
+that commit shortened the visible label to "Maps". The check reported the feature
+gone and the feature was not gone, which is what
+[#78](https://github.com/EnesYilmazcode/Vacant/issues/78) is about: a checklist
+that greps wording measures the wording. `scripts/test/install.test.mjs` now
+greps the capability instead. One test fails if any `geo:` URI comes back into
+`js/`, one fails if the room screen builds a maps URL by hand rather than through
+`mapsHref`, and four more pin which host, which walking flag and which origin
+each platform gets.
+
+**Cost.** 1,082 bytes gzipped on the shell, measured per file: `js/install.js`
+3,937 to 4,820, `js/app.js` 27,950 to 28,149. No new file, no new module in the
+worker's asset list, nothing added to the boot path.
+
+**What is not measured, and it is the important one.** No real iPhone was
+involved in any of this. The `geo:` failure is read off Apple's documentation and
+the absence of any handler, and the replacement is read off the live hosts and a
+headless Chrome wearing an iOS user agent. Two things still need a phone:
+
+- whether `https://maps.apple.com/...` opens Maps from a home-screen window
+  rather than navigating the standalone window away from the app, since a
+  standalone window has no address bar to come back with. `geo:` could not fail
+  this way because it never navigated at all, so this risk is new
+- whether Android hands the Google link to the installed app rather than the
+  browser, on a phone where Google Maps is not the default
+
+**What would reverse this back.** A phone showing that the hand-off traps a
+student in a standalone window, or lands them on a web page instead of an app.
+Then #86's option 4 wins, the button goes, and #78 closes as "removed" with #52
+restored intact rather than struck. Nothing else reopens it: the in-app line
+answering "where is it" offline was always true and was never the argument.

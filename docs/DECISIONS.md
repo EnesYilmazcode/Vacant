@@ -1953,3 +1953,138 @@ the per-row spoken name stay at full length. The visible row is glyphs; the
 spoken name is the only place it states its own caveat in words, and shrinking
 the visible layer is exactly the reason the spoken one must not shrink with it.
 `docs/a11y-contract.md` specifies the order.
+
+## 2026-09-01  The ordinary night gets a sentence back, and it names the first door
+
+Partly reverses **2026-08-29 Less is more** for the question screen only. That
+entry cut the "Nothing is scheduled right now" heading and its paragraph and was
+right to: both said the same thing and neither was what the reader wanted. But
+the cut left `paintGate` borrowing the buildings screen's pair, so at 11:40pm on
+a Monday the whole app was one card reading `Nearest buildings` over an empty
+paragraph, above a button reading `Show nearest buildings`, inside an orange
+border. Three ways of saying nothing.
+
+The gate now says the minute in its heading and one line under it. Everything
+that entry deleted from the *buildings* screen stays deleted, and the
+per-building classroom count does not come back on either screen.
+
+```
+                 before                        after
+  heading        Nearest buildings             Monday, 11:40pm
+  paragraph      (empty)                       Classes are done for the day.
+                                               Vacant ranks rooms again on
+                                               Tuesday at 8:00am.
+  button         Show nearest buildings        Show nearest buildings
+  border         --warn (orange)               --line
+```
+
+**The line carries up to three facts, and every one of them is conditional on
+something the app can check.** What the clock is doing, which door opens first,
+and when the ranked list comes back. The last two are separate promises: on a
+Saturday they are 49 hours apart, because the first door is 7:00am that morning
+and the first ranked room is 8:00am on Monday.
+
+**The day the list comes back is walked as a date, not looked up in a weekly
+mask.** `busyDay.weekdays` is Mon-Fri counted off block totals with no calendar
+in it, so reading it alone named days the app is already committed to refusing
+on: 3,780 of the 94,665 gate minutes of Autumn 2026, 3.99%. 3,105 of those were
+one weekend, every gate minute from Friday 20:15 to Sunday midnight promising
+rooms on Labor Day; the rest were Veterans Day, Thanksgiving, and 2026-12-10, the
+day after the last class of the term. `nextScheduled` now steps real dates and
+asks `scheduleCoversDate`, which is the day half of `inScheduledHours` lifted out
+of it: in term, not a day university offices are shut, not inside the exam
+window, a weekday the schedule covers, and the schedule not gone dark. Seven days
+and no further, so the weekday it names can only mean one date, and when there is
+no such day it drops the clause rather than guessing. That is what the last day
+of term now does. The test holds the answer against `resolveState`, which is a
+different function reading a different thing, so the sweep is not the sentence
+checking its own homework.
+
+**No door clause while a door is open.** The buildings screen only ever printed
+this sentence when `groups.open` was empty. The gate had no such guard, and named
+the first door on 3,885 of the 6,405 gate minutes of a week with campus open
+behind it, including 7:30am on a Tuesday with all 46 buildings unlocked, under a
+button leading straight to a list of them. `openDoorCount` answers that without
+an origin, because whether campus is shut is not a fact about where the reader is
+standing, and a test holds it against `rankBuildings` over every minute of a week.
+
+**A weekly hours table cannot see a holiday, so the calendar lives at the call
+site.** `data/buildings-hours.json` carries seven `[open, close]` pairs per
+building and `hoursFor` indexes it by weekday. On Thanksgiving that made the
+buildings screen print `PAES opens at 5:00am` directly under its own heading
+saying campus is locked, and on the Sunday before Labor Day it said the same
+about the Monday. `firstDoor` in js/app.js drops the door when the day it lands
+on is one the university closes, and both screens go back to
+`Everything is closed right now.`
+
+**A no-classes day is not an ordinary day whose classes are pending.** The
+registrar publishes three of them in Autumn 2026, all weekdays the mask says yes
+to, and `resolveState` already flags them and names them on the ranked screen.
+The gate said the opposite on both sides of the day: "Classes have not started
+yet" at 3am on Autumn Break, "Classes are done for the day" at 11pm. It now says
+`Autumn Break. No classes are meeting today.`, the same words the ranked screen
+uses on the same date. 705 gate minutes on each of the three, 2,115 a term.
+
+**The heading is a live minute, so the screen has to be repainted like one.** The
+old heading was the constant string `Nearest buildings` and could not go stale.
+`visibilitychange` refreshed the list and the buildings screens only, and the gate
+lives inside `#ask`: booted at 11:40pm on a Monday and brought back at 10:00am on
+the Tuesday, the card was byte identical, still naming Monday night on a minute
+the app was willing to rank. `paintGate` is idempotent and re-reads the clock, so
+the fix is `'ask'` on that list.
+
+**The day word is load-bearing.** Two adjacent sentences are read as one thought,
+so a bare "and Vacant ranks rooms again at 8:00am" sitting behind "On Wednesday"
+reads as Wednesday. The clause carries `today` when the door clause has named a
+later day, and joins into one sentence when both land on the same date. On the
+shipped table the `today` case is now unreachable, because a door is always open
+in the window that used to produce it, so the test drives it from a door handed
+in rather than looked up.
+
+**Orange means a refusal, not a clock.** `#gate` wore `--warn` on every state it
+can reach. Three of those are only the time of day: over the 6,405 gate minutes
+of a week the screen produces `No classes are scheduled today.` on 2,880,
+`Classes have not started yet.` on 2,400 and `Classes are done for the day.` on
+1,125. `--warn` is what a missing fact looks like on every other screen.
+`paintGate` now adds `.refusal` for the six branches `refusedState` dresses and
+leaves it off for the night. The colours were read off the running app rather
+than asserted: Labor Day at 2:00pm comes out `rgb(255, 176, 46)`, Monday at
+11:40pm comes out `rgb(29, 35, 44)`. What the test holds is the rule that
+produces them, that `#gate` itself is `var(--line)` and only `#gate.refusal`
+reaches `var(--warn)`.
+
+**The buildings screen says the door it already knew about.** Between midnight
+and 5am `groups.open` is empty and the screen printed `Everything is closed right
+now.` while holding all 46 opening times. It now reads
+`Everything is closed. Independence Hall and 2 more open at 7:00am.` The bare
+sentence is kept for an hours table with no doors in it at all.
+
+`nextOpening` is location-free on purpose: three buildings open together at
+7:00am on both weekend days and nothing in `js/state.js` knows where the reader
+is standing, so it names the first the index reaches and the count carries the
+other two. The buildings screen does know, and it is holding the closed list
+sorted by walk, so it swaps in the nearest of the tied doors before it prints.
+From the Thompson Library steps that is Independence Hall at 120 m rather than
+Hitchcock Hall at 460 m, which was sitting 28 rows further down the same list.
+
+**A sort key that never moves a row is decoration, so it was measured.** The
+closed group breaks a walk tie on the next door to open. The key is the next one
+and not `opensAt`, because an `after` row's `opensAt` is the minute it opened this
+morning and then locked, so keying on that sorted a building shut for the rest of
+the day above one still to open. Over a 12x12 grid on the campus box at every
+quarter hour of every day, 2,984 of 96,768 closed lists (3.08%) come out in a
+different order and no row moves more than one place. The commonest case is Hayes
+Hall over Derby Hall, 240 of them, 120 at each of the two grid points where the
+walk ties: at 2,492 m from the middle of the box both are a 42 minute walk, and
+Hayes opens 6:00am against Derby at 7:00am. The figures are asserted in
+`scripts/test/screens.test.mjs`, not left in a comment to rot.
+
+**A heading is not a control.** `focusHeading` moves focus to an `h2` so the
+reader lands on the new screen. A script focus is scored with the modality of the
+last real input, so a heading reached from the keyboard matched `:focus-visible`
+and wore the 3px ring meant for buttons. Measured headless on main: the buildings
+heading reached by mouse comes out `outline: none`, the same heading reached by
+Tab comes out `outline: solid 3px`, and the Sources heading behaves the same way.
+`focus({ focusVisible: false })` is `none` on both routes. The `h2[tabindex="-1"]`
+rule in index.html is the same answer for an engine that has not implemented the
+option and drops it in silence.

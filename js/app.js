@@ -20,7 +20,7 @@
 
 import { toGrid } from './campus.js';
 import { roomClaim } from './claim.js';
-import { activeSessions, distanceMetres, mark, measure, rank, walkMinutes } from './engine.js';
+import { MAX_WALK, activeSessions, distanceMetres, mark, measure, rank, shape, walkMinutes } from './engine.js';
 import {
   busyDayOf,
   clock,
@@ -63,7 +63,25 @@ const KEY_PICK = 'vacant.lastPick';
 
 // Off-campus is a real state, not an error. Beyond this from the map centre the
 // app cannot honestly rank anything by walk time.
-const OFF_CAMPUS_KM = 8;
+//
+// MEASURED, and it is a line about WALKING, not about where campus ends. The
+// farthest building holding a ranked classroom is Animal Science at 1.410 km
+// from the Oval and MAX_WALK reaches 0.720 km of straight line, so nothing on
+// campus is walkable past 2.130 km. Sweeping 360 bearings out of the Oval in
+// 10 m steps lands on the same 2.130 km. The 8 that shipped was nearly four
+// times it, and this must never go below 2.13.
+//
+// The comparison below is a flat lat/lon conversion rather than the engine's
+// haversine, which is worth 0.2% here: the downtown origin from issue #60 reads
+// 4.42 km this way and 4.43 km through distanceMetres.
+//
+// It must never be read as "you are not on campus". Seven of the 96 buildings
+// in data/buildings-1268.json sit outside it and all seven are OSU property.
+// The four farthest, by this gate's own km: Waterman at 2.75 km, Outpatient
+// Care East at 4.84 km, Knowlton Executive Terminal at 9.93 km and Aerospace
+// Research Center at 10.01 km. That is why the note this gate prints is about
+// the walk.
+const OFF_CAMPUS_KM = 2.2;
 
 // iOS documents its own geolocation timeout as unreliable in a standalone
 // window, so a wall-clock watchdog runs beside it. Without this a bare await
@@ -145,6 +163,10 @@ const state = {
   needed: 30,
   results: [],
   total: 0,
+  // What shape() removed to get from the ranked rows to the shown ones. The
+  // footer and the empty screen both have to name it, and neither can work it
+  // out from state.results, which is what is left AFTER the bounds ran.
+  bounds: null,
   day: clockNow().getDay(),
   soonest: null,
   selected: null,
@@ -533,11 +555,20 @@ function answer() {
   // rank() orders by tier, then walk. The FIRST building to open is not the
   // nearest one that opens: at 6am the nearest might open at 9:00 while one a
   // minute further opens at 7:00, and naming the wrong one is a wrong answer.
+  //
+  // Read off the UNFILTERED rows, deliberately. shape() below drops everything
+  // past a 12 minute walk, and a soonest taken after it would let the bound
+  // print "nothing is open" over the 301 rooms that were free further out from
+  // an origin 2.18 km up High Street.
   state.soonest = results
     .filter((r) => r.wait > MAX_WAIT_MIN)
     .reduce((a, b) => (a && a.availableAt <= b.availableAt ? a : b), null);
+  // The walk bound and the per-building cap, which live in shape() and nowhere
+  // else. rank() is still radius-free on purpose: the rows shape() sets aside
+  // are the rows the footer and the empty screen have to be able to name.
+  state.bounds = shape(usable);
   state.total = usable.length;
-  state.results = usable.slice(0, 40);
+  state.results = state.bounds.rows;
   // Nothing is selected until a finger picks one. Asserting row one here is
   // what made the highlight fire on load and never move again.
   state.selected = null;
@@ -604,13 +635,22 @@ function paintList() {
 
   if (!state.results.length) {
     const next = state.soonest;
+    // Rooms are free, they are just too far to walk to. That is a different
+    // answer from "nothing is open", and asking for a shorter time does not fix
+    // it. Measured at 39.98319, -82.99864, which is inside the gate above at
+    // 2.18 km: 301 rooms cleared the wait and the nearest was a 34 minute walk.
+    const far = state.bounds?.beyond;
     list.innerHTML =
       note +
-      '<h2 class="msg" id="list-h" tabindex="-1">Nothing open right now.</h2>' +
-      (next
-        ? `<p class="empty">Every classroom building near you is closed.
-           The first one open is <b>${esc(next.name ?? next.id)}</b> at <b>${clock(next.availableAt)}</b>.</p>`
-        : `<p class="empty">No room is free for ${dur(state.needed)} today. Try a shorter time.</p>`) +
+      `<h2 class="msg" id="list-h" tabindex="-1">${far?.count ? 'Nothing close enough.' : 'Nothing open right now.'}</h2>` +
+      (far?.count
+        ? `<p class="empty">Nothing within a ${MAX_WALK} minute walk is free.
+           <b>${far.count} room${far.count === 1 ? '' : 's'}</b> ${far.count === 1 ? 'is' : 'are'} free further out, the nearest a
+           <b>${far.nearest.walk} minute walk</b> to ${esc(shortName(far.nearest.name))}.</p>`
+        : next
+          ? `<p class="empty">Every classroom building near you is closed.
+             The first one open is <b>${esc(next.name ?? next.id)}</b> at <b>${clock(next.availableAt)}</b>.</p>`
+          : `<p class="empty">No room is free for ${dur(state.needed)} today. Try a shorter time.</p>`) +
       FOOT_ACTS;
     wireFootActs(list);
     focusHeading($('list-h'));
@@ -644,7 +684,20 @@ function paintList() {
   }
 
   const coarse = Number.isFinite(state.accuracy) && state.accuracy > COARSE_M;
-  const more = state.total - state.results.length;
+  // "N more further away" was wrong about nearly all of them. With no cap the
+  // rows the 40-row slice cut were mostly the same building at the same walk as
+  // a row already on screen: 70.2% of the 40 shown repeated a building, over 12
+  // weekday samples from the Oval at a 30 minute ask. shape() keeps the two
+  // apart and this spends both counts.
+  const rest = state.bounds?.groups.rest ?? 0;
+  const beyond = state.bounds?.beyond.count ?? 0;
+  const inside = rest ? `<b>${rest} more</b> within a ${MAX_WALK} minute walk` : '';
+  const outside = beyond
+    ? `<b>${beyond} more</b> ${rest ? 'past it' : `past a ${MAX_WALK} minute walk`}`
+    : '';
+  const foot = inside || outside
+    ? `<p class="foot">${[inside, outside].filter(Boolean).join(', and ')}.</p>`
+    : '';
 
   list.innerHTML =
     note +
@@ -668,7 +721,7 @@ function paintList() {
       </button>`;
       })
       .join('') +
-    (more > 0 ? `<p class="foot"><b>${more} more</b> further away.</p>` : '') +
+    foot +
     CAVEAT +
     FOOT_ACTS;
 
@@ -1844,7 +1897,7 @@ function locate() {
           clearTimeout(watchdog);
           const here = { lon: p.coords.longitude, lat: p.coords.latitude };
           const far = Math.hypot((here.lon - oval.lon) * 85, (here.lat - oval.lat) * 111) > OFF_CAMPUS_KM;
-          if (far) return finish(oval, 'You are off campus, showing from the Oval');
+          if (far) return finish(oval, 'Nothing on campus is walkable from here, showing from the Oval');
           finish(
             { ...here, accuracy: p.coords.accuracy, source: 'gps', label: null, at: Date.now() },
             null,

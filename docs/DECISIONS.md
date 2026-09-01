@@ -1953,3 +1953,77 @@ the per-row spoken name stay at full length. The visible row is glyphs; the
 spoken name is the only place it states its own caveat in words, and shrinking
 the visible layer is exactly the reason the spoken one must not shrink with it.
 `docs/a11y-contract.md` specifies the order.
+
+---
+
+## 2026-09-01  The ranked list gets a walk bound and a per-building cap
+
+**The walk bound never ran.** `MAX_WALK` is 12 minutes and `query()` applies it,
+but the app calls `rank()`, which is documented as having no ladder and no
+radius. So from a downtown origin, 4.42 km out, the list came back with Pomerene
+Hall on row one at a **71 minute walk** and the last of the 40 rows at 77. That
+is issue #60. The bound now lives in one new pure export, `shape()` in
+`js/engine.js`, and `answer()` is the only caller.
+
+`rank()` was deliberately NOT given a radius. `state.soonest`, the room that
+names the first building to open, is read off the unfiltered rows, and a bound
+applied upstream would have let the app print "nothing is open" over rooms that
+are free further out.
+
+The two changes here meet: at 4.42 km the downtown origin is now past the gate,
+so it falls back to the Oval and gets a walkable list rather than an empty one.
+The empty screen is what an origin **inside** the gate with nothing walkable
+gets, and there is one: 39.98319, -82.99864 is 2.18 km out, and at the same
+minute it holds 301 rooms free with the nearest a 34 minute walk. Driven in a
+real browser, it reads `Nothing close enough. Nothing within a 12 minute walk is
+free. 301 rooms are free further out, the nearest a 34 minute walk to Sullivant
+Hall.` Before this it read 40 rows starting at a 34 minute walk with no note at
+all.
+
+**One building was eating the fold.** Walk is cached per building, so every room
+in one building carries the same walk and `compareRows` hands them back
+consecutively. Measured from the Oval every half hour Mon to Fri 2026-09-14 to
+18 at a 30 and a 60 minute ask, over the 406 samples that had any rows: 37.1
+rows across 9.2 buildings, longest same-building run 11.5 rows, and at 20:00 on
+the Friday 28 consecutive rows were Enarson. That is issue #62.
+
+**The cap adapts, and a flat one was rejected on the numbers.** A bare one room
+per building leaves under ten rows in **22.2%** of those 406 samples, which is
+the thin hours, exactly when a student most needs a second option. So the cap is
+1 while ten or more buildings clear the walk bound, 2 from five to nine, and off
+below five. That brings the under-ten share to **1.5%**. The floor is a night
+guard rather than a general one: all 54 samples holding fewer than five
+buildings fall between 11pm and 6am.
+
+```
+  From the Oval, 12 weekday samples, 30 minute ask   before   after
+  rows shown                                          40.00   37.83
+  distinct buildings in the top ten                    2.42   10.00
+  longest same-building run                           10.00    1.00
+  share of the shown list repeating a building        70.2%    0.0%
+  mean walk of a shown row, minutes                    4.55    6.15
+  usable minutes across the top ten                  2472.4  2858.9
+  row one identical to the ranking                     12/12
+```
+
+Row one never moves. `shape()` reorders nothing and rescores nothing; it removes
+rows and hands the rest back in the order they arrived.
+
+**`OFF_CAMPUS_KM` is 2.2, and it stopped claiming to know where campus ends.**
+The old 8 km was not a measurement of anything. The farthest building holding a
+ranked classroom is Animal Science at 1.410 km from the Oval, `MAX_WALK` reaches
+0.720 km of straight line, so nothing on campus is walkable past 2.130 km;
+sweeping 360 bearings out of the Oval in 10 m steps lands on the same figure.
+
+The sentence changed with it. `You are off campus, showing from the Oval` is a
+claim about geography the shipped building table disagrees with: seven of the 96
+buildings in `data/buildings-1268.json` sit outside 2.2 km and all seven are OSU
+property, the four farthest being Waterman at 2.75 km, Outpatient Care East at
+4.84 km, Knowlton Executive Terminal at 9.93 km and Aerospace Research Center at
+10.01 km. A student standing on OSU property was being told they were not. It
+reads `Nothing on campus is walkable from here, showing from the Oval` now.
+
+**The footer stopped lying.** `N more further away` described rows that were, in
+the main, the same building at the same walk as a row already on screen: 70.2%
+of the 40 shown repeated a building. `shape()` returns the two counts apart and
+the footer spends both.

@@ -398,6 +398,74 @@ function compareRows(a, b) {
   );
 }
 
+// ------------------------------------------------------------------- shaping
+
+// What the ranked list is allowed to BE, once compareRows has settled the
+// order. Two bounds, and the shipped app applied neither, because js/app.js
+// calls rank() and rank() has no radius and no cap.
+//
+// The radius. From a downtown origin the first row was Pomerene Hall at a 71
+// minute walk and the last rendered row was 77 minutes, which is issue #60.
+//
+// The cap. Walk is cached per building, so every room in one building carries
+// the same walk and compareRows ties them through tier and score and hands them
+// back consecutively. MEASURED from the Oval every half hour Mon to Fri
+// 2026-09-14 to 18 at a 30 and a 60 minute ask, over the 406 samples that had
+// any rows: 37.1 rows across 9.2 buildings, the longest same-building run 11.5
+// rows, and at 20:00 on the Friday 28 consecutive rows were Enarson. That is
+// issue #62.
+//
+// Nothing is reordered and nothing is rescored. Rows come out in the order they
+// went in with rows removed, so row one of a shaped list is row one of the
+// ranked list whenever it is inside the bound.
+//
+// The cap ADAPTS, because a flat one per building is its own bug: at the thin
+// hours the whole list is a handful of buildings, and one row each guts it.
+// Over those same 406 samples a flat cap of 1 leaves under ten rows 22.2% of
+// the time. With the floor below that is 1.5%.
+export function shape(rows, { maxWalk = MAX_WALK, perBuilding, limit = 40 } = {}) {
+  const near = [];
+  const far = [];
+  for (const row of rows) (row.walk <= maxWalk ? near : far).push(row);
+
+  const buildings = new Set(near.map((r) => r.building)).size;
+  // 10 and 5 count the buildings that CLEARED the bound, not the rows. Above
+  // ten, one room each already fills a screen. Under five the cap has nothing
+  // to spend and would only delete answers: 13.3% of those samples hold fewer
+  // than five buildings, and every one of them falls between 11pm and 6am.
+  const cap = perBuilding ?? (buildings >= 10 ? 1 : buildings >= 5 ? 2 : Infinity);
+
+  const seen = new Map();
+  const out = [];
+  for (const row of near) {
+    if (out.length >= limit) break;
+    const n = (seen.get(row.building) ?? 0) + 1;
+    seen.set(row.building, n);
+    if (n <= cap) out.push(row);
+  }
+
+  return {
+    rows: out,
+    groups: {
+      buildings,
+      perBuilding: cap,
+      // Rows inside the bound that did not make the screen, whether the cap or
+      // the limit took them. They are NOT "further away": nearly all of them
+      // are the same walk as a row already on the list, which is what the old
+      // footer got wrong.
+      rest: near.length - out.length,
+    },
+    beyond: {
+      count: far.length,
+      buildings: new Set(far.map((r) => r.building)).size,
+      // Ordered by score rather than by walk, so the nearest one has to be
+      // found rather than read off the front. The empty screen names it instead
+      // of telling a student who is simply too far away to ask for less time.
+      nearest: far.reduce((a, b) => (a && a.walk <= b.walk ? a : b), null),
+    },
+  };
+}
+
 // -------------------------------------------------------------------- marks
 //
 // The app fetches an index, parses it and answers once. Those three are the

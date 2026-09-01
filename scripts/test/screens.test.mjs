@@ -28,7 +28,7 @@ import {
   windowPhrase,
 } from '../../js/state.js';
 import { roomClaim } from '../../js/claim.js';
-import { PACKUP, calendarOn, rank, refusalFor, usableMinutes } from '../../js/engine.js';
+import { DETOUR, MAX_WALK, PACKUP, WALK_MPM, calendarOn, distanceMetres, rank, refusalFor, usableMinutes } from '../../js/engine.js';
 
 const ROOT = new URL('../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const read = (f) => JSON.parse(readFileSync(join(ROOT, f), 'utf8'));
@@ -866,4 +866,76 @@ test('past the cap the busy list is what loses entries, and it says how many', (
   assert.match(block, /\.\.\. \d+ more/);
   assert.ok(block.startsWith('build'), 'the head survives the cap');
   assert.ok(block.includes('DL0357'), 'the room line survives the cap');
+});
+
+// ---- list bounds
+
+// The off-campus gate, held to the data rather than to a memory of it.
+//
+// It shipped at 8 km, which is not a measurement of anything: it is nearly four
+// times the distance past which no classroom is walkable, so the downtown origin
+// in issue #60, 4.42 km out, got no note at all and a list whose first row was a
+// 71 minute walk. The replacement is a walkability line, and the reason it must
+// not be read as a campus boundary is in the building table.
+test('the off-campus gate is a walk, and the file says which buildings sit outside it', () => {
+  const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  // The comment is prose and prose wraps, so it is read with its line breaks
+  // folded out. The carriage return goes with them: git checks this tree out with
+  // CRLF, so without it every figure that landed at the end of a line reads as
+  // missing, which is how this test first failed.
+  const said = src.replace(/\r?\n\s*\/\/ ?/g, ' ');
+  const gate = Number(src.match(/^const OFF_CAMPUS_KM = ([\d.]+);$/m)[1]);
+  assert.equal(gate, 2.2);
+
+  // The app's own fallback point, and its own crude km, which is the number the
+  // gate actually compares. It runs short of the engine's haversine, so the
+  // walkability bound below is measured the engine's way and the buildings the
+  // gate excludes are measured the gate's way.
+  const oval = { lat: 39.9995, lon: -83.013 };
+  const km = (b) => Math.hypot((b.lon - oval.lon) * 85, (b.lat - oval.lat) * 111);
+
+  // What the flat conversion costs, at the origin issue #60 was filed from. The
+  // comment in js/app.js prints both figures, so both are recomputed here.
+  const downtown = { lat: 39.9612, lon: -82.9988 };
+  assert.equal(Number(km(downtown).toFixed(2)), 4.42);
+  assert.equal(Number((distanceMetres(oval, downtown) / 1000).toFixed(2)), 4.43);
+  assert.ok(said.includes('4.42 km this way and 4.43 km through distanceMetres'));
+
+  // The analytic bound: the farthest building holding a room the ranking can
+  // offer, plus the straight-line reach of MAX_WALK. The gate may sit above it
+  // and must never sit below, or a student inside walking range is sent to the
+  // Oval instead of to the room they could have walked to.
+  const held = new Set(Object.values(INDEX.rooms).map((r) => r.b));
+  const farthest = Math.max(...[...held].map((code) => distanceMetres(oval, SLICE[code]) / 1000));
+  const reach = (MAX_WALK * WALK_MPM) / DETOUR / 1000;
+  assert.equal(Number(farthest.toFixed(3)), 1.41, 'Animal Science, the farthest building with a room');
+  assert.equal(Number(reach.toFixed(3)), 0.72, `${MAX_WALK} minutes of walking, straight line`);
+  assert.ok(gate >= farthest + reach, `a ${gate} km gate is inside the ${(farthest + reach).toFixed(3)} km bound`);
+
+  // The buildings the comment names, recomputed, so the sentence cannot rot away
+  // from the table underneath it. Every one of them is OSU property and every one
+  // is outside the gate, which is exactly why the note it prints is about the walk
+  // and not about being off campus.
+  const beyond = Object.entries(SLICE)
+    .map(([code, b]) => ({ code, name: b.name, km: km(b) }))
+    .filter((b) => b.km > gate)
+    .sort((a, b) => a.km - b.km);
+  assert.equal(beyond.length, 7, 'buildings in the term slice outside the gate');
+  assert.ok(said.includes('Seven of the 96 buildings'), 'the count in the comment moved');
+  for (const [name, at] of [
+    ['Waterman', 2.75],
+    ['Outpatient Care East', 4.84],
+    ['Knowlton Executive Terminal', 9.93],
+    ['Aerospace Research Center', 10.01],
+  ]) {
+    const found = beyond.find((b) => b.name.includes(name));
+    assert.ok(found, `${name} is not in the term slice any more`);
+    assert.equal(Number(found.km.toFixed(2)), at, `${name} moved`);
+    assert.ok(said.includes(`${name} at ${at} km`), `js/app.js does not say "${name} at ${at} km"`);
+  }
+
+  // And the note itself. "You are off campus" was a claim about geography the
+  // table above disagrees with.
+  assert.ok(src.includes('Nothing on campus is walkable from here, showing from the Oval'));
+  assert.ok(!src.includes('You are off campus'), 'the geography claim is still in the file');
 });

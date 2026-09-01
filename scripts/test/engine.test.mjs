@@ -29,6 +29,7 @@ import {
   refusalFor,
   scheduleCoverage,
   scoreOf,
+  shape,
   tierOf,
   typeRank,
   usableMinutes,
@@ -1433,4 +1434,144 @@ test('the day bounds still cover the committed index, including the late rooms',
   const late = blocks.filter((b) => b[3] > 1260);
   assert.equal(late.length, 10, 'intervals a 21:00 bound would have clipped');
   assert.equal(new Set(late.map((b) => b[0])).size, 8, 'rooms running past 21:00');
+});
+
+// ---- list-bounds
+
+// shape() reads two fields off a row, the walk and the building, so a fixture
+// carries those and an id to tell one from another.
+const shaped = (building, walk, n = 0) => ({
+  id: `${building}${n}`,
+  building,
+  name: building,
+  walk,
+  usable: 100 - n,
+});
+
+// Twelve buildings, three rooms each, all inside the bound, in the order
+// compareRows would have left them: a building's rooms are consecutive because
+// walk is cached per building and the scores tie.
+const twelve = () =>
+  Array.from({ length: 12 }, (_, b) =>
+    Array.from({ length: 3 }, (_, n) => shaped(`B${String(b).padStart(2, '0')}`, 3 + b, n)),
+  ).flat();
+
+test('shape never reorders the ranking and never moves row one', () => {
+  const rows = twelve();
+  const out = shape(rows);
+
+  assert.equal(out.rows[0], rows[0], 'row one is the row rank() put first');
+  // Every shown row is the same object the ranking handed over, in the same
+  // order. A cap that sorted, even stably, would let a screen disagree with the
+  // engine about which room is best.
+  let last = -1;
+  for (const row of out.rows) {
+    const i = rows.indexOf(row);
+    assert.ok(i > last, `${row.id} came back out of order`);
+    last = i;
+  }
+});
+
+test('shape drops exactly the rows past the walk bound, and names the nearest one it dropped', () => {
+  // One room per building so the cap cannot also be doing the cutting.
+  const rows = Array.from({ length: 20 }, (_, i) => shaped(`B${i}`, i + 1));
+  const out = shape(rows, { maxWalk: 12 });
+
+  assert.deepEqual(out.rows.map((r) => r.walk), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  assert.equal(out.beyond.count, 8);
+  assert.equal(out.beyond.buildings, 8);
+  // The dropped rows are in ranking order, not walk order, so the nearest one
+  // has to be found. The empty screen prints this number.
+  assert.equal(out.beyond.nearest.walk, 13);
+
+  // Nothing beyond the bound reaches the screen, which is the whole of #60.
+  for (const row of out.rows) assert.ok(row.walk <= 12, `${row.id} is a ${row.walk} minute walk`);
+  assert.equal(shape([], { maxWalk: 12 }).beyond.nearest, null);
+});
+
+test('every row shape removes is counted exactly once', () => {
+  // rows + the ones held back inside the bound + the ones past it. Without this
+  // the footer can double count, which is how "N more further away" came to
+  // describe rooms at an identical walk in a building already on screen.
+  for (const [rows, opts] of [
+    [twelve(), {}],
+    [twelve(), { perBuilding: 2 }],
+    [twelve(), { limit: 5 }],
+    [twelve().map((r, i) => ({ ...r, walk: i })), {}],
+    [Array.from({ length: 60 }, (_, i) => shaped(`B${i % 4}`, 3, i)), {}],
+    [[], {}],
+  ]) {
+    const out = shape(rows, opts);
+    assert.equal(
+      out.rows.length + out.groups.rest + out.beyond.count,
+      rows.length,
+      `${rows.length} rows in, ${out.rows.length} + ${out.groups.rest} + ${out.beyond.count} out`,
+    );
+    assert.equal(out.groups.buildings, new Set(rows.filter((r) => r.walk <= MAX_WALK).map((r) => r.building)).size);
+  }
+});
+
+test('the per-building cap adapts to how many buildings cleared the bound', () => {
+  // The truth table, and the two thresholds are the point. A flat cap of 1
+  // collapses the thin hours, where the whole list is a handful of buildings;
+  // no cap at all is what put twenty consecutive Journalism rows on screen.
+  const spread = (buildings, each = 6) =>
+    Array.from({ length: buildings }, (_, b) =>
+      Array.from({ length: each }, (_, n) => shaped(`B${b}`, 3, n)),
+    ).flat();
+
+  for (const [buildings, cap] of [[20, 1], [10, 1], [9, 2], [5, 2], [4, Infinity], [1, Infinity], [0, Infinity]]) {
+    const out = shape(spread(buildings));
+    assert.equal(out.groups.perBuilding, cap, `${buildings} buildings should cap at ${cap}`);
+    const per = new Map();
+    for (const row of out.rows) per.set(row.building, (per.get(row.building) ?? 0) + 1);
+    for (const [b, n] of per) assert.ok(n <= cap, `${b} took ${n} rows under a cap of ${cap}`);
+  }
+
+  // Under five buildings nothing is held back at all, which is the floor that
+  // stops the cap gutting a list that is already thin.
+  const thin = spread(4, 10);
+  assert.equal(shape(thin).rows.length, 40);
+  assert.equal(shape(thin).groups.rest, 0);
+
+  // A caller that names a cap gets that cap, adaptive or not.
+  assert.equal(shape(spread(20), { perBuilding: 3 }).groups.perBuilding, 3);
+  assert.equal(shape(spread(4), { perBuilding: 1 }).rows.length, 4);
+});
+
+test('shape holds the committed index to a walk you would actually make', () => {
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const buildings = readData(`buildings-${term}.json`).buildings;
+  const hours = readData('buildings-hours.json').terms['autumn-2026-classroom-pool-building-schedule'];
+  const rooms = Object.entries(index.rooms).map(([id, r]) => ({ id, ...r }));
+  const opts = {
+    day: 3,
+    date: '2026-09-02',
+    needed: 30,
+    buildings,
+    hoursFor: (code, day) => hours.buildings[code]?.hours[day],
+    sessions: index.sessions,
+  };
+
+  // From the Oval the bound changes nothing about the answer, only about how
+  // much of one building the screen spends. At this minute 3 distinct buildings
+  // in the top ten become 10, and over 12 weekday samples the mean goes 2.42 to
+  // 10.00 at a 30 minute ask.
+  const oval = rank(rooms, { ...opts, origin: ORIGIN, now: at(14, 10) });
+  const near = shape(oval.filter((r) => r.wait <= 90));
+  assert.equal(near.rows[0].id, oval.filter((r) => r.wait <= 90)[0].id, 'the best room is still the best room');
+  assert.equal(new Set(near.rows.slice(0, 10).map((r) => r.building)).size, 10);
+  assert.ok(near.rows.every((r) => r.walk <= MAX_WALK));
+
+  // Issue #60, the screenshot. Downtown at 14:10 rank() hands back Pomerene
+  // Hall at a 71 minute walk on row one, and the bound is what stops it.
+  const downtown = rank(rooms, { ...opts, origin: { lat: 39.9612, lon: -82.9988 }, now: at(14, 10) });
+  const usable = downtown.filter((r) => r.wait <= 90);
+  assert.equal(usable[0].walk, 71, 'the unbounded ranking still leads with a 71 minute walk');
+  const far = shape(usable);
+  assert.equal(far.rows.length, 0);
+  assert.equal(far.beyond.count, 306);
+  assert.equal(far.beyond.nearest.walk, 71);
+  assert.match(far.beyond.nearest.name, /Pomerene/);
 });

@@ -9,7 +9,7 @@ asks one question, and hands you rooms you can walk to, nearest first.
 
 | | | |
 | :--: | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark campus map, the question "How long do you need?", and three buttons reading 30 min, 1 hour and 2 hours](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. 185 rooms free, 40 shown. Psychology Building 115, 3 min walk, no class rest of today, 26 seats. Psychology Building 217, 3 min, free till 1:50pm, 30 seats.](docs/media/list.webp) | ![One room picked, Psychology Building 217. Its building footprint is outlined in red on the map and a dashed line runs from the blue dot to it, labelled 3 min walk.](docs/media/room.webp) |
+| ![The opening screen: the word Vacant over a dark campus map, the question "How long do you need?", and three buttons reading 30 min, 1 hour and 2 hours](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. 117 rooms free, 39 shown, one room per building. Psychology Building 115, 3 min walk, no class rest of today, 26 seats. University Hall 448, 3 min, no class rest of today, 25 seats.](docs/media/list.webp) | ![One room picked, Cunz Hall 160. Its building footprint is outlined in red on the map and a dashed line runs from the blue dot to it, labelled 4 min walk.](docs/media/room.webp) |
 | One question. | The answer. | Where it is. |
 
 ## Yours for, not free until
@@ -37,7 +37,7 @@ coming at all, and the timeline behind it ends where the building locks.
 
 | | |
 | :--: | :--: |
-| ![The list dragged up to fill the screen, showing ten rooms across three buildings, all two or three minutes away](docs/media/list-full.webp) | ![The room screen for Psychology Building 217: free till 1:50pm, yours for 3h27 once you get there, 3 min walk, 30 seats, seminar room, then Wednesday drawn as a calendar from 7 AM with one red block, PSYCH 6650 from 2:00pm to 4:45pm, and everything else empty](docs/media/timeline.webp) |
+| ![The list dragged up to fill the screen, showing eight rooms in eight different buildings, 3 min to 5 min away](docs/media/list-full.webp) | ![The room screen for Cunz Hall 160: no class in here for the rest of today, yours for 8h26 once you get there, 4 min walk, 42 seats, classroom, then Wednesday drawn as a calendar from 6 AM with two red blocks, KNSISM 3208 from 8:00am to 8:55am and KNSISM 3550 from 9:10am to 10:05am, and everything else empty](docs/media/timeline.webp) |
 | Drag the sheet up for the rest. | Tap a room twice for its whole day, doors included. |
 
 ## Put it on your home screen

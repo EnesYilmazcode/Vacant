@@ -2088,3 +2088,200 @@ Tab comes out `outline: solid 3px`, and the Sources heading behaves the same way
 `focus({ focusVisible: false })` is `none` on both routes. The `h2[tabindex="-1"]`
 rule in index.html is the same answer for an engine that has not implemented the
 option and drops it in silence.
+---
+
+## 2026-09-01  The ranked list gets a walk bound and a per-building cap
+
+**The walk bound never ran.** `MAX_WALK` is 12 minutes and `query()` applies it,
+but the app calls `rank()`, which is documented as having no ladder and no
+radius. So from a downtown origin, 4.42 km out, the list came back with Pomerene
+Hall on row one at a **71 minute walk** and the last of the 40 rows at 77. That
+is issue #60. The bound now lives in one new pure export, `shape()` in
+`js/engine.js`, and `answer()` is the only caller.
+
+`rank()` was deliberately NOT given a radius. `state.soonest`, the room that
+names the first building to open, is read off the unfiltered rows, and a bound
+applied upstream would have let the app print "nothing is open" over rooms that
+are free further out.
+
+The two changes here meet: at 4.42 km the downtown origin is now past the gate,
+so it falls back to the Oval and gets a walkable list rather than an empty one.
+The empty screen is what an origin **inside** the gate with nothing walkable
+gets, and there is one: 39.98319, -82.99864 is 2.18 km out, and at the same
+minute it holds 301 rooms free with the nearest a 34 minute walk. Driven in a
+real browser, it reads `Nothing close enough. Nothing within a 12 minute walk is
+free. 301 rooms are free further out, the nearest a 34 minute walk to Sullivant
+Hall.` Before this it read 40 rows starting at a 34 minute walk with no note at
+all.
+
+**One building was eating the fold.** Walk is cached per building, so every room
+in one building carries the same walk and `compareRows` hands them back
+consecutively. Measured from the Oval every half hour Mon to Fri 2026-09-14 to
+18 at a 30 and a 60 minute ask, over the 406 samples that had any rows: 37.1
+rows across 9.2 buildings, longest same-building run 11.5 rows, and at 20:00 on
+the Friday 28 consecutive rows were Enarson. That is issue #62.
+
+**The cap adapts, and a flat one was rejected on the numbers.** A bare one room
+per building leaves under ten rows in **22.2%** of those 406 samples, which is
+the thin hours, exactly when a student most needs a second option. So the cap is
+1 while ten or more buildings clear the walk bound, 2 from five to nine, and off
+below five. That brings the under-ten share to **1.5%**. The floor is a night
+guard rather than a general one: all 54 samples holding fewer than five
+buildings fall between 11pm and 6am.
+
+```
+  From the Oval, 12 weekday samples, 30 minute ask   before   after
+  rows shown                                          40.00   37.83
+  distinct buildings in the top ten                    2.42   10.00
+  longest same-building run                           10.00    1.00
+  share of the shown list repeating a building        70.2%    0.0%
+  mean walk of a shown row, minutes                    4.55    6.15
+  usable minutes across the top ten                  2472.4  2858.9
+  row one identical to the ranking                     12/12
+```
+
+Row one never moves. `shape()` reorders nothing and rescores nothing; it removes
+rows and hands the rest back in the order they arrived.
+
+**`OFF_CAMPUS_KM` is 2.2, and it stopped claiming to know where campus ends.**
+The old 8 km was not a measurement of anything. The farthest building holding a
+ranked classroom is Animal Science at 1.410 km from the Oval, `MAX_WALK` reaches
+0.720 km of straight line, so nothing on campus is walkable past 2.130 km;
+sweeping 360 bearings out of the Oval in 10 m steps lands on the same figure.
+
+The sentence changed with it. `You are off campus, showing from the Oval` is a
+claim about geography the shipped building table disagrees with: seven of the 96
+buildings in `data/buildings-1268.json` sit outside 2.2 km and all seven are OSU
+property, the four farthest being Waterman at 2.75 km, Outpatient Care East at
+4.84 km, Knowlton Executive Terminal at 9.93 km and Aerospace Research Center at
+10.01 km. A student standing on OSU property was being told they were not. It
+reads `Nothing on campus is walkable from here, showing from the Oval` now.
+
+**The footer stopped lying.** `N more further away` described rows that were, in
+the main, the same building at the same walk as a row already on screen: 70.2%
+of the 40 shown repeated a building. `shape()` returns the two counts apart and
+the footer spends both.
+
+---
+
+## 2026-09-01  Corrections to the walk bound, and the empty screen stops saying free
+
+Four numbers in the entry above do not survive re-measurement, and two screens
+the bound created were wrong in ways the entry did not see. The entry stands as
+written, because this file is append only. This is what replaced it.
+
+**The empty screen called a busy room free.** `shape()` built `beyond` out of
+rows that had cleared a 90 minute wait, so a room in it could be one that does
+not open for another hour and a half, and `nearest` was picked on walk alone.
+Driven in a real browser at 2026-09-15 09:00 from 40.0175, -83.013, 1.998 km
+out: `148 rooms are free further out, the nearest a 25 minute walk to Schoenbaum
+Hall`. Schoenbaum Hall opened at 10:55am, and 51 of the 148 were not free. The
+example quoted in the entry above does it too: 301 rooms at 39.98319, -82.99864,
+and 121 of the 301 have a wait. At scale, over 399 origins inside the gate x Mon
+to Fri 2026-09-14 to 18 x 30 minute steps inside 08:00 to 20:15 x asks of 30, 60
+and 120, 94,748 of these screens appear and **94,469 of them, 99.7%, printed a
+count holding rooms that were not free**.
+
+`shape()` now splits the rows past the bound on `wait === 0`, the same word the
+list rows and `settle()` already use, and the screen spends the two apart:
+`beyond.count` and `beyond.nearest` are free right now, `beyond.waiting` is the
+rest and the sentence for it says when the room opens. Re-run over the same
+94,748 screens: **0 print a count holding a room that is not free, and 0 name
+one**. The live region moved with it. It read `297 rooms free, 0 shown` under a
+heading that said `Nothing close enough.`; a screen with no rows now says its
+own sentence, and a screen with rows counts only the rooms that are free. That
+is the 141 in the README becoming 117.
+
+**Inside the gate, nothing walkable was a dead end.** `locate()` decided the
+Oval fallback on distance from the Oval, but the question that matters is
+whether anything is walkable from here, which `shape()` answers exactly. Wed
+2026-09-02 14:10, 30 minute ask, two origins 20 m apart on one bearing: at 2.190
+km the screen had no rows and its only controls were Check again, What Vacant
+knows and the four duration chips, none of which can change a walk; at 2.210 km
+the same situation crossed the gate, fell back to the Oval and got 40 tappable
+rows. Over 17,905 origins on a 0.0003 lattice inside the gate at Wed 2026-09-16
+14:10, **11,234 of them, 62.7%, got a screen with no rows and no way to act**,
+0% at 0.00 km rising to 96% at 2.00 to 2.25 km, the closest 0.878 km out. Three
+classroom-pool buildings sat in it all day: Rightmire Hall, Pressey Hall and
+Sherman Studio Art Center.
+
+`answer()` now asks the predicate rather than the circle. A located origin with
+nothing walkable falls back to the Oval and says so, which is what the origin
+20 m further out already did. `OFF_CAMPUS_KM` stays as the cheap first cut. A
+building picked by hand keeps its coordinates, because moving off it answers a
+question the student did not ask; it gets the note instead, and the note is what
+carries `Pick a building` onto the screen. Driven through the real app, the same
+17,905 origins now give **0 screens with no rows and 0 dead ends**, and standing
+on Rightmire, Pressey and Sherman at 9:10, 14:10 and 19:10 gives a list at all
+nine.
+
+**The note stopped claiming to know where campus is.** `Nothing on campus is
+walkable from here` is a claim the building table disagrees with: up to three
+other buildings in the term slice sit within a 12 minute walk of one of the
+seven outside the gate. What the 2.130 km derivation supports is the narrower
+claim, that not one of them holds a room the ranking can offer, and
+`scripts/test/screens.test.mjs` recomputes that rather than trusting the
+sentence. Both screens read `No classroom close enough to walk to` now, with
+`, showing from the Oval` on the end when the app moved you. Measured at
+393x852: pill 197x126, sentence 167x56 over three lines, nothing over the
+wordmark.
+
+**The cap's numbers were taken in hours the app refuses to answer.** The 22.2%
+and the 13.3% above reproduce exactly, and both are measured over 24 hours a
+day. `inScheduledHours` only lets the list paint Mon to Fri between 08:00 and
+20:15, so 156 of those 406 samples, 38%, are minutes nobody is ever shown, and
+they carried the whole argument. Restricted to the 250 the app paints, a flat one
+room per building leaves under ten rows **0.0%** of the time and **0.0%** of
+those lists hold fewer than five buildings. The sentence calling the floor `a
+night guard rather than a general one` is backwards twice over: it never fires
+at night because the app does not rank at night, and over 36,594 in-gate lists
+inside scheduled hours the old floor fires on 59.2%.
+
+Choosing the cap off the building count also made the list non-monotone. Fri
+2026-09-18 from the Oval at a 30 minute ask: 20:13 showed 10 rows over 116
+walkable rooms in 10 buildings, and 20:14 showed 17 rows over 100 rooms in 9.
+Sixteen fewer rooms free and the list grew 70%. So the rows are chosen by the
+list they make rather than by a number: pass one is every building's best room,
+later passes top the list up to `SCREEN_ROWS` and stop the moment it gets there.
+That is monotone by construction and it removes both thresholds. Minute by
+minute from the Oval over Mon to Fri 2026-09-14 to 18 at asks of 30 and 60,
+7,350 minutes each: the fold grew the screen as campus emptied **twice before
+and never after**, and the six remaining minutes where the screen grows are a
+building entering the bound, which is a real answer arriving.
+
+`SCREEN_ROWS` is 10, and it is measured rather than picked: at 393x852, the
+device the screenshots are taken on, the sheet dragged to its tallest holds 9
+rows at once, so ten is the first count that leaves something under the fold.
+
+**The 12-sample table could not be re-run.** It named no dates, no clock times
+and no grid, and no natural set of twelve reproduces it. Here it is on a grid
+named to the day. From the Oval, every half hour from 08:00 to 20:00 on the 22
+September 2026 weekdays, at a 30 minute ask, 525 samples:
+
+```
+  From the Oval, 525 weekday samples, 30 minute ask   before   after
+  rows shown                                           40.00   36.48
+  distinct buildings in the top ten                     2.99   10.00
+  longest same-building run                             9.38    1.00
+  share of the shown list repeating a building         69.5%    0.0%
+  mean walk of a shown row, minutes                     4.53    6.24
+  usable minutes across the top ten                   2480.3  2778.2
+  row one identical to the ranking                   525/525
+```
+
+The 70.2% in `js/app.js` and in the entry above is that 69.5%, on a grid that
+replays.
+
+**The walk spike was measuring the old app.** `spikes/walk.html` labelled a row
+shown by `appRank <= 40`, which was exact while `js/app.js` did
+`usable.slice(0, 40)` and stopped being exact the moment `shape()` landed.
+Measured over the same 406 samples: of the 15,078 rows in `rank()`'s first 40
+only 4,768 reach the screen, and of the 12,759 rows that do reach it 7,991 rank
+past 40. The spike now builds its shown set from `shape(usable).rows`, and over
+69,552 pool rows it disagrees with the app **0 times**, against 16,454 before.
+
+**Two smaller corrections.** The 360 bearing sweep does not land on 2.130 km at
+10 m resolution; it agrees to within one step, with the last walkable point
+2.130 km out at bearing 288 along the bearing and 2.123 km by the gate's own
+crude conversion. And `distanceMetres` is equirectangular, not haversine;
+haversine is only the reference the tests check it against.

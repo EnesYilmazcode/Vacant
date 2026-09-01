@@ -35,6 +35,7 @@ import {
 import { roomClaim } from '../../js/claim.js';
 import { blocksOn, classesOn, dayClaim } from '../../js/day.js';
 import { PACKUP, activeSessions, calendarOn, rank, refusalFor, usableMinutes } from '../../js/engine.js';
+import { DETOUR, MAX_WALK, PACKUP, WALK_MPM, calendarOn, distanceMetres, rank, refusalFor, usableMinutes, walkMinutes } from '../../js/engine.js';
 
 const ROOT = new URL('../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const read = (f) => JSON.parse(readFileSync(join(ROOT, f), 'utf8'));
@@ -1569,4 +1570,171 @@ test('a focused heading does not wear the ring that means you can press it', () 
   // Scoped to h2, so the roving-tabindex chips, which are buttons carrying the
   // same attribute, keep their ring.
   assert.match(html, /h2\[tabindex="-1"\]:focus-visible \{ outline: none; \}/);
+// ---- the walk bound and the empty screen
+
+// The off-campus gate, held to the data rather than to a memory of it.
+//
+// It shipped at 8 km, which is not a measurement of anything: it is nearly four
+// times the distance past which no classroom is walkable, so the downtown origin
+// in issue #60, 4.42 km out, got no note at all and a list whose first row was a
+// 71 minute walk. The replacement is a walkability line, and the reason it must
+// not be read as a campus boundary is in the building table.
+test('the off-campus gate is a walk, and the file says which buildings sit outside it', () => {
+  const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  // The comment is prose and prose wraps, so it is read with its line breaks
+  // folded out. The carriage return goes with them: git checks this tree out with
+  // CRLF, so without it every figure that landed at the end of a line reads as
+  // missing, which is how this test first failed.
+  const said = src.replace(/\r?\n\s*\/\/ ?/g, ' ');
+  const gate = Number(src.match(/^const OFF_CAMPUS_KM = ([\d.]+);$/m)[1]);
+  assert.equal(gate, 2.2);
+
+  // The app's own fallback point, and its own crude km, which is the number the
+  // gate actually compares. It runs short of the engine's equirectangular
+  // distanceMetres, so the walkability bound below is measured the engine's way
+  // and the buildings the gate excludes are measured the gate's way.
+  const oval = { lat: 39.9995, lon: -83.013 };
+  const km = (b) => Math.hypot((b.lon - oval.lon) * 85, (b.lat - oval.lat) * 111);
+
+  // What the flat conversion costs, at the origin issue #60 was filed from. The
+  // comment in js/app.js prints both figures, so both are recomputed here.
+  const downtown = { lat: 39.9612, lon: -82.9988 };
+  assert.equal(Number(km(downtown).toFixed(2)), 4.42);
+  assert.equal(Number((distanceMetres(oval, downtown) / 1000).toFixed(2)), 4.43);
+  assert.ok(said.includes('4.42 km against 4.43 at the issue #60 origin'));
+
+  // The analytic bound: the farthest building holding a room the ranking can
+  // offer, plus the straight-line reach of MAX_WALK. The gate may sit above it
+  // and must never sit below, or a student inside walking range is sent to the
+  // Oval instead of to the room they could have walked to.
+  const held = new Set(Object.values(INDEX.rooms).map((r) => r.b));
+  const farthest = Math.max(...[...held].map((code) => distanceMetres(oval, SLICE[code]) / 1000));
+  const reach = (MAX_WALK * WALK_MPM) / DETOUR / 1000;
+  assert.equal(Number(farthest.toFixed(3)), 1.41, 'Animal Science, the farthest building with a room');
+  assert.equal(Number(reach.toFixed(3)), 0.72, `${MAX_WALK} minutes of walking, straight line`);
+  assert.ok(gate >= farthest + reach, `a ${gate} km gate is inside the ${(farthest + reach).toFixed(3)} km bound`);
+
+  // The building the comment names, recomputed, so the sentence cannot rot away
+  // from the table underneath it. All seven are OSU property and all seven are
+  // outside the gate, which is exactly why the note it prints is about the walk
+  // and not about being off campus.
+  const beyond = Object.entries(SLICE)
+    .map(([code, b]) => ({ code, name: b.name, lat: b.lat, lon: b.lon, km: km(b) }))
+    .filter((b) => b.km > gate)
+    .sort((a, b) => a.km - b.km);
+  assert.equal(beyond.length, 7, 'buildings in the term slice outside the gate');
+  assert.ok(
+    said.includes(`Seven of the ${Object.keys(SLICE).length} buildings`),
+    'the count in the comment moved away from the term slice',
+  );
+  const last = beyond[beyond.length - 1];
+  assert.match(last.name, /Aerospace Research Center/, 'the farthest building outside the gate moved');
+  assert.ok(
+    said.includes(`Aerospace Research Center at ${last.km.toFixed(2)} km`),
+    `js/app.js does not say "Aerospace Research Center at ${last.km.toFixed(2)} km"`,
+  );
+
+  // And the note itself. "You are off campus" was a claim about geography the
+  // table above disagrees with, and so was "nothing on campus is walkable": up to
+  // three other buildings in the term slice sit inside a MAX_WALK walk of one of
+  // those seven. What is airtight is the narrower claim below, that not one of
+  // them holds a room the ranking can offer.
+  for (const b of beyond) {
+    const near = Object.entries(SLICE).filter(
+      ([code, o]) => code !== b.code && walkMinutes(distanceMetres(b, o)) <= MAX_WALK,
+    );
+    assert.equal(
+      near.filter(([code]) => held.has(code)).length,
+      0,
+      `${b.name} can walk to a building holding a ranked room, so the note is a claim about classrooms and not about campus`,
+    );
+  }
+  assert.ok(src.includes('No classroom close enough to walk to'));
+  assert.ok(!src.includes('You are off campus'), 'the geography claim is back in js/app.js');
+  assert.ok(!css.includes('You are off campus'), 'index.html still quotes the deleted sentence as live copy');
+});
+
+// The empty screen, and the sentence that used to call a busy room free.
+//
+// shape() builds `beyond` out of rows that cleared a 90 minute wait, so a room
+// in it could be one that does not open for another hour and a half. Measured in
+// the real app, pinned to 2026-09-15 09:00 at 40.0175, -83.013: it printed "148
+// rooms are free further out, the nearest a 25 minute walk to Schoenbaum Hall",
+// and Schoenbaum Hall did not open until 10:55am. 51 of the 148 were not free.
+test('nothing the empty screen calls free is a room that has not opened yet', () => {
+  const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const empty = src.slice(src.indexOf('if (!state.results.length) {'), src.indexOf('const coarse ='));
+  assert.ok(empty.length > 0, 'the empty branch of paintList moved');
+
+  // The count and the room in the sentence with "free" in it both come off
+  // beyond, which shape() now holds to wait === 0.
+  assert.match(empty, /\$\{far\.count\} room.* free further out, the nearest a/s);
+  assert.match(empty, /const later = far\?\.waiting;/);
+  // And the rooms that open later get their own sentence, which says when.
+  assert.match(empty, /further out open.* the nearest a/s);
+  assert.match(empty, /clock\(later\.nearest\.availableAt\)/);
+  // The heading follows both, or a screen with only waiting rooms behind it
+  // reads "Nothing open right now" over rooms that are open, just not yet.
+  assert.match(empty, /far\?\.count \|\| later\?\.count \? 'Nothing close enough\.'/);
+
+  // The live region stops announcing a count over a screen that has none. It
+  // used to say "297 rooms free, 0 shown" under "Nothing close enough."
+  const spoken = src.slice(src.indexOf('  const free = usable.reduce'), src.indexOf('// A name over 24 characters'));
+  assert.match(spoken, /r\.wait === 0 \? 1 : 0/, 'the spoken count is not the free count');
+  assert.match(spoken, /state\.results\.length\s*\?/, 'a screen with no rows still announces a count');
+});
+
+// Nothing walkable from here is a state the app has to answer, not a screen it
+// can leave the student on. Measured on Wed 2026-09-02 at 14:10 with a 30 minute
+// ask, two origins 20 m apart on one bearing out of the Oval: at 2.190 km the
+// screen had 0 rows and its only controls were Check again, What Vacant knows
+// and the four duration chips, none of which can change a walk; at 2.210 km the
+// same situation crossed OFF_CAMPUS_KM, fell back to the Oval and got 40
+// tappable rows.
+test('an origin with nothing walkable is answered, not left on a dead end', () => {
+  const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const branch = src.slice(src.indexOf('const stranded ='), src.indexOf('  // Nothing is selected until'));
+  assert.ok(branch.length > 0, 'the stranded branch in answer() moved');
+
+  // The predicate is the one shape() computes, not the circle.
+  assert.match(branch, /const stranded = !state\.results\.length && state\.bounds\.beyond\.count > 0;/);
+  // A located origin re-answers from the Oval, with the note the gate prints.
+  assert.match(branch, /if \(stranded && state\.origin\?\.source === 'gps'\) \{\s*useOrigin\(ovalOrigin\(\), NO_WALK_OVAL\);\s*return answer\(\);/);
+  // A hand-picked one keeps its coordinates and gets the note, which is what
+  // carries #note-pick onto a screen whose other controls cannot help.
+  assert.match(branch, /state\.origin\?\.source === 'picked'.*useOrigin\(state\.origin, stranded \? NO_WALK : null\)/s);
+  // Both notes are the same sentence, so the two screens cannot drift apart.
+  assert.match(src, /const NO_WALK = 'No classroom close enough to walk to';/);
+  assert.match(src, /const NO_WALK_OVAL = `\$\{NO_WALK\}, showing from the Oval`;/);
+  // And the gate still prints it, so the 2.19 km and 2.21 km screens agree.
+  assert.match(src, /if \(far\) return finish\(oval, NO_WALK_OVAL\);/);
+});
+
+// Three invariants this change turns on, all read out of js/app.js because
+// there is no DOM in this suite. Each one is a mutation that used to leave the
+// whole suite green while putting back exactly the defect being removed.
+test('soonest is read off the unfiltered rows, above the bound that would empty it', () => {
+  const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const soonest = src.indexOf('state.soonest = results');
+  const bounds = src.indexOf('state.bounds = shape(usable);');
+  assert.ok(soonest > 0, 'state.soonest no longer comes off the unfiltered rows');
+  assert.ok(bounds > soonest, 'shape() now runs before soonest is taken');
+  // `usable` is already filtered to wait <= MAX_WAIT_MIN, so taking soonest off
+  // it filters wait > MAX_WAIT_MIN over an empty set and the "first one open"
+  // sentence silently never appears again.
+  assert.ok(!src.includes('state.soonest = usable'), 'soonest is taken off the filtered rows');
+});
+
+test('the footer spends the two counts the right way round', () => {
+  const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const foot = src.slice(src.indexOf('  const rest = state.bounds?.cap.rest'), src.indexOf('  list.innerHTML =\r\n    note +\r\n    strip +'));
+  assert.ok(foot.length > 0, 'the footer moved');
+  // rest is what the fold held back inside the walk bound; beyond is what the
+  // bound itself removed. Swapped, the footer says the far rooms are the close
+  // ones, which is the class of error this footer exists to stop.
+  assert.match(foot, /const rest = state\.bounds\?\.cap\.rest \?\? 0;/);
+  assert.match(foot, /const past = state\.bounds \? state\.bounds\.beyond\.count \+ state\.bounds\.beyond\.waiting\.count : 0;/);
+  assert.match(foot, /const inside = rest \? `<b>\$\{rest\} more<\/b> within a \$\{MAX_WALK\} minute walk`/);
+  assert.match(foot, /const outside = past\s*\?\s*`<b>\$\{past\} more<\/b> \$\{rest \? 'past it'/);
 });

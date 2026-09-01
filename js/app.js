@@ -21,7 +21,7 @@
 import { toGrid } from './campus.js';
 import { roomClaim } from './claim.js';
 import { blocksOn, classesOn, dayClaim } from './day.js';
-import { activeSessions, calendarOn, distanceMetres, mark, measure, rank, walkMinutes } from './engine.js';
+import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, rank, shape, walkMinutes } from './engine.js';
 import {
   busyDayOf,
   clock,
@@ -69,8 +69,31 @@ const KEY_ORIGIN = 'vacant.origin';
 const KEY_PICK = 'vacant.lastPick';
 
 // Off-campus is a real state, not an error. Beyond this from the map centre the
-// app cannot honestly rank anything by walk time.
-const OFF_CAMPUS_KM = 8;
+// app cannot honestly rank by walk time. A first cut only: answer() asks the
+// question this circle stands in for and falls back on that instead.
+//
+// MEASURED, and it is a line about walking, not about where campus ends. The
+// farthest building holding a ranked classroom is Animal Science at 1.410 km
+// from the Oval, MAX_WALK reaches 0.720 km of straight line, so nothing is
+// walkable past 2.130 km, and a 360 bearing sweep in 10 m steps agrees to
+// within one step. The 8 that shipped was nearly four times it, never go below.
+//
+// The comparison is a flat lat/lon conversion, not the engine's equirectangular
+// distanceMetres: 0.2% here, 4.42 km against 4.43 at the issue #60 origin.
+//
+// It must never be read as "you are not on campus". Seven of the 96 buildings
+// in data/buildings-1268.json sit outside it, all seven are OSU property, and
+// the farthest is Aerospace Research Center at 10.01 km. That is why the note
+// it prints is about the walk.
+const OFF_CAMPUS_KM = 2.2;
+
+// The fallback origin, and the sentence both screens that reach for it print:
+// the gate below when the fix lands too far out, answer() when the ranking
+// comes back with nothing walkable.
+const OVAL = { lat: 39.9995, lon: -83.013 };
+const ovalOrigin = () => ({ ...OVAL, accuracy: null, source: 'oval', label: 'the Oval', at: Date.now() });
+const NO_WALK = 'No classroom close enough to walk to';
+const NO_WALK_OVAL = `${NO_WALK}, showing from the Oval`;
 
 // iOS documents its own geolocation timeout as unreliable in a standalone
 // window, so a wall-clock watchdog runs beside it. Without this a bare await
@@ -152,6 +175,9 @@ const state = {
   needed: 30,
   results: [],
   total: 0,
+  // What shape() removed to get from the ranked rows to the shown ones, which
+  // neither the footer nor the empty screen can work out from state.results.
+  bounds: null,
   day: clockNow().getDay(),
   soonest: null,
   selected: null,
@@ -541,18 +567,45 @@ function answer() {
   // rank() orders by tier, then walk. The FIRST building to open is not the
   // nearest one that opens: at 6am the nearest might open at 9:00 while one a
   // minute further opens at 7:00, and naming the wrong one is a wrong answer.
+  // Off the unfiltered rows, not the shaped ones: after shape() this would say
+  // "nothing is open" over the 180 rooms free further out at 2.18 km.
   state.soonest = results
     .filter((r) => r.wait > MAX_WAIT_MIN)
     .reduce((a, b) => (a && a.availableAt <= b.availableAt ? a : b), null);
+  // The walk bound and the fold. rank() stays radius-free on purpose: the rows
+  // shape() sets aside are the ones the footer and the empty screen name.
+  state.bounds = shape(usable);
   state.total = usable.length;
-  state.results = usable.slice(0, 40);
+  state.results = state.bounds.rows;
+
+  // Nothing walkable from here, and rooms out there that are. OFF_CAMPUS_KM
+  // draws a circle around this question and gets it wrong on both sides: Wed
+  // 2026-09-02 14:10, a 30 minute ask, an origin 2.190 km out got no rows and
+  // no control that leads anywhere, and one 20 m further out fell back to the
+  // Oval and got 40 tappable rows.
+  const stranded = !state.results.length && state.bounds.beyond.count > 0;
+  if (stranded && state.origin?.source === 'gps') {
+    useOrigin(ovalOrigin(), NO_WALK_OVAL);
+    return answer();
+  }
+  // A picked building stands: moving off it answers a question nobody asked.
+  // The note is that screen's way out, because it carries #note-pick.
+  if (state.origin?.source === 'picked') useOrigin(state.origin, stranded ? NO_WALK : null);
   // Nothing is selected until a finger picks one. Asserting row one here is
   // what made the highlight fire on load and never move again.
   state.selected = null;
   state.listScroll = 0;
   paintList();
   settle();
-  say(`${state.total} room${state.total === 1 ? '' : 's'} free, ${state.results.length} shown.`);
+  // Free is wait === 0, the word the rows and settle() spend. state.total holds
+  // everything that cleared the 90 minute wait, so this line read "297 rooms
+  // free, 0 shown" over a heading saying nothing was close enough.
+  const free = usable.reduce((n, r) => n + (r.wait === 0 ? 1 : 0), 0);
+  say(
+    state.results.length
+      ? `${free} room${free === 1 ? '' : 's'} free, ${state.results.length} shown.`
+      : `${$('list-h')?.textContent ?? ''} ${$('list').querySelector('.empty')?.textContent.replace(/\s+/g, ' ').trim() ?? ''}`.trim(),
+  );
 }
 
 // A name over 24 characters with a dash in it is the Registrar's
@@ -612,13 +665,29 @@ function paintList() {
 
   if (!state.results.length) {
     const next = state.soonest;
+    // Rooms are free, they are just too far to walk to, which is a different
+    // answer from "nothing is open" and one a shorter ask cannot fix. This is
+    // the one screen that spends the word free on a count, so free here is
+    // wait === 0 and the rooms that open later get their own sentence: at
+    // 2026-09-15 09:00 from 40.0175, -83.013 it called Schoenbaum Hall the
+    // nearest free room 115 minutes before the room opened.
+    const far = state.bounds?.beyond;
+    const later = far?.waiting;
     list.innerHTML =
       note +
-      '<h2 class="msg" id="list-h" tabindex="-1">Nothing open right now.</h2>' +
-      (next
-        ? `<p class="empty">Every classroom building near you is closed.
-           The first one open is <b>${esc(next.name ?? next.id)}</b> at <b>${clock(next.availableAt)}</b>.</p>`
-        : `<p class="empty">No room is free for ${dur(state.needed)} today. Try a shorter time.</p>`) +
+      `<h2 class="msg" id="list-h" tabindex="-1">${far?.count || later?.count ? 'Nothing close enough.' : 'Nothing open right now.'}</h2>` +
+      (far?.count
+        ? `<p class="empty">Nothing within a ${MAX_WALK} minute walk is free.
+           <b>${far.count} room${far.count === 1 ? '' : 's'}</b> ${far.count === 1 ? 'is' : 'are'} free further out, the nearest a
+           <b>${far.nearest.walk} minute walk</b> to ${esc(shortName(far.nearest.name))}.</p>`
+        : later?.count
+          ? `<p class="empty">Nothing within a ${MAX_WALK} minute walk is free.
+             <b>${later.count} room${later.count === 1 ? '' : 's'}</b> further out open${later.count === 1 ? 's' : ''} later, the nearest a
+             <b>${later.nearest.walk} minute walk</b> to ${esc(shortName(later.nearest.name))}, from <b>${clock(later.nearest.availableAt)}</b>.</p>`
+          : next
+            ? `<p class="empty">Every classroom building near you is closed.
+               The first one open is <b>${esc(next.name ?? next.id)}</b> at <b>${clock(next.availableAt)}</b>.</p>`
+            : `<p class="empty">No room is free for ${dur(state.needed)} today. Try a shorter time.</p>`) +
       FOOT_ACTS;
     wireFootActs(list);
     focusHeading($('list-h'));
@@ -652,7 +721,20 @@ function paintList() {
   }
 
   const coarse = Number.isFinite(state.accuracy) && state.accuracy > COARSE_M;
-  const more = state.total - state.results.length;
+  // "N more further away" was wrong about most of them: 69.5% of the 40 the old
+  // slice showed repeated a building already on screen, over 525 samples from
+  // the Oval, every half hour 08:00 to 20:00 on the 22 September 2026 weekdays
+  // at a 30 minute ask. Neither count below says free, so both count the rooms
+  // that open later too.
+  const rest = state.bounds?.cap.rest ?? 0;
+  const past = state.bounds ? state.bounds.beyond.count + state.bounds.beyond.waiting.count : 0;
+  const inside = rest ? `<b>${rest} more</b> within a ${MAX_WALK} minute walk` : '';
+  const outside = past
+    ? `<b>${past} more</b> ${rest ? 'past it' : `past a ${MAX_WALK} minute walk`}`
+    : '';
+  const foot = inside || outside
+    ? `<p class="foot">${[inside, outside].filter(Boolean).join(', and ')}.</p>`
+    : '';
 
   list.innerHTML =
     note +
@@ -676,7 +758,7 @@ function paintList() {
       </button>`;
       })
       .join('') +
-    (more > 0 ? `<p class="foot"><b>${more} more</b> further away.</p>` : '') +
+    foot +
     CAVEAT +
     FOOT_ACTS;
 
@@ -1875,7 +1957,7 @@ function locate() {
   const picked = pickedOrigin();
   if (picked) return Promise.resolve({ origin: picked, note: null });
 
-  const oval = { lat: 39.9995, lon: -83.013, accuracy: null, source: 'oval', label: 'the Oval', at: Date.now() };
+  const oval = ovalOrigin();
   return new Promise((resolve) => {
     let done = false;
     const finish = (origin, note) => {
@@ -1900,7 +1982,7 @@ function locate() {
           clearTimeout(watchdog);
           const here = { lon: p.coords.longitude, lat: p.coords.latitude };
           const far = Math.hypot((here.lon - oval.lon) * 85, (here.lat - oval.lat) * 111) > OFF_CAMPUS_KM;
-          if (far) return finish(oval, 'You are off campus, showing from the Oval');
+          if (far) return finish(oval, NO_WALK_OVAL);
           finish(
             { ...here, accuracy: p.coords.accuracy, source: 'gps', label: null, at: Date.now() },
             null,

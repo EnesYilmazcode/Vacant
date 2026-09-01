@@ -453,13 +453,15 @@
   /* The pill is a flex ROW holding a sentence and a button, and the button was
      `flex: none` while the sentence was a bare span. Once the pair wanted more
      than 92vw, every pixel of the shrink landed on the sentence: measured at
-     393px, "You are off campus, showing from the Oval" rendered 47.3px wide and
-     111.3px tall, one word per line. That made the pill 231px tall, and since
-     it is fixed at z-index 3 over an #ask that had no z-index at all, it then
-     covered the wordmark, the question and the "1 hour" button, which could not
-     be tapped at all.
+     393px on the off-campus note of the day, since replaced, it rendered 47.3px
+     wide and 111.3px tall, one word per line. That made the pill 231px tall,
+     and since it is fixed at z-index 3 over an #ask that had no z-index at all,
+     it then covered the wordmark, the question and the "1 hour" button, which
+     could not be tapped at all.
      Wrapping fixes the shrink and the height together: the button drops to its
-     own line rather than squeezing the sentence to a column. */
+     own line rather than squeezing the sentence to a column. Re-measured at
+     393x852 on the longer sentence the gate prints now: pill 197x126, sentence
+     167x56 over three lines, nothing over the wordmark. */
   /* --- the day, as a calendar --- */
   /* The empty parts of this grid are the answer, which is why it replaced a
      list of rows that had to write the word "free" on every gap. */

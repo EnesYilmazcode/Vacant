@@ -22,9 +22,30 @@ const row = (hoursKnown, outcome, appRank = 1) => ({
 
 test('js/app.js still cuts the list where score.js says it does', () => {
   const app = readFileSync(at('../../js/app.js'), 'utf8');
+  const engine = readFileSync(at('../../js/engine.js'), 'utf8');
+  // The cut moved into shape(). Still 40, but it is now a ceiling rather than
+  // the set: shape() also holds a building to one row while the screen fills,
+  // so a row inside the first 40 reaches the screen only if its building has
+  // not already spent its place. walk.html therefore asks shape() which rows
+  // are shown rather than counting to 40, and this pins both halves of that.
   assert.ok(
-    app.includes(`state.results = usable.slice(0, ${APP_SHOWN_CAP});`),
-    `js/app.js no longer slices its list at ${APP_SHOWN_CAP}. APP_SHOWN_CAP in spikes/score.js decides which walked rows are reported as rows a user could have tapped.`,
+    app.includes('state.results = state.bounds.rows;'),
+    'js/app.js no longer takes its rows from shape().',
+  );
+  const spike = readFileSync(at('../walk.html'), 'utf8');
+  assert.ok(
+    spike.includes('const shown = new Set(shape(usable).rows.map((r) => r.id));'),
+    'spikes/walk.html no longer reads its shown set out of shape(). Its visibility split is then a guess about which rows a user could have tapped.',
+  );
+  assert.ok(
+    spike.includes('shownByApp: shown.has(r.id)'),
+    'spikes/walk.html is labelling rows shown by their rank again.',
+  );
+  // The whole signature, because js/engine.js has a second `limit = 40` in
+  // query(), which the app does not call and this spike is not about.
+  assert.ok(
+    engine.includes(`export function shape(rows, { maxWalk = MAX_WALK, perBuilding, limit = ${APP_SHOWN_CAP} }`),
+    `shape() in js/engine.js no longer cuts the list at ${APP_SHOWN_CAP}. APP_SHOWN_CAP in spikes/score.js decides which walked rows are reported as rows a user could have tapped.`,
   );
   assert.ok(
     !/paginat|loadMore|showMore/i.test(app),

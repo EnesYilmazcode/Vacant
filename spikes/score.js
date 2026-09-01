@@ -12,12 +12,15 @@
 // what was visited)" for being honest twenty times.
 //
 // Two: the quota deliberately oversamples rows the product cannot reach.
-// js/app.js keeps `usable.slice(0, 40)` and has no pagination, and a room with
+// js/app.js keeps `shape(usable).rows` and has no pagination, and a room with
 // no published hours sorts below every published-hours room, so at seven of
 // nine measured clocks the first such room ranked below 40. A single percentage
 // over that sample is a number about the sampling.
 
-// js/app.js: state.results = usable.slice(0, 40), and nothing pages past it.
+// The most rows shape() will ever hand js/app.js, and nothing pages past them.
+// It is a ceiling, not the set: shape() also holds a building to one row while
+// the screen fills, so which rows reach the screen is a question only shape()
+// can answer, and walk.html asks it rather than counting to 40.
 export const APP_SHOWN_CAP = 40;
 
 export const OUTCOMES = {
@@ -93,15 +96,23 @@ export function tally(rows) {
   return strata;
 }
 
-// What the app would have put on screen. A pick below the cut is still worth
-// walking, it just cannot be reported as a row a user would have seen.
+// What the app would have put on screen. A pick the app never shows is still
+// worth walking, it just cannot be reported as a row a user would have seen.
+//
+// Read off shownByApp, which walk.html takes from membership in shape(usable)
+// .rows. This used to be `appRank <= cap`, and that was exact only while the
+// app sliced its list at 40. MEASURED over 406 samples from the Oval, every
+// half hour Mon to Fri 2026-09-14 to 18 at a 30 and a 60 minute ask: of the
+// 15,078 rows in rank()'s first 40 only 4,768 reach the screen, and of the
+// 12,759 rows that do reach it 7,991 rank past 40. The rank is kept because it
+// is still what the row is worth reporting, but it no longer decides.
 export function visibility(rows, cap = APP_SHOWN_CAP) {
   const ranked = rows.filter((r) => Number.isFinite(r.appRank));
   return {
     cap,
     ranked: ranked.length,
-    shown: ranked.filter((r) => r.appRank <= cap).length,
-    below: ranked.filter((r) => r.appRank > cap).length,
+    shown: ranked.filter((r) => r.shownByApp).length,
+    below: ranked.filter((r) => !r.shownByApp).length,
     unranked: rows.length - ranked.length,
   };
 }

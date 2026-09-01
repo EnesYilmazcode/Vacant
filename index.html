@@ -186,6 +186,10 @@
      this is only the dimming. */
   #ask:not(.ready) .opts { opacity: .45; }
   #ask:not(.ready) .loading { opacity: 1; }
+  /* boot() rejected. There is no answer coming, so the line has to stop or the
+     screen goes on claiming it is still looking. Same specificity as the rule
+     above, so it has to sit under it. */
+  #ask.failed .loading { opacity: 0; }
   .loading { color: var(--dim); font-size: .82rem; opacity: 0; transition: opacity .3s; }
   /* The term and the read date used to sit in the corner of the result list,
      where nothing was ever decided by them. They are read here instead, before
@@ -513,8 +517,8 @@
   #note-pick { flex: 0 0 auto; }
   /* The question screen carries the same sentence in its own column, as
      #ask-where, so the floating pill is redundant there as well as in the way.
-     The exception is the fatal load error, which has nowhere else to go. */
-  body.asking #note:not(.fatal) { display: none !important; }
+     The load error used to be the exception; it has the gate card now. */
+  body.asking #note { display: none !important; }
   /* --- the display cutout, in landscape --- */
   /* viewport-fit=cover plus black-translucent draws the page under the status
      bar, which the top and bottom rows already answer with --safe-t and

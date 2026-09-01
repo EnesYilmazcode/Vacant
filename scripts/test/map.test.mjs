@@ -22,6 +22,7 @@ import {
   unproject,
   zoomBy,
 } from '../../js/map.js';
+import { bandFor } from '../../js/sheet.js';
 
 // The shipped basemap, pinned to what buildBasemap actually produces for
 // data/campus.json on a dpr-2 phone: a 2693x2229 raster at 0.99 m per pixel.
@@ -431,13 +432,13 @@ test('the dashes stay readable on a line the fit has zoomed right in on', () => 
   assert.ok(dash[0] * 2 < len, `a ${len.toFixed(1)} px line cannot hold a ${dash[0]} px dash pair`);
 });
 
-// ---- sheet-frame
+// ---- the band each screen leaves
 
-// One 393x852 phone on two screens. `band` is the strip above the sheet: 528 px
-// where the ranked list rests at 0.38, 239 px where the room screen opens at
-// 0.72. viewport() used to hand both of them the 528.
-const ROOM_BAND = { width: 393, height: 852, band: 239, dpr: 3 };
-const LIST_BAND = { width: 393, height: 852, band: 528, dpr: 3 };
+// One 393x852 phone on two screens. `band` is the strip above the sheet, and it
+// is read out of js/sheet.js rather than typed here, so moving where a screen
+// rests moves this fixture with it.
+const ROOM_BAND = { width: 393, height: 852, band: bandFor('room', 852), dpr: 3 };
+const LIST_BAND = { width: 393, height: 852, band: bandFor('list', 852), dpr: 3 };
 // The sheet's top edge is where the band ends.
 const ROOM_SHEET_TOP = ROOM_BAND.band;
 
@@ -453,9 +454,14 @@ const inkSpan = (viewport) => {
 };
 
 test('the room screen frames the walk line in the strip the room screen leaves', () => {
-  // Composed for the list's band and then drawn under a 613 px sheet, 164 of
-  // the 206 px of target ink came out under the panel at 393x852, measured off
-  // the real canvas.
+  // Why this test exists: composed for the list's band and then drawn under a
+  // 613px sheet, 164 of the 206px of REAL target ink came out under the panel at
+  // 393x852, measured off the canvas, which is 79.6%. The 0.62 below is a
+  // different number about a different thing: it is this synthetic pair's own
+  // fraction, 204.0px of it spanning y 162.0 to 366.0 under LIST_BAND.
+  assert.equal(ROOM_BAND.band, 239, 'the room screen no longer opens at 0.72');
+  assert.equal(LIST_BAND.band, 528, 'the ranked list no longer rests at peek');
+
   const wrong = inkSpan(LIST_BAND);
   const under = (wrong.bottom - Math.max(wrong.top, ROOM_SHEET_TOP)) / (wrong.bottom - wrong.top);
   near(under, 0.62, 0.01, 'the list band hides the line the room screen is about');
@@ -468,11 +474,11 @@ test('the room screen frames the walk line in the strip the room screen leaves',
 });
 
 test('a room sheet dragged back down leaves the target framed high, not centred', () => {
-  // The accepted cost of keying the band to the screen's OPENING height. Pull
-  // the room sheet down to peek and 528 px of map is uncovered, but the camera
-  // is still composed for the 239 the screen opened with. The alternative is a
-  // band that tracks the live drag, which zoomed the map out and slid it upward
-  // under the thumb every time the sheet moved.
+  // The accepted cost of keying the band to the screen's RESTING height. Pull
+  // the room sheet down to peek and 528px of map is uncovered, but the camera is
+  // still composed for the 239 the screen rests at. The alternative is a band
+  // that tracks the live drag, which zoomed the map out and slid it upward under
+  // the thumb every time the sheet moved.
   const ink = inkSpan(ROOM_BAND);
   const mid = (ink.top + ink.bottom) / 2;
   near(mid, ROOM_BAND.band / 2, 1, 'the pair is centred in the band it was fitted for');

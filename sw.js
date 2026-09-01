@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c` on gzip 1.14. Shell 76,305 bytes,
+// `git show HEAD:<file> | gzip -9 -c | wc -c` on gzip 1.14. Shell 77,896 bytes,
 // data 85,151. The data side more than doubled when the index started carrying
 // which class is in the room: 2,024 course labels and one integer per block, so
 // the room screen can draw a day instead of listing it. Running the same command over a Windows working tree gives a
@@ -22,7 +22,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-b082e53';
+const SHELL_CACHE = 'vacant-shell-cb41cbc';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also
@@ -53,6 +53,7 @@ const SHELL_ASSETS = [
   SCOPE + 'js/campus.js',
   SCOPE + 'js/engine.js',
   SCOPE + 'js/map.js',
+  SCOPE + 'js/sheet.js',
   SCOPE + 'js/pwa.js',
   SCOPE + 'js/install.js',
   SCOPE + 'js/firstrun.js',

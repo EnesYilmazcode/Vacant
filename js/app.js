@@ -43,6 +43,7 @@ import {
   SETTLED_SPAN,
   attachGestures,
   buildBasemap,
+  clampView,
   drawFrame,
   drawTarget,
   drawYou,
@@ -53,6 +54,7 @@ import {
   pixelsPerGridFor,
   zoomBy,
 } from './map.js';
+import { FULL, PEEK, bandFor, floorFor, openAt, restFor, sheetAfterDrag } from './sheet.js';
 
 const BASE = new URL('.', import.meta.url).pathname.replace(/js\/$/, '');
 
@@ -93,34 +95,8 @@ const SHORTCUTS = ['161', '050', '246', '005', '279', '274'];
 const CORE_X = 0.661;
 const CORE_Y = 0.5;
 
-// The two sheet heights, as a fraction of the viewport. Measured on a 390x844
-// phone: peek leaves a 523px map band, which is 832 m of ground, puts 32 of 40
-// targets on screen and draws all 40 lines in full. Full leaves 186px, which is
-// enough to know the map is still there.
-const PEEK = 0.38;
-const FULL = 0.78;
-// Where the sheet opens on the room screen. Below FULL so the building stays
-// visible on the map behind it, and far enough up that six hours of the day
-// grid are on screen before anybody scrolls.
-const ROOM_SHEET = 0.72;
-
-// Where the sheet rests on each screen, written down once. viewport() used to
-// hold a second copy of this that said peek on every screen, so the room screen
-// framed the walk line for a 324px sheet and then drew it under a 613px one:
-// measured at 393x852, 164 of the 206px of target ink came out under the panel.
-const REST = { ask: 0, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: FULL, about: FULL };
-const restFraction = () => REST[state.screen] ?? PEEK;
-
-// The whole of the sheet's travel below peek. Pull the grip through it and the
-// release means "take me back to the question", which is the same action the
-// back arrow fires; the sheet stops dead under the finger at the bottom, so the
-// gesture has to be held there rather than flicked past.
-//
-// It was 44px and every pointerdown on the sheet could reach it. A 60px pull on
-// a row at the top of the list, where the pane has nothing left to scroll so the
-// drag becomes a sheet drag, threw the list, the selection and the scroll
-// position away. A drag that starts on a pane bottoms out at peek now.
-const DISMISS_PX = 88;
+// PEEK, FULL, ROOM_SHEET, REST and the dismiss travel live in js/sheet.js, where
+// the suite can check them as numbers rather than as source.
 
 // A fix this coarse turns every walk time into an estimate, so the row says
 // "~4 min" and the accessible name says "about 4 minutes".
@@ -235,6 +211,11 @@ function surface() {
   return c.getContext('2d');
 }
 
+// The install rail stands the sheet on top of it, so the map has that much less
+// again. Read off the custom property js/install.js writes rather than off a
+// rect, for the same reason viewport() is cached.
+const railHeight = () => parseFloat(document.body.style.getPropertyValue('--bar-h')) || 0;
+
 // The map's viewport is not the canvas box. `band` is the strip of canvas the
 // sheet is not covering, and the map centres on the middle of THAT, which is
 // what puts the you-dot back on screen.
@@ -257,7 +238,7 @@ function viewport() {
   return {
     width,
     height,
-    band: Math.round(height * (1 - restFraction())),
+    band: bandFor(state.screen, height, railHeight()),
     dpr: lastSize.dpr || Math.min(window.devicePixelRatio || 1, 2),
   };
 }
@@ -344,14 +325,18 @@ function frame(r) {
 
 const PANES = ['list', 'room', 'near', 'pick', 'about'];
 let sheetH = 0;
+// Which screen sheetH was measured on. A height dragged on the room screen is
+// not the list's height, and viewport() reads the list's.
+let sheetScreen = null;
 // Assigned by attachSheet. Replacing a pane's markup resets its scrollTop
 // without firing a scroll event, so the paint has to re-sync touch-action.
 let syncPaneTouch = () => {};
 
-function setSheet(px, snap, floor = PEEK * window.innerHeight - DISMISS_PX) {
+function setSheet(px, snap) {
   const H = window.innerHeight;
-  const h = Math.max(floor, Math.min(FULL * H, px));
+  const h = Math.max(floorFor('grip', H), Math.min(FULL * H, px));
   sheetH = h;
+  sheetScreen = state.screen;
   const sheet = $('sheet');
   sheet.classList.toggle('snap', Boolean(snap));
   sheet.style.height = `${Math.round(h)}px`;
@@ -385,11 +370,10 @@ function attachSheet() {
       lastT: e.timeStamp,
       v: 0,
       mode,
-      // Only the grip may take the sheet below peek, and below peek is the one
-      // place a release throws the answer away. Fixed at the start of the
-      // gesture, because a pending drag becomes a sheet drag on the first 8px
-      // and must not pick up the grip's reach on the way.
-      floor: PEEK * window.innerHeight - (mode === 'sheet' ? DISMISS_PX : 0),
+      // Fixed at the start: a pending drag becomes a sheet drag on the first
+      // 8px and must not pick up the grip's reach on the way.
+      from: mode === 'sheet' ? 'grip' : 'pane',
+      dismiss: false,
       pane: pane(),
     };
   };
@@ -438,7 +422,11 @@ function attachSheet() {
     // A finger that dragged is not a finger that tapped a row.
     swallow = true;
     if (drag.mode === 'scroll') drag.pane.scrollTop = Math.max(0, -dy);
-    else setSheet(drag.h0 - dy, false, drag.floor);
+    else {
+      const pulled = sheetAfterDrag(drag.h0, dy, drag.from, window.innerHeight);
+      drag.dismiss = pulled.dismiss;
+      setSheet(pulled.h, false);
+    }
     e.preventDefault();
   });
 
@@ -446,15 +434,16 @@ function attachSheet() {
     if (!drag || e.pointerId !== drag.id) return;
     const mode = drag.mode;
     const v = drag.v;
+    const dismiss = drag.dismiss;
     drag = null;
     syncTouch();
     if (mode !== 'sheet') return;
     const H = window.innerHeight;
     const peek = PEEK * H;
     const full = FULL * H;
-    // The end of the grip's travel, not a nudge past peek. A drag that started
-    // on a pane has its floor AT peek, so it never gets here.
-    if (sheetH <= peek - DISMISS_PX) {
+    // The grip, pulled through the whole travel below peek. A drag that started
+    // on a pane bottoms out AT peek, so it never gets here.
+    if (dismiss) {
       setSheet(peek, true);
       toAsk();
       return;
@@ -735,7 +724,7 @@ function select(i) {
   }
   state.selected = r;
   markRows();
-  setSheet(restFraction() * window.innerHeight, true);
+  setSheet(restFor(state.screen) * window.innerHeight, true);
   frame(r);
   say(`${roomLabel(r)}, ${r.walk} minute walk, shown on the map.`);
 }
@@ -875,7 +864,7 @@ function selectBuilding(code) {
   if (!b) return;
   const found = [...state.groups.open, ...state.groups.unknown, ...state.groups.closed].find((x) => x.code === code);
   state.selected = { id: code, building: code, walk: found?.walk ?? null };
-  setSheet(restFraction() * window.innerHeight, true);
+  setSheet(restFor(state.screen) * window.innerHeight, true);
   frame(state.selected);
   say(`${shortName(b.name)}, shown on the map.`);
 }
@@ -1609,8 +1598,21 @@ function showPane(name) {
   $('sheet').hidden = false;
   $('back').hidden = false;
   document.body.classList.remove('asking');
+  const arrived = state.screen !== name;
   state.screen = name;
   syncPaneTouch();
+  // Arriving re-composes the camera for the strip THIS screen leaves. Without
+  // it the view stays fitted for the screen behind: leaving a room slid the walk
+  // line 115px and stretched it 1.69x at 393x852, with state.view untouched.
+  if (arrived) reframe();
+}
+
+function reframe() {
+  if (!state.basemap || !state.view) return;
+  if (state.selected) frame(state.selected);
+  // frame() stands down once the camera has been moved by hand, and a cy
+  // clamped for the room's 239px band is not inside the list's 528px one.
+  state.view = clampView(state.view, state.basemap, viewport());
 }
 
 function showAsk() {
@@ -1632,7 +1634,8 @@ function showAsk() {
 }
 
 function sheetHeight() {
-  setSheet(sheetH || restFraction() * window.innerHeight, false);
+  const h = openAt(state.screen, { screen: sheetScreen, h: sheetH }, window.innerHeight);
+  setSheet(h, sheetScreen !== state.screen);
 }
 
 function showList() {
@@ -1659,14 +1662,14 @@ function showPick() {
   $('back').setAttribute('aria-label', 'Back without picking a building');
   paintPick();
   $('pick').scrollTop = 0;
-  setSheet(restFraction() * window.innerHeight, true);
+  setSheet(restFor(state.screen) * window.innerHeight, true);
   focusHeading($('pick-h'));
 }
 
 function showAbout() {
   showPane('about');
   $('back').setAttribute('aria-label', 'Back');
-  setSheet(restFraction() * window.innerHeight, true);
+  setSheet(restFor(state.screen) * window.innerHeight, true);
   paintAbout();
 }
 
@@ -1702,9 +1705,9 @@ function showRoom(id, { keepDay = false } = {}) {
   // The sheet DOES grow for this screen now. It used to hold four or five text
   // rows and peek was enough; it holds a day as a calendar, and a calendar
   // whose first two hours are the only ones above the fold is a calendar
-  // nobody scrolls. The map keeps its own composition either way, because the
-  // sheet no longer feeds the viewport.
-  setSheet(restFraction() * window.innerHeight, true);
+  // nobody scrolls. REST carries that height to viewport() as well, so the map
+  // composes for the 239px this screen leaves rather than the list's 528.
+  setSheet(restFor(state.screen) * window.innerHeight, true);
   if (r) {
     markRows();
     frame(r);

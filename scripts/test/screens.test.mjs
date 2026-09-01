@@ -28,6 +28,17 @@ import {
   windowPhrase,
 } from '../../js/state.js';
 import { roomClaim } from '../../js/claim.js';
+import {
+  DISMISS_PX,
+  FULL as FULL_SHEET,
+  PEEK,
+  REST,
+  bandFor,
+  floorFor,
+  openAt,
+  restFor,
+  sheetAfterDrag,
+} from '../../js/sheet.js';
 import { PACKUP, calendarOn, rank, refusalFor, usableMinutes } from '../../js/engine.js';
 
 const ROOT = new URL('../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -868,21 +879,102 @@ test('past the cap the busy list is what loses entries, and it says how many', (
   assert.ok(block.includes('DL0357'), 'the room line survives the cap');
 });
 
-// ---- sheet-frame
+// ---- the band each screen leaves
 
-test('where the sheet rests on each screen is written down once', () => {
-  // viewport().band is the strip the sheet is NOT covering, and it held a
-  // second copy of the resting height that said peek on every screen. The room
-  // screen opens at 0.72, so the walk line was composed for a 324 px sheet and
-  // then drawn under a 613 px one.
+test('the strip the map composes for is the one that screen actually leaves', () => {
+  // viewport() held a second copy of the resting height that said peek on every
+  // screen, so the room screen framed the walk line for a 324px sheet and then
+  // drew it under a 613px one: measured off the canvas at 393x852, 164 of the
+  // 206px of target ink came out under the panel. These are the values, not the
+  // spelling, so moving ROOM_SHEET moves this line.
+  assert.equal(bandFor('room', 852), 239);
+  assert.equal(bandFor('list', 852), 528);
+  assert.equal(bandFor('near', 852), 528);
+  assert.equal(bandFor('pick', 852), 187);
+  assert.equal(bandFor('about', 852), 187);
+  // The question screen has no sheet, so the whole canvas is the band.
+  assert.equal(bandFor('ask', 852), 852);
+  // A screen nobody wrote down rests where the ranked list does.
+  assert.equal(bandFor('nowhere', 852), 528);
+  // The install rail stands the sheet on top of it, so the map has that much
+  // less. Left out, 112 of the room screen's 122px of walk line went back under
+  // the panel with both bars up at 393x852.
+  assert.equal(bandFor('room', 852, 147), 239 - 147);
+  assert.equal(bandFor('list', 852, 80), 528 - 80);
+  // A rail taller than the strip leaves nothing, and the camera still needs a
+  // number it can divide by.
+  assert.equal(bandFor('room', 852, 538), 1);
+  assert.equal(restFor('room'), REST.room);
+  assert.ok(REST.room > REST.list, `the room rests at ${REST.room}, the list at ${REST.list}`);
+});
+
+test('viewport() reads that one table rather than deciding a second time', () => {
   const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
-  const rest = src.match(/^const REST = \{(.+)\};$/m);
-  assert.ok(rest, 'no table of resting heights');
-  for (const screen of ['ask', 'list', 'near', 'room', 'pick', 'about']) {
-    assert.match(rest[1], new RegExp(`\\b${screen}:`), `REST says nothing about the ${screen} screen`);
-  }
   const at = src.indexOf('function viewport()');
   const body = src.slice(at, src.indexOf('\n}', at));
-  assert.match(body, /band: Math\.round\(height \* \(1 - restFraction\(\)\)\)/);
-  assert.equal(/state\.screen/.test(body), false, 'viewport() decides the resting height a second time');
+  assert.match(body, /band: bandFor\(state\.screen, height, railHeight\(\)\)/);
+  assert.equal(/state\.screen ===/.test(body), false, 'viewport() decides the resting height a second time');
+});
+
+test('a sheet dragged on one screen does not become another screen height', () => {
+  const H = 852;
+  // Leaving a room used to keep its 613px sheet while the map had already been
+  // composed for the list's 528px band, so the walk line was drawn under the
+  // panel and the Back tap rescaled it 1.69x with the camera untouched.
+  assert.equal(openAt('list', { screen: 'room', h: 613 }, H), REST.list * H);
+  assert.equal(openAt('near', { screen: 'room', h: 613 }, H), REST.near * H);
+  // Staying on one screen keeps whatever height it was dragged to.
+  assert.equal(openAt('list', { screen: 'list', h: 613 }, H), 613);
+  // Nothing dragged yet, so the screen's own rest.
+  assert.equal(openAt('list', { screen: 'list', h: 0 }, H), REST.list * H);
+  assert.equal(openAt('room', null, H), REST.room * H);
+});
+
+test('a screen change re-composes the camera for the strip it leaves', () => {
+  // The one half of this that a suite with no layout engine can hold: that the
+  // call is there. What it is worth was measured by driving the app at 393x852,
+  // where the list frame after Back is the frame the list had before the room
+  // was opened, walk line at y 197..402.5 either side and none of it under the
+  // panel.
+  const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const pane = src.slice(src.indexOf('function showPane('), src.indexOf('function reframe()'));
+  assert.match(pane, /const arrived = state\.screen !== name;/);
+  assert.match(pane, /if \(arrived\) reframe\(\);/);
+});
+
+// ---- what a drag on the sheet means
+
+test('only the grip can pull the sheet far enough to throw the answer away', () => {
+  const H = 852;
+  const peek = PEEK * H;
+  // Driven at 393x852, the 44px version dismissed on a 60px pull started on a
+  // row: the sheet went 324 to 0 and took the list, the selection and the
+  // scroll position with it. The pane's floor is peek however hard it is pulled.
+  assert.equal(sheetAfterDrag(peek, 60, 'pane', H).dismiss, false);
+  const hard = sheetAfterDrag(peek, 400, 'pane', H);
+  assert.equal(hard.dismiss, false);
+  assert.equal(hard.h, peek);
+  // The grip owns the travel below peek, and the end of it is the trigger. 60px
+  // is still short of it, which is the pull the row bug was measured on.
+  assert.equal(sheetAfterDrag(peek, 60, 'grip', H).dismiss, false);
+  assert.equal(sheetAfterDrag(peek, DISMISS_PX - 1, 'grip', H).dismiss, false);
+  assert.equal(sheetAfterDrag(peek, DISMISS_PX, 'grip', H).dismiss, true);
+  // The sheet stops dead at the floor, so a harder pull lands on it, not past.
+  assert.equal(sheetAfterDrag(peek, 400, 'grip', H).h, floorFor('grip', H));
+  // Upward, both stop at full.
+  assert.equal(sheetAfterDrag(peek, -900, 'grip', H).h, FULL_SHEET * H);
+});
+
+test('the two floors are peek and the end of the grip travel', () => {
+  const H = 852;
+  assert.equal(floorFor('pane', H), PEEK * H);
+  assert.equal(floorFor('grip', H), PEEK * H - DISMISS_PX);
+});
+
+test('the gesture asks js/sheet.js instead of deriving the rule again', () => {
+  // Two copies of "how far is far enough" is how a threshold meant for the grip
+  // came to fire on a drag that started on a row.
+  const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  assert.match(src, /sheetAfterDrag\(drag\.h0, dy, drag\.from, window\.innerHeight\)/);
+  assert.equal(src.includes('DISMISS_PX'), false, 'app.js names the dismiss distance a second time');
 });

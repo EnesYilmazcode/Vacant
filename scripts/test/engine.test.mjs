@@ -13,6 +13,7 @@ import {
   MIN_RELAXED_USABLE,
   PACKUP,
   RELAX_LADDER,
+  SCREEN_ROWS,
   SILENT_SHARE,
   SURPLUS_CAP,
   SURPLUS_WEIGHT,
@@ -1436,24 +1437,35 @@ test('the day bounds still cover the committed index, including the late rooms',
   assert.equal(new Set(late.map((b) => b[0])).size, 8, 'rooms running past 21:00');
 });
 
-// ---- list-bounds
+// ---- the walk bound and the fold
 
-// shape() reads two fields off a row, the walk and the building, so a fixture
-// carries those and an id to tell one from another.
-const shaped = (building, walk, n = 0) => ({
+// shape() reads three fields off a row, the walk, the building and the wait, so
+// a fixture carries those and an id to tell one from another.
+const shaped = (building, walk, n = 0, wait = 0) => ({
   id: `${building}${n}`,
   building,
   name: building,
   walk,
+  wait,
   usable: 100 - n,
 });
 
 // Twelve buildings, three rooms each, all inside the bound, in the order
 // compareRows would have left them: a building's rooms are consecutive because
 // walk is cached per building and the scores tie.
+//
+// The walk runs DOWN as the ranking runs down, deliberately. With it running up
+// the two orders were the same list and the test below could not tell a shaped
+// list from a list sorted by walk, which is the one sort its own comment names.
 const twelve = () =>
   Array.from({ length: 12 }, (_, b) =>
-    Array.from({ length: 3 }, (_, n) => shaped(`B${String(b).padStart(2, '0')}`, 3 + b, n)),
+    Array.from({ length: 3 }, (_, n) => shaped(`B${String(b).padStart(2, '0')}`, 12 - b, n)),
+  ).flat();
+
+// One walk, many rooms per building, which is the shape the fold is for.
+const spread = (buildings, each = 6) =>
+  Array.from({ length: buildings }, (_, b) =>
+    Array.from({ length: each }, (_, n) => shaped(`B${b}`, 3, n)),
   ).flat();
 
 test('shape never reorders the ranking and never moves row one', () => {
@@ -1470,10 +1482,15 @@ test('shape never reorders the ranking and never moves row one', () => {
     assert.ok(i > last, `${row.id} came back out of order`);
     last = i;
   }
+  // And the fixture has to be able to catch that: ranking order and walk order
+  // disagree, so a walk sort cannot pass the loop above by accident.
+  const walks = out.rows.map((r) => r.walk);
+  assert.deepEqual(walks, [...walks].sort((a, b) => b - a), 'the fixture walks run down the ranking');
+  assert.notDeepEqual(walks, [...walks].sort((a, b) => a - b));
 });
 
 test('shape drops exactly the rows past the walk bound, and names the nearest one it dropped', () => {
-  // One room per building so the cap cannot also be doing the cutting.
+  // One room per building so the fold cannot also be doing the cutting.
   const rows = Array.from({ length: 20 }, (_, i) => shaped(`B${i}`, i + 1));
   const out = shape(rows, { maxWalk: 12 });
 
@@ -1487,56 +1504,90 @@ test('shape drops exactly the rows past the walk bound, and names the nearest on
   // Nothing beyond the bound reaches the screen, which is the whole of #60.
   for (const row of out.rows) assert.ok(row.walk <= 12, `${row.id} is a ${row.walk} minute walk`);
   assert.equal(shape([], { maxWalk: 12 }).beyond.nearest, null);
+  assert.equal(shape([], { maxWalk: 12 }).beyond.waiting.nearest, null);
+});
+
+test('past the bound, the rooms that are free and the rooms that open later are counted apart', () => {
+  // The empty screen is the one place a count gets the word "free" spent on it,
+  // so a room that does not open for another hour and a half cannot be in it.
+  // Measured in the real app at 2026-09-15 09:00 from 40.0175, -83.013: the
+  // nearest room past the bound was Schoenbaum Hall, a 25 minute walk, and it
+  // did not open until 10:55am. The screen called it the nearest free one.
+  const rows = [
+    shaped('FREE-FAR', 30, 0),
+    shaped('WAIT-NEAR', 20, 0, 90),
+    shaped('WAIT-NEARER', 15, 0, 45),
+    shaped('FREE-FARTHER', 40, 0),
+  ];
+  const out = shape(rows, { maxWalk: 12 });
+  assert.equal(out.rows.length, 0);
+  assert.equal(out.beyond.count, 2, 'only the rooms that are free right now');
+  assert.equal(out.beyond.nearest.id, 'FREE-FAR0', 'the nearest room that is actually free');
+  assert.equal(out.beyond.waiting.count, 2);
+  assert.equal(out.beyond.waiting.nearest.id, 'WAIT-NEARER0');
+  // The room the old screen named is nearer than the one it names now, which is
+  // the whole point: nearer is not free.
+  assert.ok(out.beyond.waiting.nearest.walk < out.beyond.nearest.walk);
 });
 
 test('every row shape removes is counted exactly once', () => {
-  // rows + the ones held back inside the bound + the ones past it. Without this
-  // the footer can double count, which is how "N more further away" came to
-  // describe rooms at an identical walk in a building already on screen.
+  // rows + the ones held back inside the bound + the ones past it, free and
+  // waiting. Without this the footer can double count, which is how "N more
+  // further away" came to describe rooms at an identical walk in a building
+  // already on screen.
   for (const [rows, opts] of [
     [twelve(), {}],
     [twelve(), { perBuilding: 2 }],
     [twelve(), { limit: 5 }],
     [twelve().map((r, i) => ({ ...r, walk: i })), {}],
-    [Array.from({ length: 60 }, (_, i) => shaped(`B${i % 4}`, 3, i)), {}],
+    [spread(4, 15), {}],
+    [Array.from({ length: 60 }, (_, i) => shaped(`B${i % 4}`, 3, i, i % 3 === 0 ? 0 : 45)), {}],
+    [Array.from({ length: 60 }, (_, i) => shaped(`B${i % 4}`, 30, i, i % 3 === 0 ? 0 : 45)), {}],
     [[], {}],
   ]) {
     const out = shape(rows, opts);
-    assert.equal(
-      out.rows.length + out.groups.rest + out.beyond.count,
-      rows.length,
-      `${rows.length} rows in, ${out.rows.length} + ${out.groups.rest} + ${out.beyond.count} out`,
-    );
-    assert.equal(out.groups.buildings, new Set(rows.filter((r) => r.walk <= MAX_WALK).map((r) => r.building)).size);
+    const counted = out.rows.length + out.cap.rest + out.beyond.count + out.beyond.waiting.count;
+    assert.equal(counted, rows.length, `${rows.length} rows in, ${counted} out`);
+    assert.equal(out.cap.buildings, new Set(rows.filter((r) => r.walk <= MAX_WALK).map((r) => r.building)).size);
   }
 });
 
-test('the per-building cap adapts to how many buildings cleared the bound', () => {
-  // The truth table, and the two thresholds are the point. A flat cap of 1
-  // collapses the thin hours, where the whole list is a handful of buildings;
-  // no cap at all is what put twenty consecutive Journalism rows on screen.
-  const spread = (buildings, each = 6) =>
-    Array.from({ length: buildings }, (_, b) =>
-      Array.from({ length: each }, (_, n) => shaped(`B${b}`, 3, n)),
-    ).flat();
-
-  for (const [buildings, cap] of [[20, 1], [10, 1], [9, 2], [5, 2], [4, Infinity], [1, Infinity], [0, Infinity]]) {
-    const out = shape(spread(buildings));
-    assert.equal(out.groups.perBuilding, cap, `${buildings} buildings should cap at ${cap}`);
+test('the fold is chosen by the list it makes, so a thinner campus never grows the screen', () => {
+  // The truth table. One room per building fills the screen while there are
+  // buildings to fill it with; below that the list is topped up to SCREEN_ROWS
+  // and stops there. A number read off the building count did the opposite: at
+  // ten buildings it showed 10 rows and at nine it showed 18.
+  let last = Infinity;
+  for (const buildings of [40, 20, 12, 11, 10, 9, 8, 5, 4, 3, 2, 1]) {
+    const out = shape(spread(buildings, 20));
+    assert.ok(out.rows.length <= last, `${buildings} buildings showed more rows than ${last}`);
+    last = out.rows.length;
     const per = new Map();
     for (const row of out.rows) per.set(row.building, (per.get(row.building) ?? 0) + 1);
-    for (const [b, n] of per) assert.ok(n <= cap, `${b} took ${n} rows under a cap of ${cap}`);
+    for (const [b, n] of per) assert.ok(n <= out.cap.perBuilding, `${b} took ${n} rows past ${out.cap.perBuilding}`);
   }
+  // The two the old thresholds fell between, which is where the step was.
+  assert.equal(shape(spread(10, 20)).rows.length, 10);
+  assert.equal(shape(spread(9, 20)).rows.length, 10);
+  assert.equal(shape(spread(5, 20)).rows.length, 10);
+  assert.equal(shape(spread(4, 20)).rows.length, 10);
+  assert.equal(shape(spread(1, 60)).rows.length, SCREEN_ROWS);
 
-  // Under five buildings nothing is held back at all, which is the floor that
-  // stops the cap gutting a list that is already thin.
-  const thin = spread(4, 10);
-  assert.equal(shape(thin).rows.length, 40);
-  assert.equal(shape(thin).groups.rest, 0);
+  // Pass one is every building's best row and it is never trimmed to
+  // SCREEN_ROWS: a campus with forty buildings open still fills the screen.
+  assert.equal(shape(spread(40, 20)).rows.length, 40);
+  assert.equal(shape(spread(20, 6)).rows.length, 20);
 
-  // A caller that names a cap gets that cap, adaptive or not.
-  assert.equal(shape(spread(20), { perBuilding: 3 }).groups.perBuilding, 3);
+  // The limit binds in both directions: at one room each, and at no fold at all.
+  assert.equal(shape(spread(60, 1)).rows.length, 40);
+  assert.equal(shape(spread(45, 2)).rows.length, 40);
+  assert.equal(shape(spread(1, 60), { perBuilding: Infinity }).rows.length, 40);
+  assert.equal(shape(spread(20, 6), { perBuilding: 3 }).rows.length, 40);
+
+  // A caller that names a fold gets that fold, and no top-up.
+  assert.equal(shape(spread(20), { perBuilding: 3 }).cap.perBuilding, 3);
   assert.equal(shape(spread(4), { perBuilding: 1 }).rows.length, 4);
+  assert.equal(shape(spread(4, 20), { perBuilding: 1 }).rows.length, 4);
 });
 
 test('shape holds the committed index to a walk you would actually make', () => {
@@ -1556,8 +1607,8 @@ test('shape holds the committed index to a walk you would actually make', () => 
 
   // From the Oval the bound changes nothing about the answer, only about how
   // much of one building the screen spends. At this minute 3 distinct buildings
-  // in the top ten become 10, and over 12 weekday samples the mean goes 2.42 to
-  // 10.00 at a 30 minute ask.
+  // in the top ten become 10, and over the 525 samples named in js/app.js the
+  // share of the old 40 that repeated a building was 69.5%.
   const oval = rank(rooms, { ...opts, origin: ORIGIN, now: at(14, 10) });
   const near = shape(oval.filter((r) => r.wait <= 90));
   assert.equal(near.rows[0].id, oval.filter((r) => r.wait <= 90)[0].id, 'the best room is still the best room');
@@ -1571,7 +1622,15 @@ test('shape holds the committed index to a walk you would actually make', () => 
   assert.equal(usable[0].walk, 71, 'the unbounded ranking still leads with a 71 minute walk');
   const far = shape(usable);
   assert.equal(far.rows.length, 0);
-  assert.equal(far.beyond.count, 306);
+  assert.equal(far.beyond.count + far.beyond.waiting.count, 306, 'every usable row is past the bound');
+  assert.equal(far.beyond.count, 173, 'and only these are free right now');
   assert.equal(far.beyond.nearest.walk, 71);
   assert.match(far.beyond.nearest.name, /Pomerene/);
+  // The count the screen prints is only rooms that are free, on the real index
+  // and not just on a fixture.
+  for (const r of usable) {
+    if (r.wait === 0) continue;
+    assert.notEqual(r.id, far.beyond.nearest.id, 'the named room is not free');
+  }
+  assert.equal(far.beyond.waiting.count, 133);
 });

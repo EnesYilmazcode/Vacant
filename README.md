@@ -9,7 +9,7 @@ asks one question, and hands you rooms you can walk to, nearest first.
 
 | | | |
 | :--: | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark campus map, the question "How long do you need?", and three buttons reading 30 min, 1 hour and 2 hours](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. 141 rooms free, 39 shown, one room per building. Psychology Building 115, 3 min walk, no class rest of today, 26 seats. University Hall 448, 3 min, 25 seats.](docs/media/list.webp) | ![One room picked, Cunz Hall 160. Its building footprint is outlined in red on the map and a dashed line runs from the blue dot to it, labelled 4 min walk.](docs/media/room.webp) |
+| ![The opening screen: the word Vacant over a dark campus map, the question "How long do you need?", and three buttons reading 30 min, 1 hour and 2 hours](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. 117 rooms free, 39 shown, one room per building. Psychology Building 115, 3 min walk, no class rest of today, 26 seats. University Hall 448, 3 min, no class rest of today, 25 seats.](docs/media/list.webp) | ![One room picked, Cunz Hall 160. Its building footprint is outlined in red on the map and a dashed line runs from the blue dot to it, labelled 4 min walk.](docs/media/room.webp) |
 | One question. | The answer. | Where it is. |
 
 ## Yours for, not free until

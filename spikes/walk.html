@@ -104,7 +104,7 @@
 </section>
 
 <script type="module">
-import { rank, WALK_MPM, DETOUR } from './engine.vendor.js';
+import { rank, shape, MAX_WALK, WALK_MPM, DETOUR } from './engine.vendor.js';
 import { pickHoursTerm, makeHoursFor } from './hours.vendor.js';
 import { termGate, refusalNote, fmtDay } from './term.vendor.js';
 import { APP_SHOWN_CAP, OUTCOMES, OUTCOME_ORDER, tally, visibility } from './score.js';
@@ -281,10 +281,18 @@ function appList(needed) {
 // still pushes everything under it down.
 function candidates(needed) {
   const { usable, active } = appList(needed);
+  // Which rows the app actually puts on screen, asked of the same function the
+  // app asks. `appRank <= APP_SHOWN_CAP` was exact while js/app.js kept
+  // usable.slice(0, 40), and stopped being exact when shape() landed: the
+  // per-building fold drops rows inside the first 40 and lifts rows ranked past
+  // it onto the screen. MEASURED over the 406 samples above: of the 15,078 rows
+  // in rank()'s first 40 only 4,768 reached the screen, and of the 12,759 rows
+  // that did reach it 7,991 ranked past 40.
+  const shown = new Set(shape(usable).rows.map((r) => r.id));
   const pool = [];
   usable.forEach((r, i) => {
     if (r.wait !== 0) return;
-    pool.push({ ...decorate(r, active), appRank: i + 1, shownByApp: i + 1 <= APP_SHOWN_CAP });
+    pool.push({ ...decorate(r, active), appRank: i + 1, shownByApp: shown.has(r.id) });
   });
   // listSize is the app's whole list, waits included. A rank is a position in
   // that list, so it cannot be printed against the smaller walkable pool.
@@ -320,7 +328,7 @@ function poolCounts() {
     pool.length + ' rooms free right now from here, across ' + new Set(pool.map((r) => r.building)).size + ' buildings. ' +
     c('no-published-hours') + ' in buildings with no published hours, ' +
     c('type-1B') + ' type 1B, ' + c('low-confidence') + ' carrying a doubt signal.<br>' +
-    'The app lists only its first ' + APP_SHOWN_CAP + ' rows and cannot page past them' +
+    'The app shows one room per building until the screen is full, at most ' + APP_SHOWN_CAP + ' rows, and cannot page past them' +
     (firstUnknown
       ? ', and the nearest room with no published hours sits at rank ' + firstUnknown.appRank + ' of ' + listSize + '. The quota below reaches past that cut on purpose.'
       : '.');
@@ -477,10 +485,10 @@ function rowHtml(r, i) {
   const chips = r.cats.map((c) =>
     '<span class="chip ' + (c === 'low-confidence' ? 'hot' : c === 'no-published-hours' ? 'unk' : '') + '">' + c + '</span>').join('') +
     (r.picked === 'backfill' ? '<span class="chip">backfill</span>' : '') +
-    // Ten of twenty picks at a Thursday morning clock rank below the app's cut.
+    // Ten of twenty picks at a Thursday morning clock never reach the screen.
     // Somebody walking to one should know the product would never have offered
     // it, because that changes what the row is evidence of.
-    (r.shownByApp === false ? '<span class="chip unk">rank ' + r.appRank + ', below the ' + APP_SHOWN_CAP + ' the app shows</span>' : '');
+    (r.shownByApp === false ? '<span class="chip unk">rank ' + r.appRank + ', not on the screen the app shows</span>' : '');
 
   const head =
     '<button type="button" class="head" data-act="tap" data-id="' + r.id + '" aria-expanded="' + (open ? 'true' : 'false') + '" ' +
@@ -577,7 +585,7 @@ function markdown() {
   const block = (s) => {
     const at = (label, value) => label.padEnd(41) + value + '\n';
     return s.label + ', ' + s.claim + '\n' +
-      s.picked + ' picked, ' + s.shownByApp + ' of them inside the ' + cap + ' rows the app puts on screen\n' +
+      s.picked + ' picked, ' + s.shownByApp + ' of them on the screen the app puts up\n' +
       '\n```\n' +
       OUTCOME_ORDER.map((k) => at(OUTCOMES[k].word, s.counts[k] + ' / ' + s.picked)).join('') +
       ' '.repeat(41) + '-'.repeat(8) + '\n' +
@@ -640,8 +648,8 @@ function markdown() {
 'and the hours lookup copied from `js/app.js`. Twenty rooms out of the list the app\n' +
 'itself ranked free from ' + (walk.origin.source === 'gps' ? 'a GPS fix good to ' + Math.round(walk.origin.accuracy) + ' m' : 'the Oval, chosen by hand') +
 ' at ' + shown(walk.pickedAt) + ', asking for ' + dur(walk.needed) + '.\n' +
-'They were sampled by quota rather than taken off the top, so ' + vis.below + ' of the twenty rank\n' +
-'below the first ' + cap + ' rows the app shows. That split is in its own section below.\n' +
+'They were sampled by quota rather than taken off the top, so ' + vis.below + ' of the twenty never\n' +
+'reach the screen the app puts up. That split is in its own section below.\n' +
 'Index: ' + walk.termName + ', schedule read ' + walk.generated.slice(0, 10) + '. Pool it was drawn from: ' + walk.poolSize + ' rooms.\n' +
 (walk.instruction && walk.instruction[0]
   ? 'Picked inside the window the app answers in, ' + fmtDay(walk.instruction[0]) + ' to ' + fmtDay(walk.instruction[1]) + '. Outside it the\n' +
@@ -675,12 +683,13 @@ strata.filter((s) => s.picked === 0)
 '\n' +
 '### What the app would have shown\n' +
 '\n' +
-'`js/app.js` does `state.results = usable.slice(0, ' + cap + ')` and has no pagination, so only\n' +
-'the first ' + cap + ' rows of its list are reachable on a phone.\n' +
+'`js/app.js` does `state.results = shape(usable).rows` and has no pagination, so a row is\n' +
+'reachable on a phone only if shape() kept it: one room per building until the screen\n' +
+'is full, never more than ' + cap + ' rows, and nothing past a ' + MAX_WALK + ' minute walk.\n' +
 '\n' +
 '```\n' +
-('inside the first ' + cap + ', tappable').padEnd(41) + vis.shown + ' / ' + rows.length + '\n' +
-'below the cut, unreachable in the app'.padEnd(41) + vis.below + ' / ' + rows.length + '\n' +
+'on the screen, tappable'.padEnd(41) + vis.shown + ' / ' + rows.length + '\n' +
+'not on it, unreachable in the app'.padEnd(41) + vis.below + ' / ' + rows.length + '\n' +
 (walk.firstUnknownRank
   ? 'first no-published-hours room, rank'.padEnd(41) + walk.firstUnknownRank + ' of ' + (walk.appListSize ?? walk.poolSize) + '\n'
   : '') +
@@ -688,8 +697,8 @@ strata.filter((s) => s.picked === 0)
 '\n' +
 'A room with no published hours sorts below every published-hours room, so at most\n' +
 'clocks it cannot reach the screen at all. Walking those rows is still worth doing,\n' +
-'it is how the tiering gets tested, but a row below the cut is evidence about the\n' +
-'ranking and not about what anybody was shown.\n' +
+'it is how the tiering gets tested, but a row the app never shows is evidence about\n' +
+'the ranking and not about what anybody was shown.\n' +
 '\n' +
 'Split by why the room was picked, which is the split that changes the product:\n' +
 '\n' +
@@ -729,7 +738,7 @@ check(t1b >= 3, t1b + ' type 1B rooms, 3 or more wanted') + '\n' +
 check(noHoursRows >= 2, noHoursRows + ' rows in buildings with no row in buildings-hours.json, 2 or more wanted') + '\n' +
 check(timed.length >= 8, timed.length + ' rows with a door-to-door time, 8 or more wanted') + '\n' +
 check(visited.length === 20, 'the five buckets sum to 20') + '\n' +
-check(vis.shown > 0, vis.shown + ' of the twenty were inside the ' + cap + ' rows the app actually shows') + '\n' +
+check(vis.shown > 0, vis.shown + ' of the twenty were on the screen the app actually puts up') + '\n' +
 '\n' +
 'Not covered by this page, still open on #26: the Roomix cross-check\n' +
 '(`room_matrix.json` and `courses.json`), the interval diff in both directions,\n' +

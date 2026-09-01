@@ -36,6 +36,8 @@ const MEASURES = [
   /\b\d+\s?min\b/gi, // a walk
   /\b\d+\s?m\b/gi, // metres
   /\b\d+\s?seats\b/gi, // seats
+  /\b\d+\s?rooms? free\b/gi, // the count the list announces
+  /\b\d+\s?shown\b/gi, // and how many of them it put up
 ];
 const squash = (s) => s.toLowerCase().replace(/\s+/g, '');
 const measures = (s) => MEASURES.flatMap((re) => [...s.matchAll(re)].map((m) => m[0]));

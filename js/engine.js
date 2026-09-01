@@ -400,14 +400,20 @@ function compareRows(a, b) {
 
 // ------------------------------------------------------------------- shaping
 
-// What the ranked list is allowed to BE, once compareRows has settled the
+// How many rows count as a screenful. MEASURED in the real app at 393x852, the
+// device the screenshots are taken on: the sheet dragged to its tallest, 665 of
+// those 852 pixels, holds 9 rows of the ranked list at once. Ten is the first
+// count that does not fit, so a short list still has something under the fold.
+export const SCREEN_ROWS = 10;
+
+// What the ranked list is allowed to be, once compareRows has settled the
 // order. Two bounds, and the shipped app applied neither, because js/app.js
-// calls rank() and rank() has no radius and no cap.
+// calls rank() and rank() has no radius and no fold.
 //
 // The radius. From a downtown origin the first row was Pomerene Hall at a 71
 // minute walk and the last rendered row was 77 minutes, which is issue #60.
 //
-// The cap. Walk is cached per building, so every room in one building carries
+// The fold. Walk is cached per building, so every room in one building carries
 // the same walk and compareRows ties them through tier and score and hands them
 // back consecutively. MEASURED from the Oval every half hour Mon to Fri
 // 2026-09-14 to 18 at a 30 and a 60 minute ask, over the 406 samples that had
@@ -419,49 +425,86 @@ function compareRows(a, b) {
 // went in with rows removed, so row one of a shaped list is row one of the
 // ranked list whenever it is inside the bound.
 //
-// The cap ADAPTS, because a flat one per building is its own bug: at the thin
-// hours the whole list is a handful of buildings, and one row each guts it.
-// Over those same 406 samples a flat cap of 1 leaves under ten rows 22.2% of
-// the time. With the floor below that is 1.5%.
+// Rows are picked a pass at a time. Pass one is every building's best room,
+// which is the screen the fold is there to protect; later passes only top the
+// list up to SCREEN_ROWS and stop the moment it gets there. Picking by the list
+// that comes out, rather than reading a per-building number off the building
+// count, is what keeps the shown count monotone: as campus empties the list can
+// only shrink. A number read off the building count did the opposite, and the
+// step was visible in the app. From the Oval on Fri 2026-09-18 at a 30 minute
+// ask, 20:13 put 10 rows on screen over 116 walkable rooms in 10 buildings and
+// 20:14 put 17 rows over 100 rooms in 9: sixteen fewer rooms free, one fewer
+// building open, and the list grew 70%.
+//
+// How much later passes are worth, MEASURED inside the hours the app actually
+// ranks in, 08:00 to 20:15 Mon to Fri, over Mon to Fri 2026-09-14 to 18 at a 30
+// and a 60 minute ask. From the Oval they are worth nothing: over 250 lists the
+// first pass is the whole answer every time. Off it they are the answer: over
+// 36,594 lists from 399 origins spread across the 2.2 km gate, a second pass
+// runs on 59.2%, and the share of lists holding under ten rows goes from 59.7%
+// with one room each to 18.0%.
 export function shape(rows, { maxWalk = MAX_WALK, perBuilding, limit = 40 } = {}) {
   const near = [];
   const far = [];
   for (const row of rows) (row.walk <= maxWalk ? near : far).push(row);
 
-  const buildings = new Set(near.map((r) => r.building)).size;
-  // 10 and 5 count the buildings that CLEARED the bound, not the rows. Above
-  // ten, one room each already fills a screen. Under five the cap has nothing
-  // to spend and would only delete answers: 13.3% of those samples hold fewer
-  // than five buildings, and every one of them falls between 11pm and 6am.
-  const cap = perBuilding ?? (buildings >= 10 ? 1 : buildings >= 5 ? 2 : Infinity);
+  // Which room this is inside its own building, counting down the ranking.
+  const nth = new Map();
+  const depth = near.map((row) => {
+    const n = nth.get(row.building) ?? 0;
+    nth.set(row.building, n + 1);
+    return n;
+  });
 
-  const seen = new Map();
-  const out = [];
-  for (const row of near) {
-    if (out.length >= limit) break;
-    const n = (seen.get(row.building) ?? 0) + 1;
-    seen.set(row.building, n);
-    if (n <= cap) out.push(row);
+  const keep = new Set();
+  let deepest = 0;
+  // A caller that names a cap gets that cap and no top-up.
+  const enough = perBuilding === undefined ? Math.min(limit, SCREEN_ROWS) : limit;
+  for (let pass = 0; pass < (perBuilding ?? Infinity); pass++) {
+    const room = pass === 0 ? limit : enough;
+    if (keep.size >= room) break;
+    const before = keep.size;
+    for (let i = 0; i < near.length; i++) {
+      if (keep.size >= room) break;
+      if (depth[i] === pass) keep.add(i);
+    }
+    if (keep.size === before) break;
+    deepest = pass + 1;
   }
+  const out = near.filter((_, i) => keep.has(i));
+
+  // Free means free this second, the wait === 0 the rows and the strip already
+  // use. Rooms past the bound that open later are held apart from it, because
+  // the empty screen spends this count in a sentence with the word free in it:
+  // at 2026-09-15 09:00 from 40.0175, -83.013 the nearest room past the bound
+  // was Schoenbaum Hall, a 25 minute walk, and it did not open until 10:55am.
+  const free = far.filter((r) => r.wait === 0);
+  const later = far.filter((r) => r.wait > 0);
+  // Ordered by score rather than by walk, so the nearest one has to be found
+  // rather than read off the front.
+  const nearest = (set) => set.reduce((a, b) => (a && a.walk <= b.walk ? a : b), null);
 
   return {
     rows: out,
-    groups: {
-      buildings,
-      perBuilding: cap,
-      // Rows inside the bound that did not make the screen, whether the cap or
+    cap: {
+      buildings: new Set(near.map((r) => r.building)).size,
+      // The most rows one building was allowed, which is the deepest pass that
+      // ran unless the caller named a number.
+      perBuilding: perBuilding ?? deepest,
+      // Rows inside the bound that did not make the screen, whether the fold or
       // the limit took them. They are NOT "further away": nearly all of them
       // are the same walk as a row already on the list, which is what the old
       // footer got wrong.
       rest: near.length - out.length,
     },
     beyond: {
-      count: far.length,
-      buildings: new Set(far.map((r) => r.building)).size,
-      // Ordered by score rather than by walk, so the nearest one has to be
-      // found rather than read off the front. The empty screen names it instead
-      // of telling a student who is simply too far away to ask for less time.
-      nearest: far.reduce((a, b) => (a && a.walk <= b.walk ? a : b), null),
+      count: free.length,
+      buildings: new Set(free.map((r) => r.building)).size,
+      // The empty screen names this room instead of telling a student who is
+      // simply too far away to ask for less time.
+      nearest: nearest(free),
+      // Past the bound and not free yet. The screen names when it opens.
+      waiting: { count: later.length, nearest: nearest(later) },
     },
   };
 }

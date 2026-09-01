@@ -19,6 +19,7 @@ import {
   inScheduledHours,
   inTermOn,
   indexFloorCheck,
+  isoDate,
   rankBuildings,
   resolveState,
   roomsPerBuilding,
@@ -28,7 +29,8 @@ import {
   windowPhrase,
 } from '../../js/state.js';
 import { roomClaim } from '../../js/claim.js';
-import { PACKUP, calendarOn, rank, refusalFor, usableMinutes } from '../../js/engine.js';
+import { blocksOn, classesOn, dayClaim } from '../../js/day.js';
+import { PACKUP, activeSessions, calendarOn, rank, refusalFor, usableMinutes } from '../../js/engine.js';
 
 const ROOT = new URL('../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const read = (f) => JSON.parse(readFileSync(join(ROOT, f), 'utf8'));
@@ -866,4 +868,222 @@ test('past the cap the busy list is what loses entries, and it says how many', (
   assert.match(block, /\.\.\. \d+ more/);
   assert.ok(block.startsWith('build'), 'the head survives the cap');
   assert.ok(block.includes('DL0357'), 'the room line survives the cap');
+});
+
+// ---- the day the room screen is drawing
+
+// Checked out with CRLF on Windows, so the endings come out before anything
+// goes looking for a closing brace in column 0.
+const APP = readFileSync(join(ROOT, 'js/app.js'), 'utf8').replace(/\r\n/g, '\n');
+const DAY_SRC = readFileSync(join(ROOT, 'js/day.js'), 'utf8').replace(/\r\n/g, '\n');
+
+// One function's source, from its signature to the closing brace in column 0.
+const bodyOf = (name) => {
+  const at = APP.indexOf(`function ${name}(`);
+  assert.ok(at > 0, `${name} is gone from js/app.js`);
+  const end = APP.indexOf('\n}\n', at);
+  assert.ok(end > at, `${name} has no closing brace`);
+  return APP.slice(at, end);
+};
+
+// Seven consecutive days either side of the boundary between the first session
+// and the third, so every weekday is reachable under both masks. Oct 6 to Oct
+// 12 is inside the first session and outside the third; Oct 19 to Oct 25 is the
+// other way round.
+const weekFrom = (iso) =>
+  Array.from({ length: 7 }, (_, i) => {
+    const d = at(iso);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+const EARLY = weekFrom('2026-10-06');
+const LATE = weekFrom('2026-10-19');
+const dayOf = (week, d) => week.find((x) => x.getDay() === d);
+
+// The 18 rooms whose Monday is not the same class on both sides of that
+// boundary. The test re-derives the list rather than trusting it; it is written
+// out so a build that moves one of them is a diff a reader can see.
+const MONDAY_MOVES = [
+  'AA0108', 'AA0246', 'BE0120', 'BO0317', 'DE0268', 'HA0025',
+  'HC0250', 'HH0159', 'HI0035', 'JR0295', 'KH0116', 'KH0333',
+  'LZ0021', 'PEA0151', 'PS0014', 'RA0059', 'SB0305', 'SB0320',
+];
+
+test('the mask and the weekday both come off the date, over the whole shipped index', () => {
+  // The fixture first. If the term stops straddling this boundary the counts
+  // below stop meaning anything, and this is the line that says so.
+  for (const d of EARLY) assert.deepEqual(activeSessions(INDEX.sessions, isoDate(d)), [true, true, false]);
+  for (const d of LATE) assert.deepEqual(activeSessions(INDEX.sessions, isoDate(d)), [false, true, true]);
+
+  const rooms = Object.entries(INDEX.rooms);
+  const perDay = [0, 0, 0, 0, 0, 0, 0];
+  const moved = [];
+  let differing = 0;
+  for (const [id, room] of rooms) {
+    for (let d = 0; d < 7; d++) {
+      const early = blocksOn(room, dayOf(EARLY, d), INDEX.sessions);
+      const late = blocksOn(room, dayOf(LATE, d), INDEX.sessions);
+      if (JSON.stringify(early) === JSON.stringify(late)) continue;
+      differing += 1;
+      perDay[d] += 1;
+      if (d === 1) moved.push(id);
+    }
+  }
+
+  // The figures js/day.js cites for why the date has to decide the mask.
+  // Reading the weekday off a clock collapses all seven columns onto one, and
+  // dropping the mask makes both sides equal, so every number here moves under
+  // either mutation.
+  assert.equal(rooms.length, 425);
+  assert.equal(rooms.length * 7, 2975);
+  assert.equal(differing, 107, 'room-days that differ across the session boundary');
+  assert.deepEqual(perDay, [0, 18, 24, 25, 24, 16, 0], 'differing room-days by weekday, Sunday first');
+  assert.deepEqual(moved.sort(), [...MONDAY_MOVES].sort());
+});
+
+test('the grid and the claim read one list of classes, on both sides of the boundary', () => {
+  // The grid draws classesOn() and the sentence above it reads blocksOn(). The
+  // defect was that the two filtered the busy grid separately, off two clocks,
+  // and were allowed to come back with different days.
+  let carried = 0;
+  for (const room of Object.values(INDEX.rooms)) {
+    for (const date of [...EARLY, ...LATE]) {
+      const drawn = classesOn(room, date, INDEX.sessions, INDEX.courses);
+      const read = blocksOn(room, date, INDEX.sessions);
+      assert.equal(read.length > 0, drawn.length > 0, `one of them found a class the other did not, ${isoDate(date)}`);
+      if (!drawn.length) continue;
+      carried += 1;
+      assert.equal(read[0][0], drawn[0].from, `first class disagrees on ${isoDate(date)}`);
+      for (const c of drawn) {
+        assert.ok(
+          read.some(([s, e]) => c.from >= s && c.to <= e),
+          `a class the grid draws on ${isoDate(date)} falls outside every block the claim reads`,
+        );
+      }
+    }
+  }
+  assert.equal(carried, 4002, 'room-days carrying a class across the two weeks');
+});
+
+test('js/day.js reads no clock of its own', () => {
+  // It is handed the date. A Date built inside it is the bug back: the weekday
+  // would follow the machine while the grid beside it followed the stepper.
+  assert.doesNotMatch(DAY_SRC.replace(/^\s*\/\/.*$/gm, ''), /new Date\(|Date\.now\(/);
+});
+
+test('a day the app refuses to answer for does not get a first class', () => {
+  // One tap on Next day from an ordinary Tuesday used to print "First class
+  // 10:05am" on Veterans Day, which is a date this same build answers with
+  // "campus is closed" when you are standing in it.
+  const room = INDEX.rooms.AA0005;
+  const dates = Object.keys(INDEX.closed);
+  assert.equal(dates.length, 7, 'the shipped calendar moved');
+  for (const iso of dates) {
+    const entry = INDEX.closed[iso];
+    const blocks = blocksOn(room, at(iso), INDEX.sessions);
+    assert.ok(blocks.length > 0, `AA0005 holds nothing on ${iso}, so this proves nothing`);
+    const claim = dayClaim({
+      closed: false,
+      blocks,
+      calendar: calendarOn(iso, INDEX, CURRENT),
+      inTerm: inTermOn(iso, CURRENT, INDEX),
+      term: CURRENT.termName,
+    });
+    assert.doesNotMatch(claim.head, /^(First class|No class|Closed)/, `${iso} answers with the schedule`);
+    assert.ok(claim.head.startsWith(entry.name), `${iso} does not name the closure: ${claim.head}`);
+    // Autumn Break has open doors and no classes, which is the best day of the
+    // term for this app, so dressing it as a closure would cost a room.
+    assert.match(claim.head, entry.state === 'no-classes' ? /, no classes$/ : /, campus is closed$/);
+  }
+});
+
+test('a date the schedule does not reach is not answered as an empty room', () => {
+  // Every session mask is off past the last day of instruction, so every room
+  // on every later date comes back empty, and "No class Tue Dec 15" would be a
+  // statement of fact about a date the index carries nothing for.
+  const room = INDEX.rooms.AA0005;
+  const shape = (iso) =>
+    dayClaim({
+      closed: false,
+      blocks: blocksOn(room, at(iso), INDEX.sessions),
+      calendar: calendarOn(iso, INDEX, CURRENT),
+      inTerm: inTermOn(iso, CURRENT, INDEX),
+      term: CURRENT.termName,
+    });
+
+  assert.equal(shape('2026-12-15').head, 'Finals week, exam rooms are not published');
+  for (const iso of ['2027-01-14', '2026-08-17']) {
+    assert.equal(shape(iso).head, `${CURRENT.termName} does not cover this day`);
+    assert.doesNotMatch(shape(iso).head, /^No class/);
+  }
+  // A Sunday inside the term is empty for the ordinary reason, and still says so.
+  assert.equal(shape('2026-09-20').head, 'No class');
+});
+
+test('a stepped day inside the term gets its own first class', () => {
+  const room = INDEX.rooms.AA0005;
+  const thursday = at('2026-09-17');
+  assert.equal(thursday.getDay(), 4);
+  const claim = dayClaim({
+    closed: false,
+    blocks: blocksOn(room, thursday, INDEX.sessions),
+    calendar: calendarOn('2026-09-17', INDEX, CURRENT),
+    inTerm: inTermOn('2026-09-17', CURRENT, INDEX),
+    term: CURRENT.termName,
+  });
+  assert.equal(claim.head, 'First class 10:20am');
+  assert.equal(claim.sub, '');
+  // Nothing about now. On another day the walk, the window and the duration are
+  // facts about the wrong day. And no date, because the grid heading five lines
+  // below already names the day this sentence is about.
+  for (const word of ['Yours', 'Next free', 'till', 'today', 'Sep', 'Thu']) {
+    assert.ok(!claim.head.includes(word), `the stepped claim says ${word}`);
+  }
+});
+
+test('the screen hands one date to the grid, the timeline and the claim', () => {
+  const tl = bodyOf('timelineRows');
+  assert.match(tl, /function timelineRows\([^)]*\bdate\b/, 'timelineRows takes no date');
+  assert.match(tl, /hoursFor\(room\.b, date\.getDay\(\)\)/);
+  assert.match(tl, /blocksOn\(room, date, state\.rooms\.sessions\)/);
+  assert.equal((tl.match(/state\.day/g) ?? []).length, 0, 'timelineRows still reads state.day');
+
+  const room = bodyOf('roomHtml');
+  assert.match(room, /const date = dayShown\(\)/);
+  assert.match(room, /timelineRows\([^)]*\bdate\)/);
+  // An equality and nothing else. `roomDayOffset === 0 || true` still reads as
+  // a day check and still matches a looser pattern, and it puts today's
+  // sentence back over every stepped day.
+  assert.match(room, /const today = roomDayOffset === 0;\n/);
+  assert.match(room, /!today\s*\?\s*shapeFor\(tl, date\)/, 'claimFor is still reachable off today');
+
+  // The calendar is half the verdict, so the screen has to go and get it.
+  const shape = bodyOf('shapeFor');
+  assert.match(shape, /calendarOn\(iso, state\.rooms, state\.current\)/);
+  assert.match(shape, /inTermOn\(iso, state\.current, state\.rooms\)/);
+});
+
+test('one weekday runs the whole remembered pick', () => {
+  // The blob is pasted into the wrong-answer template, so a record labelling
+  // Thursday's blocks "Wed" is the defect this screen exists to remove, one
+  // line down. A row tapped at 00:02 was ranked yesterday and state.day says so.
+  const pick = bodyOf('rememberPick');
+  assert.match(pick, /shown\.getDay\(\) - state\.day/, 'the day is not taken back to the answer');
+  assert.match(pick, /blocksOn\(room, shown,/, 'the block list is off another clock');
+  assert.match(pick, /isoDate\(shown\)/, 'the session mask is off another clock');
+  assert.match(pick, /Number\(b\[0\]\) === state\.day/, 'the closer lookup is off another clock');
+  assert.match(pick, /dayName: .*\[state\.day\]/, 'the label is off another clock');
+});
+
+test('the back button on the room screen names the pane back lands on', () => {
+  // Outside scheduled hours a ?room= link opens over the buildings screen, and
+  // the label said "Back to the room list" over a list that was never pushed.
+  const open = bodyOf('openRoom');
+  assert.match(open, /pushState\(\{[^}]*from: state\.screen/);
+
+  // The pairing, not the presence. Both strings are in this function either
+  // way, so three separate matches all hold with the two arms swapped, which is
+  // the reported defect back again.
+  const show = bodyOf('showRoom');
+  assert.match(show, /from === 'near'\s*\?\s*'Back to the nearest buildings'\s*:\s*'Back to the room list'/);
 });

@@ -20,7 +20,8 @@
 
 import { toGrid } from './campus.js';
 import { roomClaim } from './claim.js';
-import { activeSessions, distanceMetres, mark, measure, rank, walkMinutes } from './engine.js';
+import { blocksOn, classesOn, dayClaim } from './day.js';
+import { activeSessions, calendarOn, distanceMetres, mark, measure, rank, walkMinutes } from './engine.js';
 import {
   busyDayOf,
   clock,
@@ -28,6 +29,7 @@ import {
   diagnosticsBlock,
   dur,
   inScheduledHours,
+  inTermOn,
   isoDate,
   now as clockNow,
   pinClock,
@@ -1034,29 +1036,6 @@ const HOUR_PX = 46;
 const SHORT_DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const SHORT_MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-// One class in one room on one day. Unlike blocksToday this does NOT merge:
-// two classes back to back are two things a reader wants to see named, and the
-// grid has room to draw them as two.
-function classesOn(room, date) {
-  const active = activeSessions(state.rooms.sessions, isoDate(date));
-  const day = date.getDay();
-  const seen = new Set();
-  const out = [];
-  for (const b of room.busy ?? []) {
-    if (Number(b[0]) !== day) continue;
-    if (active && b[3] !== undefined && active[b[3]] === false) continue;
-    const [, from, to] = b;
-    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) continue;
-    const course = Number.isInteger(b[4]) && b[4] >= 0 ? (state.rooms.courses?.[b[4]] ?? null) : null;
-    const key = `${from}|${to}|${course ?? ''}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ from, to, course });
-  }
-  out.sort((a, b) => a.from - b.from || a.to - b.to);
-  return out;
-}
-
 // The day as a calendar column, which is the shape a student already reads a
 // timetable in.
 //
@@ -1083,7 +1062,7 @@ function dayGridHtml(room, bname) {
 
   if (hours === null) return `${head}<p class="unknown">${esc(bname)} is closed.</p>`;
 
-  const classes = classesOn(room, date);
+  const classes = classesOn(room, date, state.rooms.sessions, state.rooms.courses);
   // A shipped room's building always publishes hours, because one that does not
   // no longer reaches the index. `undefined` still has to be survivable: the
   // hours table is refetched on its own schedule and can drop a building while
@@ -1143,34 +1122,12 @@ function hourLabel(m) {
   return h < 12 ? `${h} AM` : `${h - 12} PM`;
 }
 
-// Today's blocks for one room, session mask applied, overlaps merged but
-// back-to-back classes left as two.
-function blocksToday(room) {
-  const active = activeSessions(state.rooms.sessions, isoDate(clockNow()));
-  const raw = [];
-  for (const b of room.busy ?? []) {
-    if (Number(b[0]) !== state.day) continue;
-    if (active && b[3] !== undefined && active[b[3]] === false) continue;
-    const [, s, e] = b;
-    if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) continue;
-    raw.push([s, e]);
-  }
-  raw.sort((a, b) => a[0] - b[0]);
-  const merged = [];
-  for (const b of raw) {
-    const last = merged[merged.length - 1];
-    if (last && b[0] < last[1]) last[1] = Math.max(last[1], b[1]);
-    else merged.push([...b]);
-  }
-  return merged;
-}
-
 // The timeline, as rows. Free blocks are the content and classes are the
 // frame, so a free block carries a start, the word and a length, and a class
 // carries a start and nothing else.
-function timelineRows(room, bname, nowMin) {
-  const hours = hoursFor(room.b, state.day);
-  const blocks = blocksToday(room);
+function timelineRows(room, bname, nowMin, date) {
+  const hours = hoursFor(room.b, date.getDay());
+  const blocks = blocksOn(room, date, state.rooms.sessions);
   const known = Array.isArray(hours);
   if (hours === null) return { closed: true, rows: [] };
 
@@ -1200,7 +1157,7 @@ function timelineRows(room, bname, nowMin) {
       rows.push({ kind: 'seam' });
       return;
     }
-    rows.push({ kind: 'free', t: from, end: to, len, now: nowMin >= from && nowMin < to });
+    rows.push({ kind: 'free', t: from, end: to, len, now: nowMin != null && nowMin >= from && nowMin < to });
   };
 
   let cursor = open;
@@ -1285,6 +1242,20 @@ function claimFor(tl, nowMin, bname, metres) {
   }
 }
 
+// The same line for a date the user is not standing in. js/day.js decides what
+// is true and this fetches what it needs, the calendar included: an empty busy
+// list is not evidence of a free room on a day the app refuses to answer for.
+function shapeFor(tl, date) {
+  const iso = isoDate(date);
+  return dayClaim({
+    closed: tl.closed,
+    blocks: tl.blocks,
+    calendar: calendarOn(iso, state.rooms, state.current),
+    inTerm: inTermOn(iso, state.current, state.rooms),
+    term: state.current?.termName,
+  });
+}
+
 const rad = (deg) => (deg * Math.PI) / 180;
 
 // Great-circle initial bearing, degrees clockwise from true north.
@@ -1311,12 +1282,17 @@ function roomHtml(id) {
       ? Math.round(distanceMetres(state.origin, b))
       : null;
 
-  const tl = timelineRows(room, bname, nowMin);
-  const claim = tl.closed
-    ? { head: 'Closed today', sub: '' }
-    : tl.nothing
-      ? { head: 'No class in here all day', sub: '' }
-      : claimFor(tl, nowMin, bname, metres);
+  // The day the screen is drawing, which is the day it has to describe.
+  const date = dayShown();
+  const today = roomDayOffset === 0;
+  const tl = timelineRows(room, bname, today ? nowMin : null, date);
+  const claim = !today
+    ? shapeFor(tl, date)
+    : tl.closed
+      ? { head: 'Closed today', sub: '' }
+      : tl.nothing
+        ? { head: 'No class in here all day', sub: '' }
+        : claimFor(tl, nowMin, bname, metres);
 
   // rank() rounds the metres it reports but keeps the walk it computed off the
   // unrounded distance, so re-deriving one from the other can disagree by a
@@ -1432,8 +1408,13 @@ function rememberPick(id) {
   const room = state.rooms?.rooms?.[id];
   if (!room) return;
   const r = state.results.find((x) => x.id === id);
-  const busy = blocksToday(room);
-  const active = activeSessions(state.rooms.sessions, isoDate(clockNow()));
+  // The day the row was ranked on, not the day it was tapped on. A row still on
+  // screen at 00:02 was answered yesterday, so the block list, the mask and the
+  // label all take their weekday from state.day.
+  const shown = clockNow();
+  shown.setDate(shown.getDate() - ((shown.getDay() - state.day + 7) % 7));
+  const busy = blocksOn(room, shown, state.rooms.sessions);
+  const active = activeSessions(state.rooms.sessions, isoDate(shown));
   // Which session's class closes the gap. That is the number a maintainer needs
   // to tell a stale session mask from a wrong gap.
   const closer = (room.busy ?? []).find(
@@ -1661,13 +1642,19 @@ function showRoom(id, { keepDay = false } = {}) {
   // mechanism: #list keeps its scrollTop because it was never destroyed.
   showPane('room');
   $('room').scrollTop = 0;
-  $('back').setAttribute('aria-label', 'Back to the room list');
+  // Back pops to the entry underneath this one, and openRoom wrote down which
+  // screen that is. Outside scheduled hours the room screen opens over the
+  // buildings screen, and the label promised a room list that is not there.
+  $('back').setAttribute(
+    'aria-label',
+    history.state?.from === 'near' ? 'Back to the nearest buildings' : 'Back to the room list',
+  );
 
   const r = state.results.find((x) => x.id === id);
   state.selected = r ?? { id, building: room.b, walk: null };
   attachBearing(id);
-  // A week either way. Past the term's own bounds the grid simply comes back
-  // empty, which is the honest answer and needs no guard.
+  // A week either way, and no clamp. Past the term's own bounds the grid comes
+  // back empty and the sentence over it says the schedule does not reach there.
   for (const el of $('room').querySelectorAll('[data-day]')) {
     el.onclick = () => {
       roomDayOffset += Number(el.dataset.day);
@@ -1719,7 +1706,9 @@ function choose(min) {
 
 function openRoom(id) {
   rememberPick(id);
-  history.pushState({ v: 'room', room: id }, '', `?room=${encodeURIComponent(id)}`);
+  // The screen underneath, kept in the entry rather than in a variable, so a
+  // reopen from popstate names the same pane a press of back will reach.
+  history.pushState({ v: 'room', room: id, from: state.screen }, '', `?room=${encodeURIComponent(id)}`);
   showRoom(id);
 }
 

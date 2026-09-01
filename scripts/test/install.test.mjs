@@ -17,8 +17,8 @@ import {
   isIOSSafari,
   isStandalone,
   mapsHref,
-  needsSafari,
   mountBar,
+  needsSafari,
   readState,
   shouldShow,
   unmountBar,
@@ -285,6 +285,8 @@ test('the rail raises the sheet rather than being paid for out of it', () => {
   assert.match(block, /padding-bottom: 0/, 'the home indicator inset is counted twice');
   // One rule only. A second would have the sheet and a pane both paying.
   assert.equal(css.split('body.has-bar').length - 1, 1, 'the rail is compensated twice');
+});
+
 // ---- maps-handoff
 
 // The one thing about the room screen's hand-off that cannot be seen by opening

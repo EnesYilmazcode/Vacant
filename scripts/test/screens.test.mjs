@@ -34,8 +34,6 @@ import {
 } from '../../js/state.js';
 import { roomClaim } from '../../js/claim.js';
 import { blocksOn, classesOn, dayClaim } from '../../js/day.js';
-import { PACKUP, activeSessions, calendarOn, rank, refusalFor, usableMinutes } from '../../js/engine.js';
-import { DETOUR, MAX_WALK, PACKUP, WALK_MPM, calendarOn, distanceMetres, rank, refusalFor, usableMinutes, walkMinutes } from '../../js/engine.js';
 import {
   DISMISS_PX,
   FULL as FULL_SHEET,
@@ -47,7 +45,7 @@ import {
   restFor,
   sheetAfterDrag,
 } from '../../js/sheet.js';
-import { PACKUP, calendarOn, rank, refusalFor, usableMinutes } from '../../js/engine.js';
+import { DETOUR, MAX_WALK, PACKUP, WALK_MPM, activeSessions, calendarOn, distanceMetres, rank, refusalFor, usableMinutes, walkMinutes } from '../../js/engine.js';
 
 const ROOT = new URL('../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const read = (f) => JSON.parse(readFileSync(join(ROOT, f), 'utf8'));
@@ -1103,6 +1101,8 @@ test('the back button on the room screen names the pane back lands on', () => {
   // the reported defect back again.
   const show = bodyOf('showRoom');
   assert.match(show, /from === 'near'\s*\?\s*'Back to the nearest buildings'\s*:\s*'Back to the room list'/);
+});
+
 // ---- the night gate
 
 // Nothing in this file pinned a word of the night screen before these. The
@@ -1582,6 +1582,8 @@ test('a focused heading does not wear the ring that means you can press it', () 
   // Scoped to h2, so the roving-tabindex chips, which are buttons carrying the
   // same attribute, keep their ring.
   assert.match(html, /h2\[tabindex="-1"\]:focus-visible \{ outline: none; \}/);
+});
+
 // ---- the walk bound and the empty screen
 
 // The off-campus gate, held to the data rather than to a memory of it.
@@ -1749,6 +1751,8 @@ test('the footer spends the two counts the right way round', () => {
   assert.match(foot, /const past = state\.bounds \? state\.bounds\.beyond\.count \+ state\.bounds\.beyond\.waiting\.count : 0;/);
   assert.match(foot, /const inside = rest \? `<b>\$\{rest\} more<\/b> within a \$\{MAX_WALK\} minute walk`/);
   assert.match(foot, /const outside = past\s*\?\s*`<b>\$\{past\} more<\/b> \$\{rest \? 'past it'/);
+});
+
 // ------- the origin bar, and the two refusal cards
 
 test('the origin bar costs nothing on the screen a phone with a fix sees', () => {
@@ -1853,6 +1857,8 @@ test('a boot that never loaded says so, and offers the one button that can help'
   assert.match(failed, /\$\('ask-q'\)\.hidden = true/);
   assert.match(failed, /classList\.add\('failed'\)/);
   assert.match(failed, /focusHeading\(\$\('gate-h'\)\)/);
+});
+
 // ---- the band each screen leaves
 
 test('the strip the map composes for is the one that screen actually leaves', () => {

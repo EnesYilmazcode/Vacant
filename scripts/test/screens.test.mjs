@@ -19,12 +19,15 @@ import {
   inScheduledHours,
   inTermOn,
   indexFloorCheck,
+  nextOpening,
+  openingPhrase,
   rankBuildings,
   resolveState,
   roomsPerBuilding,
   scheduleDarkOn,
   scheduleShareOn,
   staleness,
+  unscheduledGate,
   windowPhrase,
 } from '../../js/state.js';
 import { roomClaim } from '../../js/claim.js';
@@ -866,4 +869,178 @@ test('past the cap the busy list is what loses entries, and it says how many', (
   assert.match(block, /\.\.\. \d+ more/);
   assert.ok(block.startsWith('build'), 'the head survives the cap');
   assert.ok(block.includes('DL0357'), 'the room line survives the cap');
+});
+
+// ---- the night gate
+
+// Nothing in this file pinned a word of the night screen before these. The
+// buildings screen said "Everything is closed right now." and the question
+// screen said nothing at all, so the copy could rot without a test noticing.
+
+const TERM = HOURS.terms['autumn-2026-classroom-pool-building-schedule'];
+const DOORS = (code, day) => TERM.buildings[code]?.hours[day];
+const COUNTS = roomsPerBuilding(INDEX);
+const opening = (day, nowMin) =>
+  nextOpening({ buildings: SLICE, counts: COUNTS, hoursFor: DOORS, day, nowMin });
+
+test('the first door after 11:40pm on a Monday is not one that opened this morning', () => {
+  // PAES at 5:00am is the earliest opening the Autumn table holds on any
+  // weekday, and it is 5h20 the wrong side of the minute being asked about.
+  const first = opening(1, 23 * 60 + 40);
+  assert.equal(first.day, 2, 'Tuesday');
+  assert.equal(first.opensAt, 300);
+  assert.match(first.name, /PAES/);
+  assert.equal(first.ties, 1);
+  assert.equal(openingPhrase(first, 1), `On Tuesday ${first.name} opens at 5:00am`);
+});
+
+test('three doors share 7:00am on a Saturday, and the sentence says so', () => {
+  const first = opening(6, 180);
+  assert.equal(first.day, 6, 'later the same morning, not Monday');
+  assert.equal(first.opensAt, 420);
+  assert.equal(first.name, 'Hitchcock Hall');
+  assert.equal(first.ties, 3);
+  const also = Object.keys(COUNTS).filter((c) => DOORS(c, 6)?.[0] === 420);
+  assert.deepEqual(also.sort(), ['072', '274', '338']);
+  assert.equal(openingPhrase(first, 6), 'Hitchcock Hall and 2 more open at 7:00am');
+});
+
+test('a Sunday afternoon door is named on the day it opens', () => {
+  const first = opening(0, 900);
+  assert.equal(first.opensAt, 960);
+  assert.equal(first.name, 'Pomerene Hall');
+  assert.equal(first.ties, 1);
+  assert.equal(openingPhrase(first, 0), 'Pomerene Hall opens at 4:00pm');
+});
+
+test('no hours table means no door, not a guessed one', () => {
+  assert.equal(nextOpening({ buildings: SLICE, counts: COUNTS, hoursFor: () => undefined, day: 1, nowMin: 0 }), null);
+  assert.equal(nextOpening({ buildings: SLICE, counts: {}, hoursFor: DOORS, day: 1, nowMin: 0 }), null);
+  assert.equal(nextOpening({ buildings: SLICE, counts: COUNTS, day: 1, nowMin: 0 }), null);
+  assert.equal(openingPhrase(null, 1), null);
+});
+
+test('every minute of the week, the first door is still ahead of you', () => {
+  // The whole point of the function. A door that opened this morning is not a
+  // door you can walk to now, and printing one is the bug the row phrases in
+  // js/app.js already record fixing once.
+  let checked = 0;
+  for (let day = 0; day < 7; day++) {
+    for (let m = 0; m < MINUTES_IN_DAY; m++) {
+      const first = opening(day, m);
+      assert.ok(first, `no door found at day ${day} minute ${m}`);
+      if (first.day === day) assert.ok(first.opensAt > m, `day ${day} minute ${m} named ${first.opensAt}`);
+      checked += 1;
+    }
+  }
+  assert.equal(checked, 7 * MINUTES_IN_DAY);
+});
+
+test('the gate names a weekday it can actually rank on', () => {
+  // A door and a ranked list are different promises, and on a Saturday they are
+  // 49 hours apart: the first door is 7:00am that morning, the first ranked
+  // room is 8:00am on Monday, because busyDay.weekdays[6] is false.
+  const busyDay = busyDayOf(CURRENT, INDEX);
+  assert.equal(busyDay.weekdays[6], false, 'Saturday carries no schedule');
+  assert.equal(busyDay.weekdays[0], false, 'nor does Sunday');
+  assert.equal(busyDay.earliestStart, 480);
+
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  // The day a reader takes the promise to mean. The clause's own day word wins;
+  // "today" means today; and with neither, the last day named before it carries
+  // over, because two adjacent sentences are read as one thought.
+  const readAs = (body, day) => {
+    const cut = body.indexOf('Vacant ranks rooms again');
+    const clause = body.slice(cut);
+    const before = body.slice(0, cut);
+    const own = days.find((d) => clause.includes(d));
+    if (own) return days.indexOf(own);
+    if (/ today at /.test(clause)) return day;
+    const carried = days.filter((d) => before.includes(d));
+    return carried.length ? days.indexOf(carried[carried.length - 1]) : day;
+  };
+  let promises = 0;
+  for (let day = 0; day < 7; day++) {
+    for (let m = 0; m < MINUTES_IN_DAY; m++) {
+      const said = unscheduledGate({ busyDay, day, nowMin: m, opening: opening(day, m) });
+      if (!said.body.includes('Vacant ranks rooms again')) continue;
+      promises += 1;
+      const on = readAs(said.body, day);
+      assert.ok(busyDay.weekdays[on], `${days[day]} ${clock(m)} promises rooms on ${days[on]}: ${said.body}`);
+      // And it is the day the app actually means, not merely a teaching day.
+      let meant = null;
+      for (let ahead = 0; ahead < 7 && meant === null; ahead++) {
+        const d = (day + ahead) % 7;
+        if (busyDay.weekdays[d] && !(ahead === 0 && m >= busyDay.earliestStart)) meant = d;
+      }
+      assert.equal(on, meant, `${days[day]} ${clock(m)}: ${said.body}`);
+    }
+  }
+  assert.equal(promises, 7 * MINUTES_IN_DAY, 'every minute outside the schedule promises the list back');
+});
+
+test('the gate says what the clock is doing without repeating its own button', () => {
+  const busyDay = busyDayOf(CURRENT, INDEX);
+  const button = 'Show nearest buildings';
+  for (const [day, m, want] of [
+    [1, 23 * 60 + 40, /^Classes are done for the day\./],
+    [2, 120, /^Classes have not started yet\./],
+    [6, 180, /^No classes are scheduled today\./],
+  ]) {
+    const said = unscheduledGate({ busyDay, day, nowMin: m, opening: opening(day, m) });
+    assert.match(said.body, want);
+    assert.ok(said.body.length > 0, 'the paragraph is not empty');
+    assert.equal(said.body.split('\n').length, 1, 'one line');
+    assert.notEqual(said.heading, button);
+    assert.ok(!said.heading.includes(button) && !button.includes(said.heading), said.heading);
+    // docs/DECISIONS.md 2026-08-29 took the per-building room count off this
+    // screen. This line is not a way back in.
+    assert.doesNotMatch(said.body, /classroom|\d+ rooms?\b/);
+  }
+});
+
+test('a Saturday night names Monday for rooms and Saturday morning for the door', () => {
+  const busyDay = busyDayOf(CURRENT, INDEX);
+  const said = unscheduledGate({ busyDay, day: 6, nowMin: 180, opening: opening(6, 180) });
+  assert.equal(said.heading, 'Saturday, 3:00am');
+  assert.equal(
+    said.body,
+    'No classes are scheduled today. Hitchcock Hall and 2 more open at 7:00am. ' +
+      'Vacant ranks rooms again on Monday at 8:00am.',
+  );
+});
+
+test('the closed group breaks a distance tie on which door opens first', () => {
+  // A sort key that never moves a row is decoration. Measured over a 12x12 grid
+  // on the campus box at every quarter hour of every day: 4,066 of 96,768
+  // closed lists come out in a different order, 4.20%.
+  const lats = Object.values(SLICE).map((b) => b.lat);
+  const lons = Object.values(SLICE).map((b) => b.lon);
+  const box = { s: Math.min(...lats), n: Math.max(...lats), w: Math.min(...lons), e: Math.max(...lons) };
+  const byWalk = (a, b) => a.walk - b.walk || a.metres - b.metres;
+  let lists = 0;
+  let moved = 0;
+  for (let i = 0; i < 12; i++) {
+    for (let j = 0; j < 12; j++) {
+      const origin = { lat: box.s + ((box.n - box.s) * i) / 11, lon: box.w + ((box.e - box.w) * j) / 11 };
+      for (let day = 0; day < 7; day++) {
+        for (let m = 0; m < MINUTES_IN_DAY; m += 15) {
+          const { closed } = rankBuildings({ origin, buildings: SLICE, counts: COUNTS, hoursFor: DOORS, day, nowMin: m });
+          lists += 1;
+          for (let k = 0; k + 1 < closed.length; k++) {
+            const [a, b] = [closed[k], closed[k + 1]];
+            assert.ok(byWalk(a, b) <= 0, 'the walk still leads');
+            if (byWalk(a, b) !== 0) continue;
+            moved += 1;
+            assert.ok(
+              (a.opensAt ?? MINUTES_IN_DAY + 1) <= (b.opensAt ?? MINUTES_IN_DAY + 1),
+              `${a.code} opens ${a.opensAt} above ${b.code} opens ${b.opensAt}`,
+            );
+          }
+        }
+      }
+    }
+  }
+  assert.equal(lists, 96768);
+  assert.ok(moved > 0, 'the tiebreak decided nothing, so it is decoration');
 });

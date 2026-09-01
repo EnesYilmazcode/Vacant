@@ -1953,3 +1953,81 @@ the per-row spoken name stay at full length. The visible row is glyphs; the
 spoken name is the only place it states its own caveat in words, and shrinking
 the visible layer is exactly the reason the spoken one must not shrink with it.
 `docs/a11y-contract.md` specifies the order.
+
+## 2026-09-01  The ordinary night gets a sentence back, and it names the first door
+
+Partly reverses **2026-08-29 Less is more** for the question screen only. That
+entry cut the "Nothing is scheduled right now" heading and its paragraph and was
+right to: both said the same thing and neither was what the reader wanted. But
+the cut left `paintGate` borrowing the buildings screen's pair, so at 11:40pm on
+a Monday the whole app was one card reading `Nearest buildings` over an empty
+paragraph, above a button reading `Show nearest buildings`, inside an orange
+border. Three ways of saying nothing.
+
+The gate now says the minute in its heading and one line under it. Everything
+that entry deleted from the *buildings* screen stays deleted, and the
+per-building classroom count does not come back on either screen.
+
+```
+                 before                        after
+  heading        Nearest buildings             Monday, 11:40pm
+  paragraph      (empty)                       Classes are done for the day. On
+                                               Tuesday PAES opens at 5:00am and
+                                               Vacant ranks rooms again at 8:00am.
+  button         Show nearest buildings        Show nearest buildings
+  border         --warn (orange)               --line
+```
+
+**One line, three facts, and the last two are not the same fact.** A door opening
+and a ranked room list coming back are different promises. On a Saturday they are
+49 hours apart: the first door is 7:00am that morning, and the first ranked room
+is 8:00am on Monday, because only 5 of the 46 buildings publish Saturday hours
+and `busyDay.weekdays[6]` is false. So the sentence never says "rooms at 8am" on
+a day the schedule does not cover; it names Monday.
+
+**The day word is load-bearing, and it was wrong in a window nobody would have
+found by hand.** The last weekday door opens at 7:00am, so between 7:00 and 7:59
+on a weekday the next door is *tomorrow's*, and a bare "and Vacant ranks rooms
+again at 8:00am" sitting behind "On Saturday" reads as Saturday when it means 59
+minutes away. 300 minutes of the week, one hour every weekday, immediately
+before class. The clause now carries `today` in exactly that case. A test sweeps
+all 10,080 minutes of the week and reads each sentence the way a person would:
+the clause's own day word wins, `today` means today, and with neither the last
+day named before it carries over, because two adjacent sentences are read as one
+thought.
+
+**Orange means a refusal, not a clock.** `#gate` wore `--warn` on every state it
+can reach. Four of those are only the time of day, and `--warn` is what a missing
+fact looks like on every other screen. `paintGate` now adds `.refusal` for the
+six branches `refusedState` dresses and leaves it off for the night. Asserted on
+the computed border colour, not on the class name: Labor Day at 2:00pm comes out
+`rgb(255, 176, 46)`, Monday at 11:40pm comes out `rgb(29, 35, 44)`.
+
+**The buildings screen says the door it already knew about.** Between midnight
+and 5am `groups.open` is empty and the screen printed `Everything is closed right
+now.` while holding all 46 opening times. It now reads
+`Everything is closed. Hitchcock Hall and 2 more open at 7:00am.` The bare
+sentence is kept for an hours table with no doors in it at all.
+
+`nextOpening` is location-free on purpose. Three buildings open together at
+7:00am on both weekend days, and nothing in `js/state.js` knows where the reader
+is standing, so it cannot call one of the three the nearest. It names the first
+the index reaches and the count carries the other two.
+
+**A sort key that never moves a row is decoration, so it was measured.** The
+closed group gets `opensAt` as a last-resort tiebreak under the walk. Over a
+12x12 grid on the campus box at every quarter hour of every day, 4,066 of 96,768
+closed lists (4.20%) come out in a different order, and no row moves more than
+two places. The case it catches: Cockins Hall and Agricultural Engineering are
+both 1,003 m from the south of campus, one opening at 12:30pm on a Sunday and the
+other published shut all day, and without the key the shut one sorted first.
+
+**A heading is not a control.** `focusHeading` moves focus to an `h2` so the
+reader lands on the new screen. A script focus is scored with the modality of the
+last real input, so a heading reached from the keyboard matched `:focus-visible`
+and wore the 3px ring meant for buttons. Measured headless on main: the buildings
+heading reached by mouse comes out `outline: none`, the same heading reached by
+Tab comes out `outline: solid 3px`, and the Sources heading behaves the same way.
+`focus({ focusVisible: false })` is `none` on both routes. The `h2[tabindex="-1"]`
+rule in index.html is the same answer for an engine that has not implemented the
+option and drops it in silence.

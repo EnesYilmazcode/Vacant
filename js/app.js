@@ -29,13 +29,16 @@ import {
   dur,
   inScheduledHours,
   isoDate,
+  nextOpening,
   now as clockNow,
+  openingPhrase,
   pinClock,
   rankBuildings,
   resolveState,
   roomsPerBuilding,
   spokenClock,
   staleness,
+  unscheduledGate,
   windowPhrase,
 } from './state.js';
 import {
@@ -191,10 +194,19 @@ const say = (text) => {
 // The only announcement that is not the result count. A screen that refuses has
 // nothing to count, and a message nobody's focus lands on is a message nobody
 // reads.
+//
+// focusVisible is the half that is not obvious. A script focus is scored with
+// the modality of the last real input, so a heading reached from the keyboard
+// matches :focus-visible and wears the ring meant for controls. Driven headless
+// on main: the buildings heading reached by mouse comes out outline none, the
+// same heading reached by Tab comes out outline solid 3px, and the Sources
+// heading behaves the same way. With the option it is none on both routes.
+// Anything that has not implemented the option ignores it in silence, which is
+// what the h2 rule in index.html is there for.
 function focusHeading(el) {
   if (!el) return;
   el.setAttribute('tabindex', '-1');
-  el.focus({ preventScroll: true });
+  el.focus({ preventScroll: true, focusVisible: false });
 }
 
 // ---------------------------------------------------------------- rendering
@@ -749,6 +761,20 @@ function attachChips() {
 
 // ------------------------------------------------------- the buildings screen
 
+// The first door, with the building named the way the rows name it. The
+// question screen and the buildings screen both ask, so it is worked out in
+// one place and they cannot answer it differently at the same minute.
+function firstDoor(now) {
+  const opening = nextOpening({
+    buildings: state.buildings,
+    counts: state.counts,
+    hoursFor,
+    day: now.getDay(),
+    nowMin: nowMinutes(now),
+  });
+  return opening ? { ...opening, name: shortName(opening.name) } : null;
+}
+
 // The answer for 9:40pm on a Thursday and for every hour of every weekend. The
 // schedule constrains roughly 943 of the 8,760 hours in a year, and outside it
 // a ranked room list is a distance sort wearing the clothes of a schedule
@@ -819,6 +845,9 @@ function paintNear(reason) {
        <div id="closed-list" hidden>${groups.closed.map(row).join('')}</div>`
     : '';
 
+  const door = openingPhrase(firstDoor(now), state.day);
+  const closedNow = door ? `Everything is closed. ${door}.` : 'Everything is closed right now.';
+
   $('near').innerHTML =
     `<h2 class="msg" id="near-h" tabindex="-1">${esc(reason.head)}</h2>
      <p class="why">${esc(reason.body)}</p>` +
@@ -826,8 +855,10 @@ function paintNear(reason) {
     // The one state this screen can reach with nothing at the top: every door
     // we have hours for is shut, which is most of the night. The old sentence
     // here blamed a missing coordinate, and no shipped building has ever been
-    // missing one.
-    (groups.open.length ? '' : '<p class="empty">Everything is closed right now.</p>') +
+    // missing one. It then said only that everything was closed, on a screen
+    // already holding all 46 opening times, so it names the first one now and
+    // keeps the bare sentence for a table with no doors in it.
+    (groups.open.length ? '' : `<p class="empty">${esc(closedNow)}</p>`) +
     closedGroup +
     FOOT_ACTS;
 
@@ -1765,18 +1796,35 @@ function refresh() {
 // before any room is ranked.
 function paintGate() {
   const s = state.situation;
-  const stale = staleness({ now: clockNow(), current: state.current });
+  const now = clockNow();
+  const stale = staleness({ now, current: state.current });
   $('stale').hidden = stale.level === 'silent' || stale.level === 'gated';
   $('stale').textContent = stale.text;
   $('stale').classList.toggle('banner', stale.level === 'banner');
+
+  // An ordinary Monday night is not a fault. --warn is what a missing fact looks
+  // like on every other screen, and this card wore it on every state it can
+  // reach, including the 6,405 minutes of the week the schedule does not cover
+  // at all. Cleared here rather than in the branch below, so a gate hidden by a
+  // ranked minute cannot keep it either.
+  $('gate').classList.remove('refusal');
 
   if (!s || s.ranked) {
     $('gate').hidden = true;
     $('ask-q').hidden = false;
     if (!state.scheduled && state.ready) {
       $('ask-q').hidden = true;
-      $('gate-h').textContent = UNSCHEDULED.head;
-      $('gate-p').textContent = UNSCHEDULED.body;
+      // Not UNSCHEDULED. That pair belongs to the buildings screen, and
+      // borrowing it here printed "Nearest buildings" over an empty paragraph,
+      // above a button reading "Show nearest buildings".
+      const said = unscheduledGate({
+        busyDay: busyDayOf(state.current, state.rooms),
+        day: now.getDay(),
+        nowMin: nowMinutes(now),
+        opening: firstDoor(now),
+      });
+      $('gate-h').textContent = said.heading;
+      $('gate-p').textContent = said.body;
       $('gate-d').hidden = true;
       $('gate-go').hidden = false;
       $('gate-go').textContent = 'Show nearest buildings';
@@ -1788,6 +1836,7 @@ function paintGate() {
   }
 
   $('ask-q').hidden = true;
+  $('gate').classList.add('refusal');
   $('gate-h').textContent = s.heading;
   $('gate-p').textContent = s.body;
   $('gate-d').textContent = s.detail ?? '';

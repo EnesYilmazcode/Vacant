@@ -1,14 +1,8 @@
 {
  "source": "https://content.osu.edu/v2/classes/searchableTermsV2",
- "checked": "2026-08-27T22:06:50Z",
+ "checked": "2026-09-01T19:04:39Z",
  "note": "searchableFrom and searchableUntil are search visibility windows, not academic dates.",
  "terms": [
-  {
-   "strm": "1262",
-   "descr": "Spring 2026",
-   "searchableFrom": "2025-09-08",
-   "searchableUntil": "2026-08-31"
-  },
   {
    "strm": "1264",
    "descr": "Summer 2026",

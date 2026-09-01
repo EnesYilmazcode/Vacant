@@ -360,8 +360,10 @@ such window. Measured right now:
  {"strm":"1264","descr":"Summer 2026","startDate":"2026-01-26","endDate":"2027-01-01"}]
 ```
 
-**Three terms are searchable, all year, every year.** Each visibility window is about
-eleven months long, so two or three always overlap. Registration season is not special.
+**Two or three terms are searchable at a time.** Each visibility window is about eleven
+months long, so they overlap. Registration season is not special. This said "three, all
+year, every year" until 2026-09-01, when Spring 2026 left on its published `endDate` and
+the list held two for the first time. Three is the common case, not the floor.
 
 And as [`schedule-edge-cases.md`](schedule-edge-cases.md) already recorded, those
 `startDate` and `endDate` fields are search visibility, not academic dates. Autumn 2026

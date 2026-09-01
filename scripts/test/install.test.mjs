@@ -261,3 +261,20 @@ test('a bar has no fixed position of its own', () => {
   const bar = rule('\n  .bar {');
   assert.equal(/position: fixed|bottom: 0|z-index/.test(bar), false, 'a .bar positions itself');
 });
+
+// ---- sheet-frame
+
+test('the rail gives its height back to the sheet, not to a pane inside it', () => {
+  // The duration chips are a sibling of the pane and sit below it, so padding
+  // #list moved them nowhere. With both bars up, elementFromPoint at the centre
+  // of all four chips returned an element inside #bars at 375x667, 393x852 and
+  // 430x932, and the app's one question was unhittable on all three.
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const at = css.indexOf('body.has-bar');
+  assert.ok(at > 0, 'nothing gives the rail height back');
+  const block = css.slice(at, css.indexOf('}', at) + 1);
+  assert.match(block, /^body\.has-bar #sheet[ {]/, 'a pane inside the sheet is paying for the rail');
+  assert.match(block, /padding-bottom: calc\(var\(--safe-b\) \+ var\(--bar-h, 0px\)\)/);
+  // One rule only. A second would have the sheet and a pane both paying.
+  assert.equal(css.split('body.has-bar').length - 1, 1, 'the rail is compensated twice');
+});

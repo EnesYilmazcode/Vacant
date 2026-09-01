@@ -104,9 +104,23 @@ const FULL = 0.78;
 // grid are on screen before anybody scrolls.
 const ROOM_SHEET = 0.72;
 
-// Drag the sheet this far below peek and it means "take me back to the
-// question", which is the same action the back arrow fires.
-const DISMISS_PX = 44;
+// Where the sheet rests on each screen, written down once. viewport() used to
+// hold a second copy of this that said peek on every screen, so the room screen
+// framed the walk line for a 324px sheet and then drew it under a 613px one:
+// measured at 393x852, 164 of the 206px of target ink came out under the panel.
+const REST = { ask: 0, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: FULL, about: FULL };
+const restFraction = () => REST[state.screen] ?? PEEK;
+
+// The whole of the sheet's travel below peek. Pull the grip through it and the
+// release means "take me back to the question", which is the same action the
+// back arrow fires; the sheet stops dead under the finger at the bottom, so the
+// gesture has to be held there rather than flicked past.
+//
+// It was 44px and every pointerdown on the sheet could reach it. A 60px pull on
+// a row at the top of the list, where the pane has nothing left to scroll so the
+// drag becomes a sheet drag, threw the list, the selection and the scroll
+// position away. A drag that starts on a pane bottoms out at peek now.
+const DISMISS_PX = 88;
 
 // A fix this coarse turns every walk time into an estimate, so the row says
 // "~4 min" and the accessible name says "about 4 minutes".
@@ -225,7 +239,8 @@ function surface() {
 // sheet is not covering, and the map centres on the middle of THAT, which is
 // what puts the you-dot back on screen.
 //
-// It is the strip at the sheet's RESTING height, not at its current one.
+// It is the strip at the screen's RESTING height, not at the sheet's current
+// one, and REST is where that height is written down.
 // `band` feeds both the vertical centring and the zoom, through
 // `Math.min(width, band)` in js/map.js, so tracking the live drag meant the map
 // zoomed out and slid upward under the thumb every time the sheet was pulled
@@ -242,7 +257,7 @@ function viewport() {
   return {
     width,
     height,
-    band: state.screen === 'ask' ? height : Math.round(height * (1 - PEEK)),
+    band: Math.round(height * (1 - restFraction())),
     dpr: lastSize.dpr || Math.min(window.devicePixelRatio || 1, 2),
   };
 }
@@ -333,9 +348,9 @@ let sheetH = 0;
 // without firing a scroll event, so the paint has to re-sync touch-action.
 let syncPaneTouch = () => {};
 
-function setSheet(px, snap) {
+function setSheet(px, snap, floor = PEEK * window.innerHeight - DISMISS_PX) {
   const H = window.innerHeight;
-  const h = Math.max(PEEK * H - DISMISS_PX * 2, Math.min(FULL * H, px));
+  const h = Math.max(floor, Math.min(FULL * H, px));
   sheetH = h;
   const sheet = $('sheet');
   sheet.classList.toggle('snap', Boolean(snap));
@@ -370,6 +385,11 @@ function attachSheet() {
       lastT: e.timeStamp,
       v: 0,
       mode,
+      // Only the grip may take the sheet below peek, and below peek is the one
+      // place a release throws the answer away. Fixed at the start of the
+      // gesture, because a pending drag becomes a sheet drag on the first 8px
+      // and must not pick up the grip's reach on the way.
+      floor: PEEK * window.innerHeight - (mode === 'sheet' ? DISMISS_PX : 0),
       pane: pane(),
     };
   };
@@ -418,7 +438,7 @@ function attachSheet() {
     // A finger that dragged is not a finger that tapped a row.
     swallow = true;
     if (drag.mode === 'scroll') drag.pane.scrollTop = Math.max(0, -dy);
-    else setSheet(drag.h0 - dy, false);
+    else setSheet(drag.h0 - dy, false, drag.floor);
     e.preventDefault();
   });
 
@@ -432,7 +452,9 @@ function attachSheet() {
     const H = window.innerHeight;
     const peek = PEEK * H;
     const full = FULL * H;
-    if (sheetH < peek - DISMISS_PX) {
+    // The end of the grip's travel, not a nudge past peek. A drag that started
+    // on a pane has its floor AT peek, so it never gets here.
+    if (sheetH <= peek - DISMISS_PX) {
       setSheet(peek, true);
       toAsk();
       return;
@@ -713,7 +735,7 @@ function select(i) {
   }
   state.selected = r;
   markRows();
-  setSheet(PEEK * window.innerHeight, true);
+  setSheet(restFraction() * window.innerHeight, true);
   frame(r);
   say(`${roomLabel(r)}, ${r.walk} minute walk, shown on the map.`);
 }
@@ -853,7 +875,7 @@ function selectBuilding(code) {
   if (!b) return;
   const found = [...state.groups.open, ...state.groups.unknown, ...state.groups.closed].find((x) => x.code === code);
   state.selected = { id: code, building: code, walk: found?.walk ?? null };
-  setSheet(PEEK * window.innerHeight, true);
+  setSheet(restFraction() * window.innerHeight, true);
   frame(state.selected);
   say(`${shortName(b.name)}, shown on the map.`);
 }
@@ -1609,16 +1631,15 @@ function showAsk() {
   if (orientationOff) orientationOff();
 }
 
-function sheetHeight(fraction) {
-  if (!sheetH) setSheet(fraction * window.innerHeight, false);
-  else setSheet(sheetH, false);
+function sheetHeight() {
+  setSheet(sheetH || restFraction() * window.innerHeight, false);
 }
 
 function showList() {
   showPane('list');
   $('back').setAttribute('aria-label', 'Back to the question');
   $('list').scrollTop = state.listScroll;
-  sheetHeight(PEEK);
+  sheetHeight();
 }
 
 function showNear() {
@@ -1627,7 +1648,7 @@ function showNear() {
   $('back').setAttribute('aria-label', 'Back to the question');
   paintNear(nearReason());
   $('near').scrollTop = 0;
-  sheetHeight(PEEK);
+  sheetHeight();
   focusHeading($('near-h'));
   settle();
 }
@@ -1638,14 +1659,14 @@ function showPick() {
   $('back').setAttribute('aria-label', 'Back without picking a building');
   paintPick();
   $('pick').scrollTop = 0;
-  setSheet(FULL * window.innerHeight, true);
+  setSheet(restFraction() * window.innerHeight, true);
   focusHeading($('pick-h'));
 }
 
 function showAbout() {
   showPane('about');
   $('back').setAttribute('aria-label', 'Back');
-  setSheet(FULL * window.innerHeight, true);
+  setSheet(restFraction() * window.innerHeight, true);
   paintAbout();
 }
 
@@ -1683,7 +1704,7 @@ function showRoom(id, { keepDay = false } = {}) {
   // whose first two hours are the only ones above the fold is a calendar
   // nobody scrolls. The map keeps its own composition either way, because the
   // sheet no longer feeds the viewport.
-  setSheet(ROOM_SHEET * window.innerHeight, true);
+  setSheet(restFraction() * window.innerHeight, true);
   if (r) {
     markRows();
     frame(r);
@@ -2021,7 +2042,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   attachSheet();
   window.addEventListener('resize', () => {
-    if (state.screen !== 'ask') setSheet(sheetH || PEEK * window.innerHeight, false);
+    if (state.screen !== 'ask') sheetHeight();
   });
 
   // Drag to pan, wheel or pinch to zoom. Once a finger has moved the camera the

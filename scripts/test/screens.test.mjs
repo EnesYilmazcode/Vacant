@@ -867,3 +867,22 @@ test('past the cap the busy list is what loses entries, and it says how many', (
   assert.ok(block.startsWith('build'), 'the head survives the cap');
   assert.ok(block.includes('DL0357'), 'the room line survives the cap');
 });
+
+// ---- sheet-frame
+
+test('where the sheet rests on each screen is written down once', () => {
+  // viewport().band is the strip the sheet is NOT covering, and it held a
+  // second copy of the resting height that said peek on every screen. The room
+  // screen opens at 0.72, so the walk line was composed for a 324 px sheet and
+  // then drawn under a 613 px one.
+  const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const rest = src.match(/^const REST = \{(.+)\};$/m);
+  assert.ok(rest, 'no table of resting heights');
+  for (const screen of ['ask', 'list', 'near', 'room', 'pick', 'about']) {
+    assert.match(rest[1], new RegExp(`\\b${screen}:`), `REST says nothing about the ${screen} screen`);
+  }
+  const at = src.indexOf('function viewport()');
+  const body = src.slice(at, src.indexOf('\n}', at));
+  assert.match(body, /band: Math\.round\(height \* \(1 - restFraction\(\)\)\)/);
+  assert.equal(/state\.screen/.test(body), false, 'viewport() decides the resting height a second time');
+});

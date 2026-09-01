@@ -1953,3 +1953,43 @@ the per-row spoken name stay at full length. The visible row is glyphs; the
 spoken name is the only place it states its own caveat in words, and shrinking
 the visible layer is exactly the reason the spoken one must not shrink with it.
 `docs/a11y-contract.md` specifies the order.
+
+
+## 2026-09-01  The sheet stops covering the question, and the room screen frames its own band
+
+**The install rail is paid for by the sheet, not by a pane inside it.**
+`body.has-bar` padded `#list` and `#room`. Those are panes INSIDE `#sheet`, and
+the duration chips are the pane's sibling below it, so they moved nowhere. With
+both bars up, `elementFromPoint` at the centre of all four chips returned an
+element inside `#bars` at 375x667, 393x852 and 430x932: the app's one question
+was unhittable at every size tried. `body.has-bar #sheet` lifts everything the
+sheet holds, and it is 4 of 4 at all three now. `docs/media/list.webp` was
+shipping the bug, with the install hint sitting where the chips belong.
+
+**Only the grip can throw the answer away.** A 44 px drag anywhere on the sheet
+fired the same dismiss the back arrow fires. A 60 px pull on a row at the top of
+the list, where the pane has nothing left to scroll so the gesture turns into a
+sheet drag, ended on the question screen with the list, the selection and the
+scroll position gone. A drag that starts on a pane now bottoms out at peek, and
+the grip has to be pulled through the whole 88 px below peek before a release
+means anything.
+
+`showAsk()` was NOT touched. js/app.js documents that dismiss as the same action
+the back arrow fires, so teaching it to keep `state.listScroll` would have
+redefined the back arrow with it. Only the trigger narrowed.
+
+**The map's band belongs to the screen, not to the sheet.** `viewport()` held a
+second copy of the resting height that said peek on every screen, so the room
+screen composed the walk line for a 324 px sheet and then drew it under a 613 px
+one. Measured off the canvas at 393x852, 164 of the 206 px of target ink came out
+under the panel and 0 of 122 does now; 77.8% at 375x667 and 80.7% at 430x932 both
+go to 0 as well. `REST` is the one place the resting height is written down, and
+both `setSheet` and `viewport()` read it.
+
+The cost, taken deliberately: the band is keyed to the screen's OPENING height
+and not to the sheet's live one, so a room sheet dragged back down to peek
+uncovers 528 px of map with the target still composed for the 239 it opened with,
+framed high rather than centred. Keying it to the live height is the bug the
+entry above fixed, where the map zoomed out and slid upward under the thumb every
+time the sheet moved. scripts/test/map.test.mjs asserts the residual so it cannot
+arrive as a surprise.

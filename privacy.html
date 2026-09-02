@@ -95,8 +95,11 @@
   stairwell with no signal gets you the browser's error page rather than a room. That
   is worth saying plainly because the reason to have no backend is often given as
   "it works offline", and today it does not.</p>
-  <p>Your position is read once per search, held in a variable, and gone when you
-  close the tab. The app asks for it once and does not keep watching. It is never
+  <p>Your position is held in a variable and gone when you close the tab. It is
+  read once when you open the app, and then followed while the app is on screen,
+  because a walk time measured from where you were standing five minutes ago is
+  not a walk time. The following stops the moment you switch away or lock the
+  phone, and it never starts at all if you picked a building by hand. It is never
   written to storage, never put in a URL, and never attached to anything the app
   caches. You can check: every line of the app is at
   <a href="https://github.com/EnesYilmazcode/Vacant">github.com/EnesYilmazcode/Vacant</a>,

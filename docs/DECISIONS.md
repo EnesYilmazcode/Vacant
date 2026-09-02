@@ -2539,3 +2539,106 @@ student in a standalone window, or lands them on a web page instead of an app.
 Then #86's option 4 wins, the button goes, and #78 closes as "removed" with #52
 restored intact rather than struck. Nothing else reopens it: the in-app line
 answering "where is it" offline was always true and was never the argument.
+---
+
+## 2026-09-02  The position is followed while you walk, and the list is gated so it cannot re-sort under a thumb
+
+**Decided.** `navigator.geolocation.watchPosition` starts once the boot fix has
+landed, and every position it delivers goes through the same `useOrigin` and
+`refresh()` path the app already had. [#87](https://github.com/EnesYilmazcode/Vacant/issues/87)
+option 1. Before this the app asked the phone where it was exactly once, at
+launch, and ranked every answer for the rest of the session from that point: the
+product is one number, `usable = window - walk - packup`, and the walk was
+measured from a place the student leaves the moment they set off toward the room.
+
+**What the walk is gated by.** Two thresholds, both in `js/state.js`:
+
+- `FOLLOW_M = 40`. A position nearer than this to the last one acted on is
+  dropped. 40 m is 0.51 minutes at the engine's `WALK_MPM` of 78, so no figure on
+  screen can be a whole minute stale inside it, and it sits under the `COARSE_M`
+  of 75 at which the app already stops quoting a plain number and starts printing
+  "~4 min". Above that line it would be re-ranking on the difference between two
+  readings of one spot.
+- `FOLLOW_MS = 15000`. A floor on how often a re-rank may happen at all, for the
+  stationary phone whose readings wander. Somebody actually walking covers 40 m
+  every 31 seconds at that pace, so it costs a walker at most one fix. **This
+  number is not measured.** It is the one that would move if the battery run
+  below were ever done.
+
+**What the repaint is gated by, and this is the part that took the work.**
+`refresh()` carries its own rule — *a list that re-sorts under a thumb loses the
+row somebody was reaching for* — and a watch is exactly the thing that breaks it.
+`followAction()` in `js/state.js` is the whole gate, and the order of its tests
+is the rule:
+
+| on screen | what a fix does |
+| --- | --- |
+| a building picked by hand | nothing. The watch closes. A deliberate choice is not a sensor reading and does not expire |
+| a finger down on the sheet | the dot and the line move. The order stands |
+| a room open | the walk minutes and the claim's "yours for" duration are redrawn in place. The ranking behind it is not touched |
+| a row selected | the dot and the line move. The order stands |
+| the list scrolled below the top | the dot and the line move. The order stands |
+| the picker or the about pane | the dot moves. `answer()` would reframe the camera and repaint a list nobody can see |
+| an idle, untouched list, the buildings screen, or the question | re-ranked |
+
+The dot and the line cost nothing to move: the render loop reads `state.origin`
+every frame, so a held fix has already moved both by the time the gate is
+consulted. What is gated is only who may re-order.
+
+**Decided against.** #87's option 2, a fresh `getCurrentPosition` on foreground
+return only. It is most of the value for a fraction of the risk and it remains
+the fallback if a phone says the watch costs too much, but it does not fix the
+case the app is actually used in: open in your hand, walking. Option 3, marking
+the walk times as approximate instead of fixing them, was ranked below both in
+the issue and makes the student do the work.
+
+**Three things that did not change, deliberately.** `enableHighAccuracy` stays
+`false` on both the boot fix and the watch: high accuracy is what holds the GPS
+chip awake, and ranking by walk minutes across a campus 2.2 km wide has never
+needed 5 m. `pickedOrigin()` still short-circuits before geolocation is asked at
+all. And `refresh()` is still never on a timer — the watch is driven by the
+phone's position, not by a clock, and `scripts/test/follow.test.mjs` fails if a
+`setInterval` or a `setTimeout(refresh)` appears in `js/app.js`.
+
+**One thing that did.** `maximumAge` is 0 on the watch where the boot fix keeps
+60 s. A cached minute-old position is worth having on the path to the first
+answer, where the student has not walked anywhere yet; on the watch it is 78 m of
+walking, nearly two `FOLLOW_M`, which is the exact staleness being removed.
+
+**The off-campus circle moved.** `OFF_CAMPUS_KM` ran inside `locate()` and
+therefore only on the first fix, so a student who walked out of it with the app
+open kept a ranking measured from the last point inside and never saw the note.
+It is now `offCampus()`, called from the boot fix and from every accepted
+position.
+
+**Cost.** `js/app.js` 32,495 to 35,735 bytes gzipped, +3,240 on the shell, which
+is mostly comment: the logic is about twenty lines. The whole shell is 87,588
+bytes gzipped and `sw.js`'s header figure was re-measured with it (gzip 1.12,
+same `-9`). No new module,
+nothing added to the worker's asset list, and nothing added to the boot path —
+the watch starts after the first fix rather than beside it, because two position
+callbacks racing to be the first origin is two answers to the question the app
+opens with.
+
+**What is not measured, and it is the done-when this entry cannot close.** The
+issue asks for the battery cost of a 15 minute walk with the app open, measured
+on a real phone, written down here. **No phone was involved in any of this and no
+battery measurement exists.** Nothing below has been observed:
+
+- what a coarse watch actually costs over a quarter of an hour of walking
+- whether an installed iOS PWA holds the watch at all, which is
+  [#5](https://github.com/EnesYilmazcode/Vacant/issues/5), and whether it
+  survives the standalone window being backgrounded and returned to
+- how often a phone standing still crosses the 40 m line in practice, which is
+  the number `FOLLOW_MS` was guessed against
+- whether the room screen's repaint is invisible to a reader, or whether the
+  scroll and focus restoration in `repaintRoom` shows
+
+`scripts/test/follow.test.mjs` is the evidence that exists instead: 25 tests, one
+per gate, each checked to go red when its gate is deleted.
+
+**What would reverse this.** A phone showing the watch is expensive, or an
+installed iOS window that cannot hold one. Then the watch goes, #87 closes on
+option 2 — a fresh fix folded into the foreground-return `refresh()` — and this
+entry gets a successor saying so. `followAction()` survives either way: option 2
+lands on the same gates.

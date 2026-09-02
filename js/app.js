@@ -677,6 +677,32 @@ function seatsOf(r) {
     : { html: 'seats unknown', say: 'seat count not published' };
 }
 
+// The one word docs/BACKLOG.md's parked decision asked for, and the reason the
+// row is where it is: the room is not on the Registrar's general-assignment
+// list, so a department holds the key. 98 of the 425 shipped rooms, and the
+// ranking now puts every one of them below a general-assignment room. Written
+// out for a screen reader, because "departmental" alone next to a seat count is
+// a word with no sentence around it.
+//
+// A room the index says nothing about is not labelled: `ga` is absent from
+// every room of an index built before the general-assignment pull, and a label
+// on all 425 rows would say nothing at all.
+//
+// Plain text in the window line, not a `<b>`. `.r-win b` is `--fg` at weight
+// 650 on a line that is otherwise `--dim`, and it exists for the free-window --
+// the promise the row is making. windowOf and seatsOf emit plain text, so a
+// bolded caveat would have been the ONLY emphasised token on the row: the
+// reason the room ranks low, shouting over the reason it is on screen at all. A
+// word among numbers, after the same middot the seat count uses, is already
+// distinct enough. No class either: the one it carried was never styled
+// anywhere in index.html, and a hook nothing reaches for is a hook that
+// misleads the next person who greps for it.
+function deptOf(r) {
+  return r.ga === false
+    ? { html: ' &middot; departmental', say: ', departmental, not a general-assignment room' }
+    : { html: '', say: '' };
+}
+
 const WALK_ICON = '<svg class="ico" aria-hidden="true"><use href="#i-walk"/></svg>';
 const CHEV = '<svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg>';
 
@@ -780,15 +806,16 @@ function paintList() {
         const label = roomLabel(r);
         const win = windowOf(r);
         const seats = seatsOf(r);
+        const dept = deptOf(r);
         const walkSay = coarse ? `about ${r.walk} minutes walk` : `${r.walk} minute walk`;
         // The visible row is glyphs and an icon. The name a screen reader gets
         // is written out, because the computed name would be "Page Hall 110B 4
         // min": no unit, no window, no caveat.
-        const name = `${label}, ${walkSay}, ${win.say}, ${seats.say}. Class schedule only, the door may be locked.`;
+        const name = `${label}, ${walkSay}, ${win.say}, ${seats.say}${dept.say}. Class schedule only, the door may be locked.`;
         return `<button type="button" class="row" data-i="${i}" aria-label="${esc(name)}">
         <span class="r-name">${esc(label)}</span>
         <span class="r-walk">${WALK_ICON}${coarse ? '~' : ''}${r.walk} min</span>
-        <span class="r-win">${win.html} &middot; ${seats.html}</span>
+        <span class="r-win">${win.html} &middot; ${seats.html}${dept.html}</span>
         <span class="r-chev"></span>
       </button>`;
       })
@@ -1491,6 +1518,18 @@ function roomHtml(id) {
     walk == null ? '' : `<span class="w">${WALK_ICON}${walk} min walk</span>`,
     room.cap ? `<span>${room.cap} seats</span>` : '<span>seats unknown</span>',
     type ? `<span>${esc(type)}</span>` : '',
+    // The same word the row carries, on the screen a student lands on after
+    // tapping it. A row that is ranked down for a reason has to be able to say
+    // the reason once the reader asks for the room.
+    //
+    // It carries the sentence too. deptOf writes the word out for the list's
+    // spoken name because "departmental" alone next to a seat count is a word
+    // with no sentence around it; that argument does not stop being true one tap
+    // later, and this line read as the bare word while the row it came from read
+    // as the sentence.
+    room.ga === false
+      ? '<span>departmental<span class="sr">, not a general-assignment room</span></span>'
+      : '',
   ].filter(Boolean);
 
   // The day, drawn. Every paragraph that used to sit here explained an absence

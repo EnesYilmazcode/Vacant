@@ -12,6 +12,7 @@ import {
   MAX_WALK,
   MIN_RELAXED_USABLE,
   PACKUP,
+  PREFERRED_TYPES,
   RELAX_LADDER,
   SCREEN_ROWS,
   SILENT_SHARE,
@@ -385,16 +386,30 @@ test('a day arriving as a string still matches its blocks', () => {
   ]);
 });
 
-test('the tier order encodes both decisions the project already made', () => {
-  const t = (hoursKnown, wait, meetsNeed) => tierOf({ hoursKnown, wait, meetsNeed });
+test('the tier order encodes all three decisions the project already made', () => {
+  const t = (hoursKnown, wait, meetsNeed, ga = true) => tierOf({ hoursKnown, wait, meetsNeed, ga });
   assert.equal(t(true, 0, true), 0);
-  assert.equal(t(true, 0, false), 1);
-  assert.equal(t(true, 60, true), 2);
-  assert.equal(t(false, 0, null), 3);
-  assert.equal(t(false, 60, null), 4);
+  assert.equal(t(true, 0, false), 2);
+  assert.equal(t(true, 60, true), 4);
+  assert.equal(t(false, 0, null), 6);
+  assert.equal(t(false, 60, null), 8);
   // Published hours beat unknown hours even when the unknown room is free now
   // and the published one is not.
   assert.ok(t(true, 60, true) < t(false, 0, null));
+
+  // A departmental room sits one step below its own general-assignment twin and
+  // nowhere else. It is the innermost term, so it never crosses the window or
+  // the wait: a departmental room that is free when you arrive still beats a
+  // general-assignment one you would wait an hour for.
+  assert.equal(t(true, 0, true, false), 1);
+  assert.ok(t(true, 0, true, false) < t(true, 0, false, true));
+  assert.ok(t(true, 0, true, false) < t(true, 60, true, true));
+  assert.ok(t(true, 60, true, false) < t(false, 0, null, true));
+
+  // An index built before the general-assignment pull carries `ga` on nothing,
+  // and a missing flag is not a departmental room.
+  assert.equal(tierOf({ hoursKnown: true, wait: 0, meetsNeed: true }), 0);
+  assert.equal(tierOf({ hoursKnown: true, wait: 0, meetsNeed: true, ga: null }), 0);
 });
 
 // --- regressions found by the PR #38 review ---
@@ -657,7 +672,7 @@ test('before the building opens the room is offered with the wait, not as free n
   });
   assert.equal(row.availableAt, at(8));
   assert.ok(row.wait > 0);
-  assert.equal(row.tier, 2, 'known hours, but you would be waiting');
+  assert.equal(row.tier, 4, 'known hours, but you would be waiting');
 });
 
 // --- hours: published, published closed, and not published at all ---
@@ -829,11 +844,16 @@ test('an unknown-hours room scores on distance alone, because it has no window t
   assert.equal(scoreOf({ walk: 7, usable: null }, 60), 7);
 });
 
-test('the type tie-break is classroom, then lecture hall, then seminar room', () => {
-  assert.ok(typeRank('1B') < typeRank('1C'));
-  assert.ok(typeRank('1C') < typeRank('1A'));
-  assert.ok(typeRank('1A') < typeRank('2A'), 'a wet lab is not a study room');
+test('the type tie-break is classroom, then seminar room, then lecture hall', () => {
+  assert.ok(typeRank('1B') < typeRank('1A'));
+  // The lecture hall moved below the seminar room. Every one of the committed
+  // index's 55 of them is general assignment, so the row is not a lie, but they
+  // run 48 to 727 seats against a median of 34 for a classroom and one person
+  // asking for an hour is not who they are for.
+  assert.ok(typeRank('1A') < typeRank('1C'));
+  assert.ok(typeRank('1C') < typeRank('2A'), 'a wet lab is not a study room');
   assert.equal(typeRank('LCTR'), typeRank('1C'));
+  assert.equal(typeRank('SMNR'), typeRank('1A'));
   assert.equal(typeRank(null), typeRank('2A'), 'no type is treated like an unpreferred one');
 });
 
@@ -848,7 +868,10 @@ test('rows tie-break down to the room id, so two identical queries cannot reshuf
   assert.deepEqual(first.map((r) => r.id), second.map((r) => r.id), 'input order cannot leak into output order');
 });
 
-test('capacity breaks a tie the type cannot, and it breaks it weakly', () => {
+test('capacity breaks a tie the type cannot, toward the room one person asked for', () => {
+  // This used to run the other way, largest first. Issue #62 caught what that
+  // costs on the real index: from the Oval on a Saturday, Independence Hall 100
+  // and its 727 seats on row one.
   const rooms = [
     { id: 'DL0101', b: '279', cap: 20, type: '1B', busy: [] },
     { id: 'DL0102', b: '279', cap: 90, type: '1B', busy: [] },
@@ -856,7 +879,17 @@ test('capacity breaks a tie the type cannot, and it breaks it weakly', () => {
   const out = rank(rooms, {
     origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
   });
-  assert.deepEqual(out.map((r) => r.id), ['DL0102', 'DL0101']);
+  assert.deepEqual(out.map((r) => r.id), ['DL0101', 'DL0102']);
+
+  // A room the index publishes no capacity for still sorts last, where the old
+  // descending order also put it: an unknown is not evidence of a small room.
+  const unknown = rank([
+    { id: 'DL0111', b: '279', cap: 0, type: '1B', busy: [] },
+    { id: 'DL0112', b: '279', cap: 90, type: '1B', busy: [] },
+  ], {
+    origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  });
+  assert.deepEqual(unknown.map((r) => r.id), ['DL0112', 'DL0111']);
   // But a preferred type outranks any number of seats, because a 727 seat
   // lecture hall is likelier to be locked or held for an event than a 34 seat
   // classroom.
@@ -867,6 +900,56 @@ test('capacity breaks a tie the type cannot, and it breaks it weakly', () => {
     origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
   });
   assert.equal(mixed[0].id, 'DL0202');
+});
+
+// --- the Registrar's general-assignment pool ---
+
+test('a general-assignment room outranks a departmental one at the same walk', () => {
+  // The case docs/BACKLOG.md's parked decision is about, and the one issue #89
+  // asks for by name: same building, same window, same type, same seats, one on
+  // the Registrar's general-assignment list and one not.
+  const rooms = [
+    { id: 'DL0101', b: '279', cap: 40, type: '1B', busy: [], ga: false },
+    { id: 'DL0102', b: '279', cap: 40, type: '1B', busy: [], ga: true },
+  ];
+  const opts = {
+    origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  };
+  const out = rank(rooms, opts);
+  assert.deepEqual(out.map((r) => r.id), ['DL0102', 'DL0101']);
+  assert.deepEqual(out.map((r) => r.ga), [true, false], 'the flag reaches the row the screen renders');
+  // Not the id tiebreak doing it: DL0101 sorts first on every other key.
+  assert.deepEqual(rank([...rooms].reverse(), opts).map((r) => r.id), ['DL0102', 'DL0101']);
+  assert.ok(out[0].tier < out[1].tier, 'it is a tier, decided before walk and window');
+});
+
+test('the general-assignment tier never crosses the window or the wait', () => {
+  const opts = {
+    origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  };
+  // A departmental room free for the full hour beats a general-assignment room
+  // that does not open until 10:00. Who holds the key is a smaller fact than
+  // whether the door is open at all.
+  const out = rank([
+    { id: 'DL0101', b: '279', cap: 40, type: '1B', busy: [], ga: false },
+    { id: 'DL0102', b: '279', cap: 40, type: '1B', busy: [[1, at(9), at(10)]], ga: true },
+  ], opts);
+  assert.equal(out[0].id, 'DL0101');
+  assert.equal(out[0].wait, 0);
+  assert.ok(out[1].wait > 0);
+});
+
+test('a room the index says nothing about is not treated as departmental', () => {
+  // Every room of an index built before the 2026-08-27 general-assignment pull
+  // carries no `ga` at all, and demoting all of them would be a worse answer
+  // than the one this replaces.
+  const opts = {
+    origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  };
+  const [silent] = rank([{ id: 'DL0101', b: '279', cap: 40, type: '1B', busy: [] }], opts);
+  const [named] = rank([{ id: 'DL0101', b: '279', cap: 40, type: '1B', busy: [], ga: true }], opts);
+  assert.equal(silent.ga, null, 'silence is reported as silence, not as false');
+  assert.equal(silent.tier, named.tier);
 });
 
 // --- the fallback ladder ---
@@ -1085,7 +1168,12 @@ test('a screen full of unknown-hours rooms is countable, not disguised', () => {
   });
   assert.equal(out.known, 0);
   assert.equal(out.unknown, 3);
-  assert.ok(out.rows.every((r) => r.usable === null && r.tier >= 3));
+  // 6, not 3. tierOf gained the ga term as its innermost decision, so the five
+  // tiers renumbered to 0,2,4,6,8 (+1 departmental) and unknown-hours moved from
+  // ">= 3" to ">= 6". The old bound still passes here, and that is the problem:
+  // it now also admits tiers 3, 4 and 5, every one of which is a room whose
+  // hours ARE known, so it stopped asserting the thing it was written for.
+  assert.ok(out.rows.every((r) => r.usable === null && r.tier >= 6));
 });
 
 // --- the calendar, where the schedule is wrong in two opposite directions ---
@@ -1133,6 +1221,24 @@ test('on a no-class day the busy grid is ignored, and the doors still are not', 
 // --- the real committed index ---
 
 const readData = (file) => JSON.parse(readFileSync(new URL(`../../data/${file}`, import.meta.url), 'utf8'));
+
+test('every room of the committed index carries the flag the ranking now reads', () => {
+  // The build has written `ga` since 2026-08-27 and nothing read it. If a term
+  // ever ships without it the ranking silently loses its strongest signal, so
+  // the count is asserted rather than assumed: 327 general assignment, 98 not.
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const rooms = Object.values(index.rooms);
+  assert.equal(rooms.length, 425);
+  assert.equal(rooms.filter((r) => r.ga === undefined).length, 0);
+  assert.equal(rooms.filter((r) => r.ga === true).length, 327);
+  assert.equal(rooms.filter((r) => r.ga === false).length, 98);
+  // 56 of the 98 are types the first rung offers by default, which is why the
+  // tier is worth anything: without it they rank as ordinary classrooms.
+  const preferred = rooms.filter((r) => PREFERRED_TYPES.includes(r.type));
+  assert.equal(preferred.length, 382);
+  assert.equal(preferred.filter((r) => r.ga === false).length, 56);
+});
 
 test('equirectangular distance matches haversine within a metre for every building on file', () => {
   const buildings = Object.values(readData('buildings.json').buildings);
@@ -1615,8 +1721,10 @@ test('shape holds the committed index to a walk you would actually make', () => 
   assert.equal(new Set(near.rows.slice(0, 10).map((r) => r.building)).size, 10);
   assert.ok(near.rows.every((r) => r.walk <= MAX_WALK));
 
-  // Issue #60, the screenshot. Downtown at 14:10 rank() hands back Pomerene
-  // Hall at a 71 minute walk on row one, and the bound is what stops it.
+  // Issue #60, the screenshot. Downtown at 14:10 rank() hands back a 71 minute
+  // walk on row one, and the bound is what stops it. The room named on that row
+  // is Jennings Hall 50 since the seat tiebreak flipped to fit-first; see the
+  // note below the assertions, which is where the two rooms are pulled apart.
   const downtown = rank(rooms, { ...opts, origin: { lat: 39.9612, lon: -82.9988 }, now: at(14, 10) });
   const usable = downtown.filter((r) => r.wait <= 90);
   assert.equal(usable[0].walk, 71, 'the unbounded ranking still leads with a 71 minute walk');
@@ -1625,7 +1733,13 @@ test('shape holds the committed index to a walk you would actually make', () => 
   assert.equal(far.beyond.count + far.beyond.waiting.count, 306, 'every usable row is past the bound');
   assert.equal(far.beyond.count, 173, 'and only these are free right now');
   assert.equal(far.beyond.nearest.walk, 71);
-  assert.match(far.beyond.nearest.name, /Pomerene/);
+  // The screenshot named Pomerene Hall. 8 rooms tie at exactly 71 minutes,
+  // across Pomerene Hall and Jennings Hall, and `nearest` keeps the first one
+  // the ranking hands it, so the seat tiebreak decides which of the two gets
+  // named: Jennings Hall 50 has 35 seats and Pomerene Hall 150 has 62. The
+  // walk, which is the number the sentence is about, is the same either way.
+  assert.match(far.beyond.nearest.name, /Jennings/);
+  assert.ok(usable.some((r) => r.walk === 71 && /Pomerene/.test(r.name)));
   // The count the screen prints is only rooms that are free, on the real index
   // and not just on a fixture.
   for (const r of usable) {

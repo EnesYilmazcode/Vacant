@@ -12,7 +12,9 @@ import {
   MAX_WALK,
   MIN_RELAXED_USABLE,
   PACKUP,
+  PREFERRED_TYPES,
   RELAX_LADDER,
+  RUNGS,
   SCREEN_ROWS,
   SILENT_SHARE,
   SURPLUS_CAP,
@@ -36,6 +38,10 @@ import {
   usableMinutes,
   walkMinutes,
 } from '../../js/engine.js';
+// The rung sentences live in js/state.js: js/app.js touches the DOM at import
+// and cannot be loaded here, and js/state.js is already the file that holds the
+// row phrasing for exactly that reason.
+import { rungPhrase } from '../../js/state.js';
 import { haversineMetres } from '../lib/geo.mjs';
 
 const at = (h, m = 0) => h * 60 + m;
@@ -1088,6 +1094,147 @@ test('a screen full of unknown-hours rooms is countable, not disguised', () => {
   assert.ok(out.rows.every((r) => r.usable === null && r.tier >= 3));
 });
 
+// --- the rung reaches the screen ---
+//
+// The ladder computed `rung` and `relaxed` from the day it shipped and js/app.js
+// read neither, so a list built by dropping the room-type filter was headed by
+// the same words as a list of ordinary classrooms: 20 computer labs, 12
+// conference rooms and a dental clinic under no sentence at all. That is issue
+// #90, and these are the tests that stop it coming back.
+//
+// The sentences live in js/state.js rather than in js/app.js because js/app.js
+// touches the DOM at import and cannot be loaded under node. js/state.js is the
+// file that already holds the row phrasing, for the same reason.
+
+test('every rung the ladder can return has a sentence, and a new rung fails until it does', () => {
+  // THE test this issue exists for. RUNGS is what `query` walks, so a rung
+  // added to the ladder is a rung added here, and it arrives with no sentence
+  // and fails this until somebody writes one. Without it the next rung is
+  // silent the way `any-type` was silent.
+  for (const rung of RUNGS) {
+    if (rung === 'asked') continue;
+    const phrase = rungPhrase(rung, { needed: 60, maxWalk: MAX_WALK });
+    assert.ok(phrase, `the ladder can answer with rung "${rung}" and the app has no sentence for it`);
+    assert.ok(phrase.text.length > 20, `the sentence for "${rung}" is too short to say anything`);
+    assert.ok(phrase.say.length > 20, `the spoken sentence for "${rung}" is too short to say anything`);
+    assert.doesNotMatch(phrase.text, /undefined|NaN|\[object/, `the sentence for "${rung}" prints a hole`);
+    assert.doesNotMatch(phrase.say, /undefined|NaN|\[object/, `the spoken sentence for "${rung}" prints a hole`);
+  }
+
+  // The exact-answer rung gave nothing up and so has nothing to admit, and a
+  // name the ladder does not have is not a licence to invent a sentence.
+  assert.equal(rungPhrase('asked', { needed: 60 }), null);
+  assert.equal(rungPhrase('rooftop', { needed: 60 }), null);
+  assert.equal(rungPhrase(null, { needed: 60 }), null);
+});
+
+test('the ladder walks the names in RUNGS and keeps no second copy of them', () => {
+  // RUNGS is the order `query` iterates, so the list the screen is tested
+  // against and the list the ladder walks are one list. A rung added to the
+  // runner object and not to RUNGS would never run at all, and this is what
+  // says so rather than leaving it to a silent behaviour change.
+  const src = readFileSync(new URL('../../js/engine.js', import.meta.url), 'utf8');
+  const block = src.slice(src.indexOf('  const runs = {'), src.indexOf('  const rungs = RUNGS'));
+  assert.ok(block.length > 200, 'the ladder no longer builds its rungs from a `runs` object');
+  const named = [...block.matchAll(/^ {4}'?([a-z-]+(?::\$\{n\})?)'?:/gm)].map((m) => m[1]);
+  assert.ok(named.length >= 6, `only found ${named.length} rung runners`);
+  for (const name of named) {
+    const inRungs = name === 'shorter:${n}'
+      ? RUNGS.some((r) => r.startsWith('shorter:'))
+      : RUNGS.includes(name);
+    assert.ok(inRungs, `the ladder can run "${name}" and RUNGS does not list it, so it never runs`);
+  }
+});
+
+test('every relaxed answer the ladder actually produces has words for it', () => {
+  // The names, run through the ladder rather than read off the constant. Each
+  // scenario is one already covered above, kept here for the sentence rather
+  // than for the rung.
+  const cases = [
+    campus([['A', 300, 2], ['B', 300, 1, { type: '2P' }]]), // any-type
+    campus([['A', 300, 3, { busy: [[TUE, DAY_START, DAY_END]] }], ['F', 1200, 4]]), // further
+    campus([['Z', 1800, 4]]), // anywhere
+    campus([['Z', 1800, 2, { busy: [[TUE, DAY_START, at(14)], [TUE, at(14, 40), DAY_END]] }]]), // longest
+  ];
+  const seen = new Set();
+  for (const spec of cases) {
+    for (const needed of [60, 120]) {
+      const out = askFor(needed, spec);
+      if (!out.relaxed) continue;
+      seen.add(out.rung);
+      const phrase = rungPhrase(out.rung, { needed: out.askedNeed, maxWalk: out.maxWalk });
+      assert.ok(phrase, `the ladder answered with "${out.rung}" and the app would print nothing`);
+    }
+  }
+  assert.ok(seen.size >= 3, `only reached ${seen.size} relaxed rungs`);
+});
+
+test('the sentences count to the quorum, because a rung wins by finding three rooms', () => {
+  // The wording is not decoration and it is not free to change. A rung is taken
+  // when it finds LADDER_QUORUM rooms, so `further` does NOT mean nothing near
+  // you is free: it means the ladder preferred three rooms further out to the
+  // one or two close by. Replaying the shipped app's own rank() and shape()
+  // beside query() over the committed index, 99 origins around the Oval, Mon to
+  // Fri 2026-09-14 to 18, hourly 08:00 to 20:00, at a 30 and a 60 minute ask:
+  // of 12,870 answers the ladder relaxed on 9,486 and the list still had rows
+  // on 510, and on those the rooms a reader could count as free and long enough
+  // inside the walk bound were 0, 1 or 2 and never three. "Nothing is free"
+  // printed over a list showing two free rooms is the one way this disclosure
+  // can lie.
+  assert.equal(LADDER_QUORUM, 3, 'the sentences say "fewer than three" in words');
+  for (const rung of RUNGS) {
+    if (rung === 'asked' || rung === 'longest') continue;
+    const { text } = rungPhrase(rung, { needed: 60, maxWalk: MAX_WALK });
+    assert.match(text, /^Fewer than three /, `"${rung}" claims more than the quorum allows: ${text}`);
+  }
+  // `longest` is the exception because it is the only rung that can claim it:
+  // it is reached only when every rung above it found nothing at all.
+  assert.match(rungPhrase('longest', { needed: 60 }).text, /^Nothing Vacant can offer/);
+});
+
+test('the walk bound in the sentence is the bound the rows were cut to', () => {
+  // The number a reader can check against the walk times in front of them. A
+  // sentence naming 12 minutes over rows shaped to a different bound would be
+  // the disclosure lying about the one fact it is easiest to check.
+  const at12 = rungPhrase('further', { needed: 60, maxWalk: 12 });
+  assert.match(at12.text, /within a 12 minute walk/);
+  assert.match(rungPhrase('anywhere', { needed: 60, maxWalk: 12 }).text, /within a 24 minute walk/);
+  assert.match(rungPhrase('further', { needed: 60, maxWalk: 20 }).text, /within a 20 minute walk/);
+  // Default is the engine's own bound, so a caller that passes nothing does not
+  // get a sentence about a radius nobody used.
+  assert.equal(rungPhrase('further', { needed: 60 }).text, rungPhrase('further', { needed: 60, maxWalk: MAX_WALK }).text);
+});
+
+test('the duration in the sentence is the one that was asked for, printed and spoken', () => {
+  const seen = rungPhrase('shorter:45', { needed: 60 });
+  assert.match(seen.text, /free for 1h00/, 'the strip gets the glyphs the rest of the list uses');
+  assert.match(seen.text, /fell back to 45 min/);
+  assert.match(seen.say, /free for 1 hour/, 'a screen reader gets words, not "1h00"');
+  assert.match(seen.say, /fell back to 45 minutes/);
+});
+
+test('js/app.js reads the rung, and the live region says it out loud', () => {
+  // The half of #90 that no import can reach: js/app.js touches the DOM at load
+  // and cannot be required under node, so the wiring is checked as text. The
+  // grep in the issue was `grep -n "relaxed\|rung" js/app.js` returning nothing.
+  const app = readFileSync(new URL('../../js/app.js', import.meta.url), 'utf8');
+  assert.match(app, /state\.rung = /, 'js/app.js never stores the rung the ladder returned');
+  assert.match(app, /state\.relaxed = /, 'js/app.js never stores whether the answer was relaxed');
+  assert.match(app, /rungPhrase\(state\.rung/, 'js/app.js never turns the rung into a sentence');
+
+  // One strip, and the rung wins it. The row counts describe the rows; the rung
+  // describes which question the whole list is answering, so it replaces the
+  // row sentence rather than stacking a fourth paragraph over the list.
+  const paint = app.slice(app.indexOf('function paintList('));
+  const rowStrip = paint.indexOf('Nothing near you is free for');
+  const rungStrip = paint.indexOf('if (relaxed) strip =');
+  assert.ok(rowStrip > 0 && rungStrip > 0, 'paintList no longer builds both strips');
+  assert.ok(rungStrip > rowStrip, 'the rung strip does not take precedence over the row counts');
+
+  // And it is not a visual-only disclosure.
+  assert.match(app, /const admitted = state\.results\.length \? relaxedLine\(\)\?\.say : null;/);
+});
+
 // --- the calendar, where the schedule is wrong in two opposite directions ---
 
 test('during the exam window the engine refuses instead of guessing', () => {
@@ -1179,6 +1326,67 @@ test('a query against the committed index answers, and answers the same way twic
     assert.ok(row.leaveBy >= at(14));
     assert.ok(row.usableUntil === null || row.usableUntil === row.nextClassAt - PACKUP);
   }
+});
+
+test('no rung sentence is contradicted by the rows the shipped list shows under it', () => {
+  // The disclosure sits over rows the ladder did not choose. js/app.js builds
+  // its list from rank() and shape(), which have no ladder in them, so the
+  // strip and the rows are two answers to one question and the strip is only
+  // honest while the rows cannot be counted against it.
+  //
+  // Every sentence says "fewer than three", because a rung is taken when it
+  // finds LADDER_QUORUM rooms. So the thing that must never happen is a screen
+  // holding three or more rooms a reader would count as free and long enough
+  // inside the walk bound while the strip above says fewer than three are.
+  //
+  // This replays the app: rank() with the whole day in view, the 90 minute wait
+  // filter js/app.js applies, then shape() for the radius and the fold.
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const buildings = readData(`buildings-${term}.json`).buildings;
+  const hours = readData('buildings-hours.json').terms['autumn-2026-classroom-pool-building-schedule'];
+  const rooms = Object.entries(index.rooms).map(([id, r]) => ({ id, ...r }));
+  const type = new Map(rooms.map((r) => [r.id, r.type]));
+  const preferred = new Set(PREFERRED_TYPES);
+  const hoursFor = (code, day) => hours.buildings[code]?.hours[day];
+
+  // A grid around the Oval, because from the Oval itself the ladder never
+  // relaxes: over 250 answers there every one came back on `asked`. The rungs
+  // only appear once the walk starts to bite.
+  const origins = [];
+  for (let dlat = -0.02; dlat <= 0.0201; dlat += 0.008) {
+    for (let dlon = -0.02; dlon <= 0.0201; dlon += 0.01) origins.push({ lat: 39.9995 + dlat, lon: -83.013 + dlon });
+  }
+
+  let relaxed = 0;
+  let withRows = 0;
+  for (const origin of origins) {
+    for (const [date, day] of [['2026-09-14', 1], ['2026-09-16', 3], ['2026-09-18', 5]]) {
+      for (let m = 9 * 60; m <= 19 * 60; m += 120) {
+        const opts = { origin, now: m, day, date, needed: 60, buildings, hoursFor, sessions: index.sessions };
+        const out = query(rooms, opts);
+        if (out.refused || !out.relaxed) continue;
+        relaxed++;
+        const shown = shape(rank(rooms, opts).filter((r) => r.wait <= 90)).rows;
+        if (!shown.length) continue;
+        withRows++;
+        // What a reader counts: on screen, no wait, and long enough, or a room
+        // whose hours nobody publishes, which the rows never call short.
+        const fits = shown.filter((r) => r.walk <= MAX_WALK && r.wait === 0 && (r.hoursKnown ? r.meetsNeed : true));
+        const countable = out.rung === 'any-type' ? fits.filter((r) => preferred.has(type.get(r.id))) : fits;
+        const where = `${date} ${m} from ${origin.lat.toFixed(4)}, ${origin.lon.toFixed(4)}`;
+        assert.ok(
+          countable.length < LADDER_QUORUM,
+          `"${rungPhrase(out.rung, { needed: 60 }).text}" printed over ${countable.length} rooms that answer it, at ${where}`,
+        );
+      }
+    }
+  }
+  assert.ok(relaxed > 50, `only ${relaxed} relaxed answers in the probe, which is not enough to prove anything`);
+  // 420 relaxed answers in this probe and 19 of them over a list with rows,
+  // which is the whole of what there is to check: the other 401 print the
+  // empty screen, which says the same thing in its own words.
+  assert.ok(withRows > 0, 'the probe never once put a relaxed answer over a list with rows in it');
 });
 
 test('a Saturday on the real index is honest about what it does not know', () => {

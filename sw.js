@@ -8,8 +8,10 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c` on gzip 1.14. Shell 84,201 bytes,
-// data 85,157. The data side more than doubled when the index started carrying
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 86,052 bytes, data 85,157.
+// The shell figure was re-measured on gzip 1.12 when the fallback ladder's
+// disclosure landed in js/app.js and js/engine.js; the data figure is the
+// earlier one, on gzip 1.14. The data side more than doubled when the index started carrying
 // which class is in the room: 2,024 course labels and one integer per block, so
 // the room screen can draw a day instead of listing it. Running the same command over a Windows working tree gives a
 // different answer, because git checks the text files out with CRLF. The first

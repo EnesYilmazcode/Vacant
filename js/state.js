@@ -19,7 +19,7 @@
 //
 // Runs in the browser and under node, and imports nothing that touches the DOM.
 
-import { PACKUP, activeSessions, calendarOn, distanceMetres, refusalFor, walkMinutes } from './engine.js';
+import { MAX_WALK, PACKUP, activeSessions, calendarOn, distanceMetres, refusalFor, walkMinutes } from './engine.js';
 
 // ------------------------------------------------------------------- clock
 
@@ -717,6 +717,111 @@ export function unscheduledGate({ now, current, index, busyDay, opening, openNow
   const on = back.ahead === 0 ? (door ? ' today' : '') : ` on ${DAY_NAMES[back.day]}`;
   const rooms = `Vacant ranks rooms again${on} at ${clock(back.at)}.`;
   return { heading, body: door ? `${campus} ${door}. ${rooms}` : `${campus} ${rooms}` };
+}
+
+// ------------------------------------------------------------ the relaxed answer
+
+// One sentence per rung of the engine's fallback ladder, for the strip over the
+// list and for the live region that reads the list out.
+//
+// The ladder relaxes one constraint at a time and returns the rung that
+// produced the answer, and until this existed js/app.js read neither `rung` nor
+// `relaxed`, so a list built by dropping the room-type filter was headed by the
+// same words as a list of ordinary classrooms. That is issue #90.
+//
+// Every sentence is written against LADDER_QUORUM rather than against zero, and
+// that is the whole difficulty of the wording. A rung wins by finding THREE
+// rooms, so `further` does not mean nothing near you is free: it means fewer
+// than three rooms near you were, and the ladder preferred three further out to
+// two close by.
+//
+// MEASURED, replaying the shipped app's own ranking (rank() then shape()) beside
+// query() over the committed index, 99 origins on a 0.004 by 0.005 degree grid
+// around the Oval, Mon to Fri 2026-09-14 to 18, hourly 08:00 to 20:00, at a 30
+// and a 60 minute ask, 12,870 answers. The ladder relaxed on 9,486 of them and
+// the list still had rows on 510. On those rows a reader could count, and the
+// count never reached three: for `further`, `anywhere` and `longest` the list
+// held 0, 1 or 2 rooms free now and long enough inside the walk bound (85, 7
+// and 16 of 108), and for `any-type` it held 1 or 2 ordinary classrooms (15 and
+// 151 of 166). "Nothing near you is free" printed over a list showing two free
+// rooms is the one way this disclosure can lie, and counting to three is what
+// stops it.
+//
+// The room words in the `any-type` sentence are measured too: over those 166
+// answers, every room on screen that was free, long enough and not an ordinary
+// classroom carried a secondary type, 2P computer teaching lab 130 and 5K
+// departmental seminar room 120 of 272.
+//
+// `longest` never fired once in the 12,870, so its sentence is the only one
+// here with no measurement behind it. It says the least for that reason.
+export function rungPhrase(rung, { needed = 0, maxWalk = MAX_WALK } = {}) {
+  const asked = dur(needed);
+  const spoken = spokenDur(needed);
+  const line = (text, say) => ({ text, say: say ?? text });
+
+  // The rung the engine comments on twice: the rows it adds are computer labs,
+  // departmental seminar rooms and, in one building, a dental clinic.
+  if (rung === 'any-type') {
+    return line(
+      `Fewer than three ordinary classrooms near you are free for ${asked}. Vacant reached into computer labs and departmental rooms.`,
+      `Fewer than three ordinary classrooms near you are free for ${spoken}. Vacant reached into computer labs and departmental rooms.`,
+    );
+  }
+
+  // `shorter:45` and the rest of RELAX_LADDER. The duration is in the name
+  // because it is the constraint that moved.
+  const shorter = /^shorter:(\d+)$/.exec(String(rung));
+  if (shorter) {
+    const got = Number(shorter[1]);
+    return line(
+      `Fewer than three rooms near you are free for ${asked}. Vacant fell back to ${dur(got)}.`,
+      `Fewer than three rooms near you are free for ${spoken}. Vacant fell back to ${spokenDur(got)}.`,
+    );
+  }
+
+  // The duration is in this one for a reason worth keeping. "Free this second"
+  // on its own reads as a claim about wait, and the screen it sits over can
+  // hold four rows that ARE free this second and are simply too short: Mon
+  // 2026-09-14 10:50 from 39.9915, -83.0230 at a 30 minute ask puts four rooms
+  // in Biological Sciences on screen with no wait and a 19 minute window. The
+  // rung is about rooms that fit, so the sentence has to say what it wanted.
+  if (rung === 'opens-at') {
+    return line(
+      `Fewer than three rooms near you are free for ${asked} right now. Vacant fell back to rooms that open later.`,
+      `Fewer than three rooms near you are free for ${spoken} right now. Vacant fell back to rooms that open later.`,
+    );
+  }
+
+  // The radius rungs. maxWalk is the app's own bound and the one the rows on
+  // screen were cut to, so the number in the sentence is a number the reader
+  // can check against the walk times in front of them.
+  if (rung === 'further') {
+    return line(
+      `Fewer than three rooms within a ${maxWalk} minute walk are free for ${asked}. Vacant looked twice that far.`,
+      `Fewer than three rooms within a ${maxWalk} minute walk are free for ${spoken}. Vacant looked twice that far.`,
+    );
+  }
+  if (rung === 'anywhere') {
+    return line(
+      `Fewer than three rooms within a ${maxWalk * 2} minute walk are free for ${asked}. Vacant looked across the whole campus.`,
+      `Fewer than three rooms within a ${maxWalk * 2} minute walk are free for ${spoken}. Vacant looked across the whole campus.`,
+    );
+  }
+
+  // The last resort. js/engine.js expects the screen to lead with this rather
+  // than present the one room it found as an answer, so the sentence is the
+  // refusal and the row is the footnote.
+  if (rung === 'longest') {
+    return line(
+      `Nothing Vacant can offer is free for ${asked} today, anywhere on campus.`,
+      `Nothing Vacant can offer is free for ${spoken} today, anywhere on campus.`,
+    );
+  }
+
+  // `asked` gave nothing up, and so has nothing to admit. Any other name is a
+  // rung that grew without a sentence, and the engine test fails on it rather
+  // than letting the app print a relaxed answer in the words of an exact one.
+  return null;
 }
 
 // ---------------------------------------------------------------- the row window

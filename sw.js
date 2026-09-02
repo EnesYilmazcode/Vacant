@@ -8,14 +8,14 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 98,246 bytes, data 85,157.
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 121,542 bytes, data 85,157.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
-// 142 bytes higher across these twelve files, which is most of a percent of the
-// tolerance spent on nothing. An earlier draft of this line quoted that form
+// 176 bytes higher across these sixteen files, which is most of a percent of
+// the tolerance spent on nothing. An earlier draft of this line quoted that form
 // and then explained the gap as two gzip versions disagreeing; there was no
 // disagreement to explain. Through the pipe, GNU gzip 1.12 and node's zlib --
-// the tool sw.test.mjs actually measures with -- agree to 0.009%, and the one
+// the tool sw.test.mjs actually measures with -- agree to 0.0033%, and the one
 // percent window is there for the day they do not.
 //
 // The shell read 84,201 before the ranking started reading the Registrar's
@@ -30,6 +30,12 @@
 // wrong; the correction then went stale by 758 bytes, and integrating the
 // screens lane put it 34.3% out in one merge. scripts/test/sw.test.mjs
 // recomputes both now.
+//
+// It read 98,246 while four modules js/app.js imports were missing from the
+// list below. They are 23,296 gzipped bytes, so the figure was measuring a list
+// 19.2% smaller than the shell it named. Recomputing it from the list is what
+// kept that honest-looking: the arithmetic was right and the set was wrong,
+// which is the failure a self-checking number cannot catch on its own.
 
 // Stamped by scripts/stamp-sw.mjs before the commit lands. The authored
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
@@ -59,16 +65,51 @@ const SHELL_DOC = SCOPE + 'index.html';
 
 // `/Vacant/` and `/Vacant/index.html` are the same bytes at two cache keys and a
 // navigation can arrive as either, so both are precached.
+//
+// The js entries are the two modules index.html loads and everything they
+// import, followed transitively. Four of them -- claim, day, sheet and state --
+// were imported and never listed here, js/state.js among them, so install
+// resolved having cached a js/app.js whose first statements ask for modules
+// that are not in the cache. It never showed up as a bug because cacheFirst
+// writes every ok response into this cache, so one completed online load
+// repaired it; the window is between the worker installing and that load
+// finishing, which is the phone that installs the icon and walks inside.
+// scripts/test/sw.test.mjs derives this list from the imports now rather than
+// restating it, because the restatement is what drifted.
+//
+// They are in addAll rather than a second best-effort pass, and that is the
+// argued half: the four are 23,296 of the 121,542 gzipped bytes here, so
+// install does 23.7% more work before it resolves, and a strict tier that fails
+// fails the whole install. It is still right. A best-effort tier is for things
+// the app is better with; js/app.js cannot evaluate without js/state.js. And a
+// rejected install is retried where a resolved lie is not.
+//
+// What the half-cached shell actually does, driven in Chromium against a real
+// registered worker with the server stopped: index.html is static, so it PAINTS
+// -- the wordmark, all four duration buttons, "finding campus..." -- and then
+// js/app.js fails to evaluate on the missing imports. The buttons are dead,
+// because the handler that gives them meaning is in the module that did not
+// load. So is bootFailed(), the app's own "could not load the schedule, try
+// again" card. The student gets an app-shaped screen with no exit and nothing
+// to press, which is worse than a blank one: a blank screen is at least legibly
+// broken.
+//
+// js/dev.js is deliberately absent. js/app.js reaches it through import() only
+// when ?dev=1 asks for it, so a student who never asks never downloads it.
 const SHELL_ASSETS = [
   SCOPE,
   SHELL_DOC,
   SCOPE + 'js/app.js',
   SCOPE + 'js/campus.js',
+  SCOPE + 'js/claim.js',
+  SCOPE + 'js/day.js',
   SCOPE + 'js/engine.js',
   SCOPE + 'js/map.js',
   SCOPE + 'js/pwa.js',
   SCOPE + 'js/install.js',
   SCOPE + 'js/firstrun.js',
+  SCOPE + 'js/sheet.js',
+  SCOPE + 'js/state.js',
   SCOPE + 'manifest.webmanifest',
   SCOPE + 'apple-touch-icon.png',
   SCOPE + 'favicon.ico',

@@ -74,8 +74,22 @@ test('js/dev.js is never downloaded by a student who did not ask for it', () => 
   // service worker's shell list, so it costs the shipped app nothing.
   const html = read('index.html');
   assert.equal(html.includes('js/dev.js'), false, 'index.html loads dev.js as a script tag');
-  const sw = read('sw.js');
-  assert.equal(sw.includes('dev.js'), false, "dev.js is in the service worker's cache list");
+  // The list, not the file. sw.js explains next to SHELL_ASSETS why dev.js is
+  // the one module left out of it, and naming it there tripped a raw substring
+  // search over the whole file. Every comment in sw.js is a whole line, which
+  // is the same seam scripts/test/sw.test.mjs cuts on.
+  const sw = read('sw.js')
+    .split(/\r?\n/)
+    .filter((line) => !line.trim().startsWith('//'))
+    .join('\n');
+  // The WHOLE stripped file, not just the SHELL_ASSETS array. Narrowing to the
+  // array was enough to stop the comment tripping it, and it quietly dropped two
+  // real cases: dev.js added to WARM_ALWAYS, and a second addAll() in install
+  // naming it. Both leave the module downloaded by a student who never asked for
+  // it, which is the whole claim in this test's title, and both passed the
+  // narrowed check. The comment strip alone fixes the false positive.
+  assert.ok(/const SHELL_ASSETS = \[/.test(sw), 'no SHELL_ASSETS array in sw.js');
+  assert.equal(sw.includes('dev.js'), false, 'sw.js downloads dev.js for a student who did not ask for it');
   assert.match(read('js/app.js'), /import\('\.\/dev\.js'\)/);
 });
 

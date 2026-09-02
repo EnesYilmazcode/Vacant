@@ -21,7 +21,9 @@
 import { toGrid } from './campus.js';
 import { roomClaim } from './claim.js';
 import { blocksOn, classesOn, dayClaim } from './day.js';
-import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, rank, shape, walkMinutes } from './engine.js';
+// `query` arrives as `ladder` because js/app.js already holds a `state.query`,
+// which is the buildings search box and has nothing to do with the engine.
+import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, query as ladder, rank, shape, walkMinutes } from './engine.js';
 // The deadline every request on the path to a first answer shares. It lives in
 // js/firstrun.js because that is the module holding the rule it comes from.
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
@@ -44,6 +46,7 @@ import {
   rankBuildings,
   resolveState,
   roomsPerBuilding,
+  rungPhrase,
   spokenClock,
   staleness,
   unscheduledGate,
@@ -170,6 +173,12 @@ const state = {
   needed: 30,
   results: [],
   total: 0,
+  // Which constraint the fallback ladder gave up to reach an answer, and
+  // whether it gave up anything at all. The engine has computed both since the
+  // ladder shipped and nothing read them, so a list built by dropping the
+  // room-type filter was headed by the same words as a list of classrooms.
+  rung: null,
+  relaxed: false,
   // What shape() removed to get from the ranked rows to the shown ones, which
   // neither the footer nor the empty screen can work out from state.results.
   bounds: null,
@@ -581,22 +590,20 @@ function answer() {
   state.needed = neededMinutes(now);
   const rooms = Object.entries(state.rooms.rooms).map(([id, r]) => ({ id, ...r }));
   const date = isoDate(now);
-  const results = rank(
-    rooms,
-    {
-      origin: state.origin,
-      now: minutes,
-      day: state.day,
-      needed: state.needed,
-      buildings: state.buildings,
-      hoursFor,
-      sessions: state.rooms.sessions,
-      date,
-      // A day with no classes is a day the busy grid describes nobody. 2,048
-      // of the 2,106 Wednesday blocks are still active on Veterans Day.
-      classesSuspended: !!state.situation?.classesSuspended,
-    },
-  );
+  const ask = {
+    origin: state.origin,
+    now: minutes,
+    day: state.day,
+    needed: state.needed,
+    buildings: state.buildings,
+    hoursFor,
+    sessions: state.rooms.sessions,
+    date,
+    // A day with no classes is a day the busy grid describes nobody. 2,048
+    // of the 2,106 Wednesday blocks are still active on Veterans Day.
+    classesSuspended: !!state.situation?.classesSuspended,
+  };
+  const results = rank(rooms, ask);
 
   const usable = results.filter((r) => r.wait <= MAX_WAIT_MIN);
   // rank() orders by tier, then walk. The FIRST building to open is not the
@@ -626,20 +633,69 @@ function answer() {
   // A picked building stands: moving off it answers a question nobody asked.
   // The note is that screen's way out, because it carries #note-pick.
   if (state.origin?.source === 'picked') useOrigin(state.origin, stranded ? NO_WALK : null);
+
+  // Which constraint had to be given up to answer at all. The ladder is a
+  // second pass over the same rooms and the same minute, because rank() has no
+  // ladder in it: it is the flat ranking the list has always been built from,
+  // and shape() bounds that afterwards. So the disclosure costs one more sweep.
+  // MEASURED under node on the committed index, 425 rooms, median of 200 warm
+  // runs from the Oval at 2026-09-16 14:10 on a 60 minute ask: rank() 1.02 ms
+  // and query() 1.01 ms, so an answer goes from about one millisecond to two.
+  //
+  // It runs AFTER the stranded fallback above, which re-enters answer() from
+  // the Oval; running it earlier would sweep twice and throw the first away.
+  //
+  // The calendar goes in because query() reads classesSuspended off it rather
+  // than off the sweep options. Without it the ladder would read a no-classes
+  // day as a full one and relax against a busy grid describing nobody, while
+  // the list beside it showed all of campus free.
   // Nothing is selected until a finger picks one. Asserting row one here is
   // what made the highlight fire on load and never move again.
   state.selected = null;
   state.listScroll = 0;
+  // Rows first, then the sweep that only the strip needs.
+  //
+  // The ladder is a SECOND full sweep of the index. Warm it is about a
+  // millisecond beside rank()'s one, which is nothing; cold, unwarmed, on this
+  // machine it is 10.5 ms against rank()'s 14.6, and a mid-range phone runs
+  // that 5 to 10 times slower. In front of paintList() that is 50 to 100 ms
+  // added between the tap and the first row, on the one path spike #29 exists
+  // to measure. Behind it, it costs the first row nothing.
+  //
+  // Safe because state.rung and state.relaxed have exactly one reader between
+  // them, relaxedLine(), and paintList() is the only caller of that. The strip
+  // is repainted on the line after, off the same state paintList() just used.
   paintList();
+  const answered = ladder(rooms, {
+    ...ask,
+    calendar: state.situation?.classesSuspended ? { noClasses: true } : undefined,
+  });
+  state.rung = answered.rung;
+  state.relaxed = answered.relaxed;
+  if (answered.relaxed) paintList();
   settle();
   // Free is wait === 0, the word the rows and settle() spend. state.total holds
   // everything that cleared the 90 minute wait, so this line read "297 rooms
   // free, 0 shown" over a heading saying nothing was close enough.
   const free = usable.reduce((n, r) => n + (r.wait === 0 ? 1 : 0), 0);
+  // What the strip admits in print, the live region says out loud, and it leads
+  // for the same reason: it is about the whole answer, and the counts behind it
+  // are about the rows. A disclosure only sighted readers get is not one.
+  //
+  // Only when there are rows, because that is the only screen the strip is on.
+  // The empty screen already names the same fact in its own words, and a live
+  // region reading out a sentence that is nowhere on the page is worse than one
+  // that says nothing.
+  const admitted = state.results.length ? relaxedLine()?.say : null;
   say(
-    state.results.length
-      ? `${free} room${free === 1 ? '' : 's'} free, ${state.results.length} shown.`
-      : `${$('list-h')?.textContent ?? ''} ${$('list').querySelector('.empty')?.textContent.replace(/\s+/g, ' ').trim() ?? ''}`.trim(),
+    [
+      admitted,
+      state.results.length
+        ? `${free} room${free === 1 ? '' : 's'} free, ${state.results.length} shown.`
+        : `${$('list-h')?.textContent ?? ''} ${$('list').querySelector('.empty')?.textContent.replace(/\s+/g, ' ').trim() ?? ''}`.trim(),
+    ]
+      .filter(Boolean)
+      .join(' '),
   );
 }
 
@@ -718,6 +774,18 @@ const CAVEAT = `<p class="foot">Class schedule only. Doors get locked and clubs 
   class scheduled with no room recorded does not appear here at all, so a room can be in use
   with nothing on its timeline.</p>`;
 
+// The sentence the ladder's verdict is worth, or null when the answer gave
+// nothing up. The strip and the live region both read it from here, so the two
+// cannot end up saying different things about the same list.
+const relaxedLine = () =>
+  (state.relaxed
+    ? rungPhrase(state.rung, {
+      needed: state.needed,
+      maxWalk: MAX_WALK,
+      restOfDay: state.duration === 'day',
+    })
+    : null);
+
 function paintList() {
   const list = $('list');
   const note = state.situation?.note
@@ -780,6 +848,20 @@ function paintList() {
     caveat = `<p class="empty">These have <b>no published hours</b>, so Vacant cannot tell
        you whether the door is open. They are not a promise.</p>`;
   }
+
+  // The rung wins the strip. Both are true at once often enough to matter:
+  // MEASURED over 12,870 answers replayed from 99 origins around the Oval, Mon
+  // to Fri 2026-09-14 to 18, the ladder had relaxed and the rows still asked
+  // for a strip of their own on 131 of the 510 lists that had rows, 25.7%.
+  // Printing both would stack a second paragraph over the list on every one of
+  // them. The counts above describe the ROWS; the rung describes which question
+  // the whole list is answering, so it replaces them rather than joining them.
+  //
+  // The caveat below is deliberately not touched. It is not a strip, and a list
+  // of rooms nobody publishes hours for has to keep saying so whichever rung
+  // found them.
+  const relaxed = relaxedLine();
+  if (relaxed) strip = `<p class="strip">${esc(relaxed.text)}</p>`;
 
   const coarse = Number.isFinite(state.accuracy) && state.accuracy > COARSE_M;
   // "N more further away" was wrong about most of them: 69.5% of the 40 the old

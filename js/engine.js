@@ -86,6 +86,27 @@ export const MIN_RELAXED_USABLE = 20;
 // A rung has answered once it has this many rooms. GUESS.
 export const LADDER_QUORUM = 3;
 
+// Every name `query` can hand back in `rung`, in the order the ladder walks
+// them. Exported because a rung name is not an internal label: it is the only
+// thing that tells a screen WHICH constraint the answer gave up, and a screen
+// that has no sentence for a rung shows a relaxed answer in the words of an
+// exact one. The order here is the ladder's order; `query` reads it rather
+// than keeping a second copy, so adding a rung means adding it here, and
+// scripts/test/engine.test.mjs then fails until the screen has a sentence for
+// it.
+//
+// `shorter:N` is one name per entry in RELAX_LADDER, so the duration chips and
+// the rung names cannot drift apart either.
+export const RUNGS = [
+  'asked',
+  'any-type',
+  ...RELAX_LADDER.map((n) => `shorter:${n}`),
+  'opens-at',
+  'further',
+  'anywhere',
+  'longest',
+];
+
 // Room types worth offering by default, from docs/research/facility-types.md.
 // MEASURED on the committed index: 520 of 871 rooms (59.7%) carry one of these.
 // The rest are wet labs, studios, gyms and kitchens, which are not rooms you
@@ -1045,30 +1066,34 @@ export function query(rooms, opts) {
   // not free yet, and only then walk further. The first four all mean "free when
   // you get there", which is the question the app was opened to answer.
   const shorter = RELAX_LADDER.filter((n) => n < needed);
-  const rungs = [
-    ['asked', needed, false, () => rung(needed, { types: PREFERRED, radius: maxWalk, openNow: true })],
+  const runs = {
+    asked: [needed, false, () => rung(needed, { types: PREFERRED, radius: maxWalk, openNow: true })],
     // Dropping the room-type preference is a relaxation like any other. The
     // rows it adds are computer labs, departmental seminar rooms and, in one
     // building, a dental clinic, so an answer built from them is not the
     // question the student asked and has to admit it.
-    ['any-type', needed, true, () => rung(needed, { radius: maxWalk, openNow: true })],
-    ...shorter.map((n) => [
+    'any-type': [needed, true, () => rung(needed, { radius: maxWalk, openNow: true })],
+    ...Object.fromEntries(shorter.map((n) => [
       `shorter:${n}`,
-      n,
-      true,
-      () => rung(n, { radius: maxWalk, openNow: true, floor: MIN_RELAXED_USABLE }),
-    ]),
+      [n, true, () => rung(n, { radius: maxWalk, openNow: true, floor: MIN_RELAXED_USABLE })],
+    ])),
     // The README's "the room that frees up in twelve minutes". No horizon on
     // this one: naming when something opens is the whole point of the rung.
-    ['opens-at', needed, true, () => rung(needed, {
+    'opens-at': [needed, true, () => rung(needed, {
       mode: 'soon', radius: maxWalk, floor: MIN_RELAXED_USABLE, lookahead: Infinity,
     })],
-    ['further', needed, true, () => rung(needed, { radius: maxWalk * 2, openNow: true })],
-    ['anywhere', needed, true, () => rung(needed, { lookahead: Infinity })],
+    further: [needed, true, () => rung(needed, { radius: maxWalk * 2, openNow: true })],
+    anywhere: [needed, true, () => rung(needed, { lookahead: Infinity })],
     // Last resort: one room, and the UI is expected to lead with "nothing near
     // you is free" rather than presenting it as an answer.
-    ['longest', 0, true, () => rung(0, { floor: MIN_RELAXED_USABLE, lookahead: Infinity }).slice(0, 1)],
-  ];
+    longest: [0, true, () => rung(0, { floor: MIN_RELAXED_USABLE, lookahead: Infinity }).slice(0, 1)],
+  };
+
+  // The order is RUNGS' order, not this object's, so that the list a screen is
+  // tested against and the list the ladder walks cannot come apart. A rung
+  // added to `runs` and not to RUNGS never runs; one added to RUNGS and not to
+  // `runs` is skipped here and caught by the coverage test.
+  const rungs = RUNGS.filter((name) => runs[name]).map((name) => [name, ...runs[name]]);
 
   // The first rung that reaches quorum wins. A rung that finds one or two rooms
   // is not nothing, so it is held as the fallback, but the ladder keeps going to

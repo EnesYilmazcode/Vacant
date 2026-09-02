@@ -768,15 +768,27 @@ export function rungPhrase(rung, { needed = 0, maxWalk = MAX_WALK, restOfDay = f
 
   // The rung the engine comments on twice. It used to say "computer labs and
   // departmental rooms" and the labs left OFFERABLE, so that named rooms the
-  // list can no longer contain. Replayed over 49 origins after the change, the
-  // rows this rung adds are 1,535 conference rooms, 99 of an unlabelled type,
-  // 14 TV and radio facilities and one meeting room -- and zero labs. One of
-  // the conference rooms is a working dental clinic, which is why the sentence
-  // still admits rather than reassures.
+  // list can no longer contain.
+  //
+  // "departmental rooms" is doing the work the room words cannot. Replayed as
+  // the app paints -- rows from rank() plus shape(), strip from query().rung --
+  // the rows this rung adds are conference rooms, an unlabelled type, TV and
+  // radio facilities and one meeting room, and zero labs. A draft that named
+  // only "conference and meeting rooms" was narrower than the rung reaches: a
+  // TV and radio facility appeared under it, described by neither word. Every
+  // one of these rows is departmental, and every one renders " . departmental"
+  // beside its seats, so the phrase is the true one and it is the one the row
+  // already carries.
+  //
+  // No clinic. A draft of this comment said one of the conference rooms is a
+  // working dental clinic; PH3089A is a real room and a real clinic and it is
+  // NOT IN THE INDEX -- zero PH rooms ship, and neither does the law clinic
+  // DI0455. Both are named in docs/research/facility-types.md, which is where
+  // the claim came from and where it should have stayed.
   if (rung === 'any-type') {
     return line(
-      `Fewer than three ordinary classrooms near you are free for ${asked}. Vacant reached into conference and meeting rooms.`,
-      `Fewer than three ordinary classrooms near you are free for ${spoken}. Vacant reached into conference and meeting rooms.`,
+      `Fewer than three ordinary classrooms near you are free for ${asked}. Vacant reached into departmental rooms.`,
+      `Fewer than three ordinary classrooms near you are free for ${spoken}. Vacant reached into departmental rooms.`,
     );
   }
 

@@ -1260,7 +1260,7 @@ test('every relaxed answer the ladder actually produces has words for it', () =>
   // scenario is one already covered above, kept here for the sentence rather
   // than for the rung.
   const cases = [
-    campus([['A', 300, 2], ['B', 300, 1, { type: '2P' }]]), // any-type
+    campus([['A', 300, 2], ['B', 300, 1, { type: '5K' }]]), // any-type
     campus([['A', 300, 3, { busy: [[TUE, DAY_START, DAY_END]] }], ['F', 1200, 4]]), // further
     campus([['Z', 1800, 4]]), // anywhere
     campus([['Z', 1800, 2, { busy: [[TUE, DAY_START, at(14)], [TUE, at(14, 40), DAY_END]] }]]), // longest
@@ -1275,7 +1275,14 @@ test('every relaxed answer the ladder actually produces has words for it', () =>
       assert.ok(phrase, `the ladder answered with "${out.rung}" and the app would print nothing`);
     }
   }
-  assert.ok(seen.size >= 3, `only reached ${seen.size} relaxed rungs`);
+  // Four, not three. This was `>= 3` and the any-type fixture above was typed
+  // 2P, so when the labs left OFFERABLE that case stopped relaxing at all --
+  // the loop's `if (!out.relaxed) continue` skipped it, the count fell from 4
+  // to 3, and the assertion passed on the threshold. The rung this file exists
+  // to word was silently no longer being reached. The floor is the real count
+  // now, so losing one is a failure rather than a shrug.
+  assert.ok(seen.has('any-type'), 'the any-type rung is no longer exercised at all');
+  assert.ok(seen.size >= 4, `only reached ${seen.size} relaxed rungs: ${[...seen].join(', ')}`);
 });
 
 test('the sentences count to the quorum, because a rung wins by finding three rooms', () => {
@@ -1611,6 +1618,24 @@ test('not knowing where you are is a different answer from nothing being free', 
   assert.equal(lost.refused, 'location');
   assert.match(lost.reason, /where you are/);
   assert.deepEqual(lost.rows, []);
+
+  // The same, on an index that also holds a room nothing offers. This is the
+  // case the fixture above CANNOT reach: campus() types every room 1B, so a
+  // filter that skipped unofferable rooms before the origin was tested left
+  // this test green while the refusal was gone. query() reads
+  // `dropped.badOrigin === rooms.length`, and a room dropped earlier never
+  // reaches that count, so on the committed index -- which carries 27 computer
+  // labs -- the refusal changed from "Vacant does not know where you are" to
+  // "Nothing on campus is free for long enough today". A student whose fix had
+  // simply not resolved was told to go home.
+  const withLab = campus([['A', 300, 3]]);
+  withLab.rooms.push({ ...withLab.rooms[0], id: 'A9999', type: '2P' });
+  const stillLost = query(withLab.rooms, {
+    origin: { lat: NaN, lon: NaN }, now: at(12), day: TUE, needed: 60,
+    buildings: withLab.buildings, hoursFor: OPEN_ALL_DAY,
+  });
+  assert.equal(stillLost.refused, 'location', 'an unofferable room hid the geolocation refusal');
+  assert.match(stillLost.reason, /where you are/);
 
   // A campus that is genuinely booked solid says something else entirely.
   const busy = campus([['A', 300, 3, { busy: [[TUE, DAY_START, DAY_END]] }]]);

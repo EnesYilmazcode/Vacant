@@ -148,10 +148,16 @@
      The max() term is the other end of the same problem: 13vw reaches the
      3.4rem ceiling at 418.5px and nothing binds again above it, so the wordmark
      was the same 54.4px on a 1900px window as on a 419px phone. 6vw is the rate
-     that lets it grow and it is picked so it cannot touch a phone: 6vw only
-     passes 3.4rem at 906.7px, wider than any phone in portrait and wider than a
-     430x932 one turned sideways. Measured before and after: 50.7px at 390,
-     54.4px at 430 and 820, unchanged; 80px at 1900. The 5rem ceiling arrives at
+     that lets it grow, and it is picked to clear every phone in portrait: 6vw
+     only passes 3.4rem at 906.7px. That does NOT clear a 430x932 phone turned
+     sideways, and an earlier draft of this comment claimed it did. Measured at
+     932x430 the wordmark is 55.92px against main's 54.4, and the column cap
+     binds too: the sheet's children go from 932px wide to 512. Landscape on a
+     phone is the one place this file's "nothing moves below a laptop" rule
+     bends, and a 512px column inside a 163px-tall peeked sheet is the better
+     answer anyway, so it bends deliberately rather than by accident. Portrait
+     is untouched: 50.7px at 390, 54.4px at 430 and 820, unchanged; 80px at
+     1900. The 5rem ceiling arrives at
      1333px, and is 5rem because "Vacant." measures 3.40 times its font size, so
      80px is 272px of wordmark inside the 24rem .opts column below it. */
   #ask h1 {
@@ -595,13 +601,22 @@
      one element and two classes: this block sits last, and the pairs that
      overlap are spelled out rather than left to source order. */
   @media (hover: hover) and (pointer: fine) and (forced-colors: none) {
-    .opt:hover { background: var(--card-hi); border-color: var(--line-hi); }
+    /* :enabled, because the four duration buttons ship disabled and js/app.js
+       clears it only once boot() resolves. Without the guard a hover lit them
+       while #ask:not(.ready) .opts was dimming them to .45, which is the
+       interface promising a control it has not got yet. */
+    .opt:enabled:hover { background: var(--card-hi); border-color: var(--line-hi); }
     .opt.primary:hover { background: var(--accent-hi); border-color: var(--accent-hi); }
     /* A row has no background of its own, so its hover is the light it gets,
        not a surface swap. Over --bg the .05 white resolves to #17191c, where
        --dim measures 7.42:1 and stays over the 7:1 this screen is held to. */
     .row:hover { background: rgba(255,255,255,.05); }
     .row.on:hover { background: rgba(255,77,61,.12); }
+    /* The same light, because .b-row and .pick-row are transparent for the same
+       reason .row is. They are the whole of the nearest-buildings and the picker
+       screens, so leaving them out meant two screens where nothing answered a
+       mouse at all. */
+    .b-row:hover, .pick-row:hover { background: rgba(255,255,255,.05); }
     .bar-btn:hover { background: var(--card-hi); border-color: var(--line-hi); }
     .chip:hover { background: var(--card-hi); border-color: var(--line-hi); color: var(--fg); }
     .chip[aria-checked="true"]:hover {

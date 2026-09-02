@@ -550,9 +550,16 @@ test('every control answers a mouse before it has been clicked', () => {
   const at = css.indexOf('@media (hover: hover)');
   assert.ok(at > 0, 'nothing in this app answers a pointer');
   const block = css.slice(at, css.indexOf('\n  }', at));
-  for (const sel of ['.opt:hover', '.row:hover', '.bar-btn:hover', '.chip:hover', '.dstep:hover', '#back:hover']) {
+  // .opt is :enabled-guarded: the four duration buttons ship disabled and a
+  // hover that lit them would contradict the .45 opacity dimming them.
+  for (const sel of ['.opt:enabled:hover', '.row:hover', '.bar-btn:hover', '.chip:hover', '.dstep:hover', '#back:hover',
+    '.b-row:hover', '.pick-row:hover']) {
     assert.ok(block.includes(sel), `${sel} has no hover state`);
   }
+  // The list is the one index.html:84 already keeps for every control in the
+  // app: .b-row and .pick-row are the nearest-buildings and picker screens, and
+  // a test called "every control" that checks six of eight is not that test.
+  assert.doesNotMatch(block, /(?<![.\w-])\.opt:hover/, 'the disabled duration buttons light up again');
   // #origin-where is a .bar-btn and is covered by that one.
   assert.match(css.slice(at, at + 80), /pointer: fine/, 'a phone gets sticky hover');
   assert.match(css.slice(at, at + 80), /forced-colors: none/, 'high contrast gets author colours');
@@ -575,11 +582,11 @@ test('a mouse can open the sheet without first learning to drag', () => {
   const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
   const end = app.slice(app.indexOf('  const end = (e) => {'), app.indexOf("sheet.addEventListener('pointerup', end)"));
   assert.ok(end, 'no pointerup handler on the sheet');
-  assert.match(end, /const moved = Math\.abs\(drag\.lastY - drag\.y0\) >= 8;/);
-  assert.match(end, /if \(!moved\) \{\s*setSheet\(sheetH >= full - 2 \? peek : full, true\);/);
+  assert.match(end, /const moved = drag\.travelled;/);
+  assert.match(end, /if \(!moved && released\) \{\s*setSheet\(sheetH >= full - 2 \? peek : full, true\);/);
   // Under the dismiss branch, or a grip pulled to the end of its travel would
   // toggle instead of throwing the list away.
-  assert.ok(end.indexOf('toAsk();') < end.indexOf('if (!moved)'), 'the click branch eats the dismiss');
+  assert.ok(end.indexOf('toAsk();') < end.indexOf('if (!moved && released)'), 'the click branch eats the dismiss');
 });
 
 // ---------------------------------------------------------------- #18 the row
@@ -2028,4 +2035,22 @@ test('the gesture asks js/sheet.js instead of deriving the rule again', () => {
   const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
   assert.match(src, /sheetAfterDrag\(drag\.h0, dy, drag\.from, window\.innerHeight\)/);
   assert.equal(src.includes('DISMISS_PX'), false, 'app.js names the dismiss distance a second time');
+});
+
+test('the click toggle reads travel, not net displacement', () => {
+  const move = APP.slice(APP.indexOf('sheet.addEventListener(\'pointermove\''), APP.indexOf('const end = (e) =>'));
+  const end = APP.slice(APP.indexOf('const end = (e) =>'), APP.indexOf('sheet.addEventListener(\'pointerup\', end)'));
+  // lastY is the LAST sample because the velocity term needs it to be, so
+  // `lastY - y0` is net displacement and any out-and-back reads as a press.
+  // Measured in Chromium at 390x844 before this latch existed: a 60px pull on
+  // the grip returned to its start snapped the sheet 321 -> 658, and the same
+  // gesture begun on a row collapsed it 780 -> 321. Both were no-ops on main.
+  assert.doesNotMatch(end, /lastY\s*-\s*drag\.y0|drag\.lastY\s*-/, 'the toggle is measuring net displacement again');
+  assert.match(move, /Math\.abs\(dy\) >= 8\) drag\.travelled = true/, 'nothing latches the 8px any more');
+  assert.match(end, /const moved = drag\.travelled/, 'the toggle stopped reading the latch');
+  // A latch that is cleared mid-gesture is not a latch.
+  assert.equal((APP.match(/drag\.travelled = /g) || []).length, 1, 'travelled is written more than once');
+  // pointercancel is the platform taking the gesture, not the user releasing it.
+  assert.match(end, /const released = e\.type === 'pointerup'/, 'a cancelled press can toggle the sheet');
+  assert.match(end, /if \(!moved && released\)/, 'the toggle branch does not require a release');
 });

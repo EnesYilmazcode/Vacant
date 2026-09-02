@@ -407,6 +407,11 @@ function attachSheet() {
       lastY: e.clientY,
       lastT: e.timeStamp,
       v: 0,
+      // Latched the first time the pointer is 8px from where it started, and
+      // never cleared. lastY cannot answer this: it is the LAST sample, because
+      // the velocity above needs it to be, so it measures net displacement.
+      // An out-and-back returns it to y0 and the gesture reads as a press.
+      travelled: false,
       mode,
       // Fixed at the start: a pending drag becomes a sheet drag on the first
       // 8px and must not pick up the grip's reach on the way.
@@ -453,6 +458,7 @@ function attachSheet() {
       drag.mode = dy < 0 && drag.h0 >= FULL * window.innerHeight - 2 ? 'scroll' : 'sheet';
       capture(sheet, e.pointerId);
     }
+    if (Math.abs(dy) >= 8) drag.travelled = true;
     const dt = e.timeStamp - drag.lastT;
     if (dt > 0) drag.v = (e.clientY - drag.lastY) / dt;
     drag.lastY = e.clientY;
@@ -474,10 +480,20 @@ function attachSheet() {
     const v = drag.v;
     const dismiss = drag.dismiss;
     // The same 8px the pending drag uses, so a mouse that shivered under a
-    // finger-free click still counts as a click. A gesture that started on a
-    // pane cannot reach here without clearing that threshold, so this only
-    // ever describes the grip.
-    const moved = Math.abs(drag.lastY - drag.y0) >= 8;
+    // finger-free click still counts as a click.
+    //
+    // Read off the latch, not off lastY. lastY is the last sample rather than
+    // the furthest one, so `lastY - y0` is net displacement: measured in
+    // Chromium at 390x844, a press on the grip taken 60px down and 60px back
+    // read as a click and snapped the sheet 321 -> 658, and the same out-and-back
+    // begun on a row collapsed it 780 -> 321. Both were no-ops before this
+    // screen learned to toggle. An earlier comment here claimed a pane gesture
+    // could not reach this line without having moved; it clears 8px once to
+    // become a sheet drag and nothing holds it cleared.
+    const moved = drag.travelled;
+    // A toggle is a release affordance. pointercancel is the platform taking
+    // the gesture away, which is not the user letting go of it.
+    const released = e.type === 'pointerup';
     drag = null;
     syncTouch();
     if (mode !== 'sheet') return;
@@ -495,7 +511,7 @@ function attachSheet() {
     // was the only way out of peek, so a mouse had to learn to drag before it
     // could see the fifth row. Opening is the useful direction, so a click
     // opens from anywhere below full and only closes once it is there.
-    if (!moved) {
+    if (!moved && released) {
       setSheet(sheetH >= full - 2 ? peek : full, true);
       return;
     }

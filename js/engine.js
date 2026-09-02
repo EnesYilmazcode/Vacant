@@ -150,8 +150,13 @@ export const PREFERRED_TYPES = ['1B', '1C', '1A', 'LCTR', 'SMNR'];
 // 0 to 12 x 7 days x every 5 minutes x 5 asks -- 2,394,665 moments -- the count
 // of lab-only moments is ZERO. Not "we sampled and found none": there is no
 // origin, minute or ask on this index that can empty a list by this removal.
-// Replayed as answers, 38,928 lists had rows before and 38,928 after, with a
-// lab on row one 133 times. Those 133 are the walks this removes.
+// Replayed as answers over 149 origins -- all 96 index buildings plus a 7x7
+// lattice padded 25% past the bounding box and the four far corners -- seven
+// days including the weekend, hourly 06:10 to 22:10, at asks of 30, 60, 120 and
+// rest of day: 38,928 lists had rows before and 38,928 after, with a lab on row
+// one 133 times. Those 133 are the walks this removes. The grid is written down
+// because the first version of this comment gave the counts without it, and a
+// figure nobody else can reproduce is worth about as much as a wrong one.
 //
 // They stay in TYPE_VISIBILITY for now, so the index still carries them and the
 // bytes are still spent; the harvest is where that gets fixed, and it runs
@@ -1148,12 +1153,14 @@ export function query(rooms, opts) {
   const runs = {
     asked: [needed, false, () => rung(needed, { types: PREFERRED, radius: maxWalk, openNow: true })],
     // Dropping the room-type preference is a relaxation like any other. The
-    // rows it adds are conference rooms, departmental seminar rooms, a TV and
-    // radio facility and two rooms of a type nothing decodes -- every one of
-    // them departmental, none of them a computer lab any more -- so an answer
-    // built from them is not the question the student asked and has to admit
-    // it. js/state.js holds the sentence that admits it; this is the other half
-    // of the "twice", and it went stale when the labs left OFFERABLE.
+    // rows it adds are SECONDARY_TYPES: conference rooms, one meeting room, a
+    // TV and radio facility and two rooms of a type nothing decodes -- every
+    // one of them departmental, none of them a computer lab any more -- so an
+    // answer built from them is not the question the student asked and has to
+    // admit it. js/state.js holds the sentence that admits it; this is the
+    // other half of the "twice", and it went stale when the labs left
+    // OFFERABLE. It said "departmental seminar rooms", which is 1A: a preferred
+    // type, already in the asked rung, and not a room this rung can add.
     'any-type': [needed, true, () => rung(needed, { radius: maxWalk, openNow: true })],
     ...Object.fromEntries(shorter.map((n) => [
       `shorter:${n}`,

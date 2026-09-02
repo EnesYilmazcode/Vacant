@@ -1190,9 +1190,14 @@ test('a screen full of unknown-hours rooms is countable, not disguised', () => {
 // read neither, so a list built by dropping the room-type filter was headed by
 // the same words as a list of ordinary classrooms: 20 computer labs, 12
 // conference rooms and a dental clinic under no sentence at all. That is issue
-// #90, and these are the tests that stop it coming back. The labs have since
-// left OFFERABLE entirely, so the rung reaches conference and meeting rooms
-// now; the dental clinic is one of those and the sentence still admits it.
+// #90, and these are the tests that stop it coming back.
+//
+// Two things in that sentence are history now. The labs left OFFERABLE, so the
+// rung reaches conference rooms, a meeting room, a TV and radio facility and
+// two rooms of a type nothing decodes. And the dental clinic was never on this
+// index at all: PH3089A is real, it is in docs/research/facility-types.md, and
+// zero PH rooms ship. It got repeated here from that document twice before
+// anyone checked it against data/rooms-1268.json.
 //
 // The sentences live in js/state.js rather than in js/app.js because js/app.js
 // touches the DOM at import and cannot be loaded under node. js/state.js is the

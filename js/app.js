@@ -55,6 +55,7 @@ import {
   attachGestures,
   buildBasemap,
   clampView,
+  createFrameLoop,
   drawFrame,
   drawTarget,
   drawYou,
@@ -227,7 +228,6 @@ function focusHeading(el) {
 
 // ---------------------------------------------------------------- rendering
 
-let raf = 0;
 let flyoverStart = 0;
 let lastSize = { w: 0, h: 0, dpr: 0 };
 const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -281,9 +281,17 @@ function viewport() {
   };
 }
 
+// One frame, and the answer to whether there needs to be another one.
+//
+// It used to re-request a frame on its first line whatever was on screen, which
+// is what issue #75 caught: 290 callbacks in 2 seconds on a settled list with
+// nothing selected, all painting the same pixels. Now the flyover is the only
+// thing that asks for the next frame on its own, and everything else that
+// changes what the map shows calls frames.wake() for a single one. Every one of
+// those call sites is marked; miss one and the map silently keeps the old
+// picture.
 function render(now) {
-  raf = requestAnimationFrame(render);
-  if (!state.basemap) return;
+  if (!state.basemap) return false;
   const ctx = surface();
   const vp = viewport();
 
@@ -305,7 +313,7 @@ function render(now) {
       rotation: reduceMotion ? 0 : Math.sin(t * 0.028) * 0.05,
     });
   }
-  if (!state.view) return;
+  if (!state.view) return false;
 
   drawFrame(ctx, state.basemap, state.view, vp);
 
@@ -320,7 +328,6 @@ function render(now) {
         footprint: footprintFor(state.campus, state.selected.building, target),
         from: you,
         to: target,
-        label: Number.isFinite(state.selected.walk) ? `${state.selected.walk} min walk` : '',
       },
       state.basemap,
       state.view,
@@ -338,11 +345,20 @@ function render(now) {
     state.view,
     vp,
   );
+
+  // The drift over campus is the one thing on this canvas that moves by itself.
+  // Under prefers-reduced-motion t is pinned to 0 above, so the flyover computes
+  // the same view every frame and one paint is the whole of it.
+  return !state.settled && Boolean(state.campus) && !reduceMotion;
 }
+
+// The loop, stopped whenever render() says nothing is moving.
+const frames = createFrameLoop((cb) => requestAnimationFrame(cb), render);
 
 function settle() {
   state.settled = true;
   $('map').classList.add('settled');
+  frames.wake();
   if (!state.origin || !state.campus || !state.basemap || state.userMoved) return;
   const [cx, cy] = toGrid([state.origin.lon, state.origin.lat], state.campus);
   state.view = makeView({ cx, cy, span: SETTLED_SPAN, rotation: 0 });
@@ -351,6 +367,10 @@ function settle() {
 // Put you and the building on screen together. Once a finger has moved the
 // camera this stops firing, otherwise every row tap would undo the gesture.
 function frame(r) {
+  // Before the guards: a tap that does not move the camera still changes which
+  // footprint is lit and where the line ends, and after a hand pan or on a
+  // screen with no fix yet this function returns without touching the view.
+  frames.wake();
   if (!state.basemap || !state.campus || state.userMoved || !state.origin) return;
   const b = state.buildings?.[r.building];
   if (!b || !Number.isFinite(b.lat) || !Number.isFinite(b.lon)) return;
@@ -1163,6 +1183,8 @@ function clearPickedOrigin() {
 function useOrigin(origin, note) {
   state.origin = origin;
   state.accuracy = origin.accuracy;
+  // The dot, its accuracy ring and the end of the walk line all hang off this.
+  frames.wake();
   // The one place the app branches on where the origin came from. Nothing in
   // ranking, the off-campus gate or the buildings screen reads it.
   state.originIsGuess = origin.source === 'oval';
@@ -1773,6 +1795,7 @@ function showPane(name) {
 }
 
 function reframe() {
+  frames.wake();
   if (!state.basemap || !state.view) return;
   if (state.selected) frame(state.selected);
   // frame() stands down once the camera has been moved by hand, and a cy
@@ -1795,6 +1818,9 @@ function showAsk() {
   sheetH = 0;
   $('map').classList.remove('settled');
   flyoverStart = performance.now();
+  // Back to the question restarts the drift, which is the loop's own reason to
+  // keep running.
+  frames.wake();
   if (orientationOff) orientationOff();
 }
 
@@ -1860,6 +1886,9 @@ function showRoom(id, { keepDay = false } = {}) {
 
   const r = state.results.find((x) => x.id === id);
   state.selected = r ?? { id, building: room.b, walk: null };
+  // frame() below runs only when the room is one of the ranked rows. Opened
+  // from a link or out of hours it is not, and the footprint still has to light.
+  frames.wake();
   attachBearing(id);
   // A week either way, and no clamp. Past the term's own bounds the grid comes
   // back empty and the sentence over it says the schedule does not reach there.
@@ -2145,7 +2174,7 @@ async function boot() {
   const json = (f) => fetch(`${BASE}data/${f}`, { signal }).then(answered).then((r) => r.json());
 
   flyoverStart = performance.now();
-  raf = requestAnimationFrame(render);
+  frames.wake();
 
   // Geolocation starts immediately and runs beside the fetches, so the two
   // waits overlap instead of queueing.
@@ -2159,6 +2188,10 @@ async function boot() {
       const shorter = Math.min(window.innerWidth, window.innerHeight) || 390;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       state.basemap = buildBasemap(campus, pixelsPerGridFor(campus, shorter, dpr));
+      // The first frame with anything to draw on it. render() paints nothing and
+      // asks for nothing while state.basemap is null, so without this the map
+      // stays black until the next tap.
+      frames.wake();
       if (state.settled) settle();
     })
     .catch(() => {
@@ -2280,6 +2313,19 @@ window.addEventListener('DOMContentLoaded', () => {
   attachSheet();
   window.addEventListener('resize', () => {
     if (state.screen !== 'ask') sheetHeight();
+    // surface() reallocates the backing store on the next frame and the band
+    // moves with the height, so a resize that does not reach the loop leaves a
+    // stretched bitmap composed for the old screen.
+    frames.wake();
+  });
+
+  // js/install.js writes --bar-h on the body when the install rail mounts or is
+  // dismissed, and railHeight() feeds the band the map centres in. That is the
+  // one layout change the app makes that no event announces, and --bar-h is the
+  // only inline style anything sets on the body.
+  new MutationObserver(() => frames.wake()).observe(document.body, {
+    attributes: true,
+    attributeFilter: ['style'],
   });
 
   // Drag to pan, wheel or pinch to zoom. Once a finger has moved the camera the
@@ -2289,11 +2335,13 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!state.basemap || !state.view) return;
       state.view = panBy(state.view, dx, dy, state.basemap, viewport());
       state.userMoved = true;
+      frames.wake();
     },
     onZoom: (factor, anchor) => {
       if (!state.basemap || !state.view) return;
       state.view = zoomBy(state.view, factor, state.basemap, viewport(), anchor);
       state.userMoved = true;
+      frames.wake();
     },
   });
 

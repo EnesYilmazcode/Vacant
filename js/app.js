@@ -473,6 +473,11 @@ function attachSheet() {
     const mode = drag.mode;
     const v = drag.v;
     const dismiss = drag.dismiss;
+    // The same 8px the pending drag uses, so a mouse that shivered under a
+    // finger-free click still counts as a click. A gesture that started on a
+    // pane cannot reach here without clearing that threshold, so this only
+    // ever describes the grip.
+    const moved = Math.abs(drag.lastY - drag.y0) >= 8;
     drag = null;
     syncTouch();
     if (mode !== 'sheet') return;
@@ -484,6 +489,14 @@ function attachSheet() {
     if (dismiss) {
       setSheet(peek, true);
       toAsk();
+      return;
+    }
+    // A press on the grip that went nowhere. Dragging is a thumb gesture and it
+    // was the only way out of peek, so a mouse had to learn to drag before it
+    // could see the fifth row. Opening is the useful direction, so a click
+    // opens from anywhere below full and only closes once it is there.
+    if (!moved) {
+      setSheet(sheetH >= full - 2 ? peek : full, true);
       return;
     }
     // Velocity wins over position, which is what makes a short flick work.

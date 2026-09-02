@@ -1103,6 +1103,74 @@ test('the back button on the room screen names the pane back lands on', () => {
   assert.match(show, /from === 'near'\s*\?\s*'Back to the nearest buildings'\s*:\s*'Back to the room list'/);
 });
 
+// ---- the duration, and where the list says it
+
+// #85 took the four-chip radiogroup off the ranked list. It cost 61px of a
+// 321px peeked sheet to keep asking a question that had already been answered,
+// and the room screen had already stopped showing it.
+//
+// The half that is easy to get wrong is the other half. The chip bar was the
+// ONLY place the list named the duration: paintList renders note + strip +
+// caveat + rows, and on the happy path the strip is empty, so deleting the
+// chips without replacing them leaves a column of room names that does not say
+// what question it is the answer to. These hold both halves together, because
+// either one alone is a regression.
+test('the duration chips are gone from the page, not merely hidden on it', () => {
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.doesNotMatch(html, /id="chips"/, 'the chip bar is still in the DOM');
+  assert.doesNotMatch(html, /class="chip"/, 'a chip is still in the DOM');
+  assert.doesNotMatch(html, /role="radiogroup"/, 'the duration radiogroup is still in the DOM');
+  // A hidden node still has CSS, and CSS for a node nothing renders is how the
+  // bar comes back by accident.
+  assert.doesNotMatch(html, /^\s*#chips\s*\{/m, 'the chip bar still has a rule');
+  assert.doesNotMatch(html, /\.chip[\s{[]/, 'a chip selector survives in the stylesheet');
+  // And nothing in the app is still wired to it, which is what the roving
+  // tabindex handler and the paintChips sync would be.
+  assert.doesNotMatch(APP, /['"#]chips['"]|\.chip\b/, 'js/app.js still reaches for the chips');
+  assert.doesNotMatch(APP, /paintChips|attachChips/, 'the chip handlers are still here');
+});
+
+test('the ranked list says which question it is answering', () => {
+  const paint = bodyOf('paintList');
+  // In the concatenation, so it cannot be a line that renders somewhere else.
+  assert.match(
+    paint,
+    /list\.innerHTML =\s*\n\s*note \+\s*\n\s*asked\(\) \+/,
+    'the rows are painted without the line that names the ask',
+  );
+  const line = APP.slice(APP.indexOf('const asked = ()'), APP.indexOf('function paintList('));
+  assert.ok(line.length > 0, 'asked() is gone');
+
+  // Prose, not a control. The chips were 44px targets and the replacement is a
+  // paragraph: a second way to change the duration is the thing #85 removed.
+  assert.match(line, /<p class="asked">/);
+  assert.doesNotMatch(line, /<button|onclick|role=/, 'the line naming the ask is a control again');
+
+  // One vocabulary for one figure. The strip two lines below prints
+  // dur(state.needed) and the empty screen prints it too; a second rendering of
+  // the same ask on the same screen is how two lines disagree.
+  assert.match(line, /dur\(state\.needed\)/);
+
+  // It names the ASK, not an offer. state.results can hold rows shorter than
+  // the ask whenever one row meets it, so "free for 2h00" over these rows is a
+  // promise the list does not keep.
+  assert.doesNotMatch(line, /[Ff]ree for/);
+});
+
+test('back is the way to the question, and it says so on the list', () => {
+  // The only route to the duration now, so its accessible name has to name the
+  // screen it lands on rather than reading "Back".
+  const show = bodyOf('showList');
+  assert.match(show, /\$\('back'\)\.setAttribute\('aria-label', 'Back to the question'\)/);
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(html, /id="back"[^>]*aria-label="Back to the question"/);
+  // The four .opt buttons are what back lands on, and they are the four the
+  // chips used to duplicate.
+  for (const min of ['30', '60', '120', 'day']) {
+    assert.match(html, new RegExp(`class="opt[^"]*" data-min="${min}"`), `the ${min} choice is gone`);
+  }
+});
+
 // ---- the night gate
 
 // Nothing in this file pinned a word of the night screen before these. The
@@ -1579,8 +1647,7 @@ test('a focused heading does not wear the ring that means you can press it', () 
   const app = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
   assert.match(app, /el\.focus\(\{ preventScroll: true, focusVisible: false \}\)/);
   const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-  // Scoped to h2, so the roving-tabindex chips, which are buttons carrying the
-  // same attribute, keep their ring.
+  // Scoped to h2, so anything else carrying tabindex="-1" keeps its ring.
   assert.match(html, /h2\[tabindex="-1"\]:focus-visible \{ outline: none; \}/);
 });
 
@@ -1703,7 +1770,8 @@ test('nothing the empty screen calls free is a room that has not opened yet', ()
 // can leave the student on. Measured on Wed 2026-09-02 at 14:10 with a 30 minute
 // ask, two origins 20 m apart on one bearing out of the Oval: at 2.190 km the
 // screen had 0 rows and its only controls were Check again, What Vacant knows
-// and the four duration chips, none of which can change a walk; at 2.210 km the
+// and the four duration chips, none of which can change a walk (the chip bar has
+// since gone, with #85; the two buttons are what is left); at 2.210 km the
 // same situation crossed OFF_CAMPUS_KM, fell back to the Oval and got 40
 // tappable rows.
 test('an origin with nothing walkable is answered, not left on a dead end', () => {

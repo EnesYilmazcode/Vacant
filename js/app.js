@@ -432,8 +432,8 @@ function attachSheet() {
 
   sheet.addEventListener('pointerdown', (e) => {
     if (e.target.closest('#handle')) return;
-    // The search field and the chips are controls, not surfaces to drag from.
-    if (e.target.closest('#find, #chips')) return;
+    // The search field is a control, not a surface to drag from.
+    if (e.target.closest('#find')) return;
     begin(e, 'pending');
   });
 
@@ -672,6 +672,31 @@ const CAVEAT = `<p class="foot">Class schedule only. Doors get locked and clubs 
   class scheduled with no room recorded does not appear here at all, so a room can be in use
   with nothing on its timeline.</p>`;
 
+// The list's statement of the question it answers. The duration chips used to
+// be the only thing on this screen that said what was asked for, and they went
+// with #85, so the words have to be somewhere: a list of room names alone does
+// not say whether it is a list of rooms free for half an hour or for the rest
+// of the day.
+//
+// Two decisions in one line, both about not lying:
+//
+// It says what was ASKED, not what is offered. "Free for 2h00" over these rows
+// would be a promise the list does not keep: strip is empty as soon as ONE row
+// meets the ask, and the rows below it can be shorter. "You asked for" is true
+// in every one of the four states below, including the one whose strip says
+// nothing near you is free for that long.
+//
+// It spends dur(state.needed), which is the same function and the same number
+// the strip and the empty screen already print two lines away. The chips said
+// "2h" and needed is minutes, so a second vocabulary for one figure on one
+// screen is how two lines end up disagreeing about the same ask. It is also
+// the only honest rendering of "rest of day", which is not a fixed length.
+//
+// The empty screen above does not get this line. It is not a silent list: it
+// opens with an h2 that states the answer in words, and its last branch already
+// prints dur(state.needed) in a sentence of its own.
+const asked = () => `<p class="asked">You asked for <b>${dur(state.needed)}</b>.</p>`;
+
 function paintList() {
   const list = $('list');
   const note = state.situation?.note
@@ -753,6 +778,7 @@ function paintList() {
 
   list.innerHTML =
     note +
+    asked() +
     strip +
     caveat +
     state.results
@@ -823,33 +849,18 @@ function select(i) {
   say(`${roomLabel(r)}, ${r.walk} minute walk, shown on the map.`);
 }
 
-// ---------------------------------------------------------------- the chips
+// ------------------------------------------------------------- the duration
 
-function paintChips() {
-  for (const el of $('chips').querySelectorAll('.chip')) {
-    const on = el.dataset.min === state.duration;
-    el.setAttribute('aria-checked', String(on));
-    // Roving tabindex: one stop for the whole group, arrows move inside it.
-    el.tabIndex = on ? 0 : -1;
-  }
+// The four .opt buttons on the question screen are the only place the duration
+// is chosen now. This used to paint a second copy of the same choice into the
+// chip bar at the bottom of the sheet, with its own roving tabindex and its own
+// arrow keys; #85 took the bar off the list and the pair of them went with it.
+// What is left is one control, on one screen, and the list says in words which
+// of the four it was answered with.
+function paintDuration() {
   for (const el of document.querySelectorAll('#ask .opt[data-min]')) {
     el.classList.toggle('primary', el.dataset.min === state.duration);
   }
-}
-
-function attachChips() {
-  const chips = [...$('chips').querySelectorAll('.chip')];
-  chips.forEach((el, i) => {
-    el.onclick = () => choose(el.dataset.min);
-    el.onkeydown = (e) => {
-      const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
-      if (!step) return;
-      e.preventDefault();
-      const next = chips[(i + step + chips.length) % chips.length];
-      choose(next.dataset.min);
-      next.focus();
-    };
-  });
 }
 
 // ------------------------------------------------------- the buildings screen
@@ -1715,9 +1726,6 @@ async function paintAbout() {
 function showPane(name) {
   if (state.screen === 'room' && name !== 'room' && orientationOff) orientationOff();
   for (const id of PANES) $(id).hidden = id !== name;
-  // The chips belong to the ranked list. Leaving them on the room screen means
-  // a chip tap has to unwind a history entry to get back to the list it edits.
-  $('chips').hidden = name !== 'list';
   $('find').hidden = name !== 'pick';
   $('origin').hidden = !originBarOn(name);
   $('ask').hidden = true;
@@ -1859,7 +1867,7 @@ function choose(min) {
   if (!state.ready) return;
   state.duration = String(min);
   safeSet(KEY_DURATION, state.duration);
-  paintChips();
+  paintDuration();
   if (!state.rankable) return;
   if (!state.scheduled) {
     if (state.screen !== 'near') {
@@ -2154,7 +2162,7 @@ async function boot() {
   state.ready = true;
   for (const el of document.querySelectorAll('#ask [disabled]')) el.disabled = false;
   $('ask').classList.add('ready');
-  paintChips();
+  paintDuration();
   paintGate();
   performance.mark('vacant:ready');
 
@@ -2204,7 +2212,6 @@ window.addEventListener('DOMContentLoaded', () => {
   for (const b of document.querySelectorAll('#ask [data-min]')) {
     b.onclick = () => choose(b.dataset.min);
   }
-  attachChips();
   $('back').onclick = () => history.back();
   $('gate-go').onclick = () => openNear();
   $('ask-pick').onclick = () => openPick();
@@ -2272,7 +2279,7 @@ window.addEventListener('DOMContentLoaded', () => {
 //
 // Nothing here is a mock. devApply moves the same clock the app reads and the
 // same origin the ranking measures from, and then calls the same refresh() the
-// duration chips call. What the panel shows is what the app does.
+// duration buttons call. What the panel shows is what the app does.
 
 export { state as devState };
 

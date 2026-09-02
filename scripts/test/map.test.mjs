@@ -478,7 +478,7 @@ function fakeFrames() {
 test('a settled screen costs one frame and then nothing', () => {
   // The defect in #75, reduced: nothing is moving, so draw says it wants no
   // more frames. Before the fix this counted 290 callbacks in 2 seconds; the
-  // ceiling here is 1, and the loop pumped 600 times cannot exceed it.
+  // ceiling here is 1, and the loop pumped 120 times cannot exceed it.
   const clock = fakeFrames();
   let painted = 0;
   const settled = createFrameLoop(clock.request, () => {

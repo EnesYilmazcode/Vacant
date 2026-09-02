@@ -171,7 +171,7 @@ The whole thing is a static site. There is no server, no database, and no login.
         |   cold launch: shell from cache, data stale-while-revalidate
         |   must answer with the network off, in a stairwell
         v
-   GPS fix          +     duration chip      +     the clock
+   GPS fix          +     duration ask       +     the clock
    (watchdog,             30m / 1h / 2h            today's date, so
     off-campus gate)                               closures apply
         |
@@ -386,7 +386,7 @@ the index stores one type per room and trusts it. Twenty seven codes exist and
 | 1 | Harvester emitting the room index | Port the bucket walk from [Finder](https://github.com/EnesYilmazcode/Finder), swap the projection, union three terms so zero-class rooms are not lost, strip instructor emails, and guard on busy blocks rather than room count |
 | 2 | `buildings.json` | Key join on `buildingCode` against OSU's own GIS layer. OSM as a cross-check |
 | 2 | Building hours and the academic calendar | Scrape the Registrar's classroom pool table and the term's holiday and exam dates. This is what makes Saturday correct |
-| 3 | The app | Geolocation, duration chips, ranked list, PWA manifest, service worker |
+| 3 | The app | Geolocation, duration buttons, ranked list, PWA manifest, service worker |
 | 4 | "Was it open?" reports | Only if it gets real use. Needs a small backend |
 
 ---

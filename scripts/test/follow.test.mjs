@@ -12,15 +12,16 @@
 // if the gate is deleted.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { WALK_MPM } from '../../js/engine.js';
-import { FOLLOW_M, FOLLOW_MS, followAction, followFix } from '../../js/state.js';
+import { FOLLOW_M, FOLLOW_MS, createWatch, followAction, followFix } from '../../js/state.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const APP = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8').replace(/\r\n/g, '\n');
+const STATE = readFileSync(join(ROOT, 'js', 'state.js'), 'utf8').replace(/\r\n/g, '\n');
 
 // A phone on the list screen with nothing under a thumb. Every gate test below
 // starts from this and turns exactly one thing on, so a test that goes green
@@ -160,13 +161,20 @@ test('the watch exists at all', () => {
   // `grep -rn "watchPosition" js/` returned nothing when #87 was filed, which is
   // the whole bug: one fix at boot, and every walk figure for the rest of the
   // session measured from a place the student had already left.
-  assert.match(APP, /navigator\.geolocation\.watchPosition\(/);
-  assert.match(APP, /navigator\.geolocation\.clearWatch\(/);
+  // The calls moved into createWatch when the handle was extracted, so what
+  // app.js has to show now is that it injects the real geolocation object.
+  assert.match(APP, /createWatch\(\{/, 'nothing opens a watch any more');
+  assert.match(APP, /geolocation: \(\) => navigator\.geolocation/, 'the watch is wired to something other than the phone');
+  assert.match(STATE, /watchPosition\(onFix, onError, options\)/);
+  assert.match(STATE, /clearWatch\(id\)/, 'clearWatch is not being handed the handle it opened');
 });
 
 test('the watch stays coarse and refuses a cached fix', () => {
-  const start = APP.slice(APP.indexOf('function startWatch()'), APP.indexOf('function stopWatch()'));
-  assert.ok(start.length > 0, 'startWatch moved');
+  // The options are the config createWatch is built with now, not a literal
+  // inside startWatch. Read them there; the behavioural test further down
+  // proves they reach watchPosition.
+  const start = APP.slice(APP.indexOf('const watch = createWatch({'), APP.indexOf('function startWatch()'));
+  assert.ok(start.length > 0, 'the watch config moved');
   // High accuracy is what holds the GPS chip awake. Campus-scale ranking has
   // never needed 5 m, and this flag is the one that would show up on a battery
   // screen. It was false before the watch and it stays false.
@@ -177,7 +185,7 @@ test('the watch stays coarse and refuses a cached fix', () => {
   assert.match(start, /maximumAge: 0/);
   // And 60 s kept on the boot fix, where a cached position buys a first answer
   // sooner and the student has not walked anywhere yet.
-  const boot = APP.slice(APP.indexOf('function locate()'), APP.indexOf('function startWatch()'));
+  const boot = APP.slice(APP.indexOf('function locate()'), APP.indexOf('const watch = createWatch({'));
   assert.match(boot, /enableHighAccuracy: false, timeout: FIX_TIMEOUT_MS, maximumAge: 60000/);
 });
 
@@ -257,13 +265,18 @@ test('the watch starts after the first fix and stops with the page', () => {
 });
 
 test('a picked origin is never followed and never overwritten', () => {
-  const start = APP.slice(APP.indexOf('function startWatch()'), APP.indexOf('function stopWatch()'));
   // Not merely ignored on arrival: the watch is never opened, so a student who
-  // picked a building pays no battery for a position nothing will read.
-  assert.match(start, /if \(state\.origin\.source === 'picked'\) return;/);
+  // picked a building pays no battery for a position nothing will read. The
+  // refusal is createWatch's now, and the behavioural test above runs it.
+  assert.match(STATE, /if \(origin\.source === 'picked'\) return 'picked';/);
+  // And a pick made MID-SESSION closes a watch that is already open, rather
+  // than waiting for a position to arrive and be judged -- which, with
+  // maximumAge 0 and no timeout, may be minutes away or never.
+  const pick = APP.slice(APP.indexOf('function pickBuilding(code)'), APP.indexOf('function pickBuilding(code)') + 1400);
+  assert.match(pick, /stopWatch\(\);\n  useOrigin\(origin, null\);/, 'a mid-session pick leaves the watch running');
   // pickedOrigin() still short-circuits before geolocation is asked at all,
   // which is the same rule one layer up.
-  const locate = APP.slice(APP.indexOf('function locate()'), APP.indexOf('function startWatch()'));
+  const locate = APP.slice(APP.indexOf('function locate()'), APP.indexOf('const watch = createWatch({'));
   assert.match(locate, /const picked = pickedOrigin\(\);\n  if \(picked\) return Promise\.resolve/);
 });
 
@@ -344,4 +357,125 @@ test('refresh is still never on a timer', () => {
   assert.doesNotMatch(code, /setInterval\(/);
   assert.doesNotMatch(code, /setTimeout\([^)]*refresh/);
   assert.match(APP, /\/\/ Recompute\. Never on a timer/);
+});
+
+// ---------------------------------------------------------------- the handle
+//
+// Everything above this line reads js/app.js as text, which is the best the
+// suite could do while the handle lived there. Reviewed with 26 mutations, five
+// survived: clearWatch(0), the missing double-start guard, the un-nulled handle,
+// and both halves of the throttle. Every one is a battery or staleness bug that
+// a green regex suite would have shipped. createWatch takes the geolocation
+// object and the visibility predicate, so these run it for real.
+
+function fakeGeo() {
+  const calls = { watch: [], clear: [] };
+  let next = 0;
+  return {
+    calls,
+    watchPosition(onFix, onErr, opts) { calls.watch.push({ onFix, onErr, opts }); return next++; },
+    clearWatch(id) { calls.clear.push(id); },
+  };
+}
+const shown = () => true;
+const gps = { lat: 39.9995, lon: -83.013, source: 'gps' };
+
+test('the handle it clears is the handle it opened', () => {
+  // clearWatch(0) passes every source scan ever written and stops nothing. It is
+  // the headline battery risk in #87 and it survived the first suite.
+  const geo = fakeGeo();
+  geo.watchPosition = () => 7;
+  const w = createWatch({ geolocation: () => geo, visible: shown, onFix() {}, onError() {} });
+  w.start(gps);
+  assert.equal(w.id, 7);
+  w.stop();
+  assert.deepEqual(geo.calls.clear, [7], 'the watch was cleared by a handle it never held');
+});
+
+test('a second start cannot open a second watch', () => {
+  const geo = fakeGeo();
+  const w = createWatch({ geolocation: () => geo, visible: shown, onFix() {}, onError() {} });
+  assert.equal(w.start(gps), 'open');
+  assert.equal(w.start(gps), 'already-open');
+  assert.equal(w.start(gps), 'already-open');
+  assert.equal(geo.calls.watch.length, 1, 'two live watches is twice the battery and invisible in testing');
+});
+
+test('stopping drops the handle, so the watch can come back', () => {
+  const geo = fakeGeo();
+  const w = createWatch({ geolocation: () => geo, visible: shown, onFix() {}, onError() {} });
+  w.start(gps);
+  w.stop();
+  assert.equal(w.open, false);
+  assert.equal(w.start(gps), 'open', 'a handle left set refuses every restart for the session');
+  assert.equal(geo.calls.watch.length, 2);
+});
+
+test('a throw inside clearWatch still drops the handle', () => {
+  const geo = fakeGeo();
+  geo.clearWatch = () => { throw new Error('locked down'); };
+  const w = createWatch({ geolocation: () => geo, visible: shown, onFix() {}, onError() {} });
+  w.start(gps);
+  assert.equal(w.stop(), 'stopped');
+  assert.equal(w.open, false, 'a failed stop must not strand the handle');
+});
+
+test('a hidden page never opens a watch', () => {
+  // The reachable leak: switch away inside the 8 s boot-fix window and follow()
+  // lands on a backgrounded page, after visibilitychange has already fired.
+  const geo = fakeGeo();
+  const w = createWatch({ geolocation: () => geo, visible: () => false, onFix() {}, onError() {} });
+  assert.equal(w.start(gps), 'hidden');
+  assert.equal(geo.calls.watch.length, 0, 'a sensor held open on a phone in a pocket');
+});
+
+test('a picked origin is refused, and no origin at all is refused', () => {
+  const geo = fakeGeo();
+  const w = createWatch({ geolocation: () => geo, visible: shown, onFix() {}, onError() {} });
+  assert.equal(w.start({ ...gps, source: 'picked' }), 'picked');
+  assert.equal(w.start(null), 'no-origin');
+  assert.equal(geo.calls.watch.length, 0);
+});
+
+test('the watch stays coarse and refuses a cached fix, read off the options it is given', () => {
+  const geo = fakeGeo();
+  const w = createWatch({ geolocation: () => geo, visible: shown, onFix() {}, onError() {},
+    options: { enableHighAccuracy: false, maximumAge: 0 } });
+  w.start(gps);
+  assert.equal(geo.calls.watch[0].opts.enableHighAccuracy, false, 'high accuracy is what drains the phone');
+  assert.equal(geo.calls.watch[0].opts.maximumAge, 0);
+});
+
+test('an unsupported or throwing geolocation leaves no handle behind', () => {
+  const bare = createWatch({ geolocation: () => ({}), visible: shown, onFix() {}, onError() {} });
+  assert.equal(bare.start(gps), 'unsupported');
+  assert.equal(bare.open, false);
+  const thrower = createWatch({ geolocation: () => ({ watchPosition() { throw new Error('no'); } }),
+    visible: shown, onFix() {}, onError() {} });
+  assert.equal(thrower.start(gps), 'threw');
+  assert.equal(thrower.open, false, 'a throw must not leave the app believing a watch is live');
+  assert.equal(thrower.stop(), 'closed');
+});
+
+test('js/app.js owns no watch handle of its own any more', () => {
+  // The extraction is the point: a handle back in app.js is a handle only a
+  // regex can see.
+  assert.doesNotMatch(APP, /let watchId/, 'the handle is back in a file the tests cannot run');
+  assert.match(APP, /createWatch\(\{/, 'app.js stopped using the state machine');
+  assert.match(APP, /visible: \(\) =>/, 'the visibility predicate is not injected, so it cannot be tested');
+});
+
+test('privacy.html describes the position handoff it actually makes', () => {
+  const privacy = readFileSync(join(ROOT, 'privacy.html'), 'utf8');
+  const install = readFileSync(join(ROOT, 'js', 'install.js'), 'utf8');
+  // mapsHref puts the real gps lat,lon into saddr / origin on an outbound URL.
+  // The page said the position was "never put in a URL", which was written
+  // before the Directions button and was false the moment it shipped.
+  assert.match(install, /const from = origin\?\.source === 'gps'/, 'mapsHref stopped sending the origin');
+  assert.doesNotMatch(privacy, /never put in a URL/, 'the page is back to claiming something mapsHref disproves');
+  assert.match(privacy, /Directions/, 'the page does not mention the one handoff it makes');
+  // And the file count, which was four and has been twelve for a long time.
+  const files = readdirSync(join(ROOT, 'js')).filter((f) => f.endsWith('.js')).length;
+  assert.match(privacy, new RegExp(`${['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve'][files] ?? files} JavaScript files`),
+    `privacy.html does not say there are ${files} JavaScript files`);
 });

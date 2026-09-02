@@ -511,6 +511,88 @@ test('the question screen does not centre content it cannot scroll to', () => {
   assert.ok(ask.indexOf('justify-content: center') < ask.indexOf('justify-content: safe center'));
 });
 
+// The wide-direction rules, checked in the source for the same reason as the
+// two above: this suite has no layout engine. What they are worth was measured
+// in headless Chrome at 1900x1000 on the ranked list, before and after. The
+// row's name column went 1777.2 -> 389.2px, so "Psychology Building 115" and
+// its "3 min" went from x=20.6 and x=1813.8 to x=714.6 and x=1119.8; the four
+// duration chips went 459.3/445.5/445.5/508.2 -> 112.3/98.5/98.5/161.2; and
+// #origin-where went 1823.4 -> 435.4px. Nothing moved at 320, 390 or 430px, or
+// at 393px with the root at 53px, which is the check the cap has to keep
+// passing: phone-first is the decision, phone-only was the accident.
+
+test('the sheet holds a capped column instead of stretching to the window', () => {
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const col = css.match(/--col:\s*([\d.]+)rem;/);
+  assert.ok(col, 'the sheet has no content column to cap');
+  // In rem, so it grows with the reader's font size, and wide enough that no
+  // phone can reach it: 32rem is 512px against the 430px of the widest one.
+  assert.ok(Number(col[1]) * 16 > 430, `${col[1]}rem is ${Number(col[1]) * 16}px and binds on a phone`);
+  const cap = css.match(/#sheet > \* \{[^}]*\}/);
+  assert.ok(cap, 'nothing caps the sheet content');
+  assert.match(cap[0], /max-width: var\(--col\)/);
+  assert.match(cap[0], /margin-inline: auto/, 'the column is capped but not centred');
+  // One rule for all three controls. Giving each its own number is how they
+  // drift apart, and #chips and #origin are siblings of the pane, not children.
+  assert.equal(css.split('max-width: var(--col)').length - 1, 1, 'the column is capped twice');
+  // The SHEET keeps the window's width. Its border is a horizon line across the
+  // map and it stands on an install rail that runs the whole way.
+  const sheet = css.slice(css.indexOf('\n  #sheet {'), css.indexOf('#sheet.snap'));
+  assert.doesNotMatch(sheet, /max-width/, 'the sheet narrowed, which is a second design');
+  // And the back arrow rides the same column rather than the window corner.
+  assert.match(css, /#back \{ left: max\(.+, calc\(50% - var\(--col\) \/ 2\)\); \}/);
+});
+
+test('every control answers a mouse before it has been clicked', () => {
+  // `grep -c ":hover" index.html` returned 0 for the whole life of the app, so
+  // the only press feedback anywhere was .opt:active, which is a touch gesture.
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const at = css.indexOf('@media (hover: hover)');
+  assert.ok(at > 0, 'nothing in this app answers a pointer');
+  const block = css.slice(at, css.indexOf('\n  }', at));
+  // .opt is :enabled-guarded: the four duration buttons ship disabled and a
+  // hover that lit them would contradict the .45 opacity dimming them.
+  // No .chip. This block was written against a main that still had the duration
+  // chips, and #85 deletes them in the same batch as this change. A hover rule
+  // for a node nothing renders is CSS that outlives its control, which is
+  // exactly what #85's own guard forbids -- and the two branches were green
+  // apart and red together until this came out.
+  for (const sel of ['.opt:enabled:hover', '.row:hover', '.bar-btn:hover', '.dstep:hover', '#back:hover',
+    '.b-row:hover', '.pick-row:hover']) {
+    assert.ok(block.includes(sel), `${sel} has no hover state`);
+  }
+  // The list is the one index.html:84 already keeps for every control in the
+  // app: .b-row and .pick-row are the nearest-buildings and picker screens, and
+  // a test called "every control" that checks six of eight is not that test.
+  assert.doesNotMatch(block, /(?<![.\w-])\.opt:hover/, 'the disabled duration buttons light up again');
+  // #origin-where is a .bar-btn and is covered by that one.
+  assert.match(css.slice(at, at + 80), /pointer: fine/, 'a phone gets sticky hover');
+  assert.match(css.slice(at, at + 80), /forced-colors: none/, 'high contrast gets author colours');
+  // :hover carries no specificity of its own, so each rule it ties with is
+  // spelled out and the whole block sits below every one of them.
+  for (const [plain, paired] of [
+    ['.row.on {', '.row.on:hover'],
+    ['.opt.primary {', '.opt.primary:hover'],
+  ]) {
+    assert.ok(block.includes(paired), `${paired} is missing, so ${plain} wins on source order`);
+    assert.ok(css.indexOf(plain) < at, `${plain} is declared below the hover block`);
+  }
+});
+
+test('a mouse can open the sheet without first learning to drag', () => {
+  // Dragging the grip is a thumb gesture and it was the only way out of peek,
+  // so on a laptop the fifth row of the answer was behind a gesture nobody
+  // does with a mouse.
+  const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const end = app.slice(app.indexOf('  const end = (e) => {'), app.indexOf("sheet.addEventListener('pointerup', end)"));
+  assert.ok(end, 'no pointerup handler on the sheet');
+  assert.match(end, /const moved = drag\.travelled;/);
+  assert.match(end, /if \(!moved && released\) \{\s*setSheet\(sheetH >= full - 2 \? peek : full, true\);/);
+  // Under the dismiss branch, or a grip pulled to the end of its travel would
+  // toggle instead of throwing the list away.
+  assert.ok(end.indexOf('toAsk();') < end.indexOf('if (!moved && released)'), 'the click branch eats the dismiss');
+});
+
 // ---------------------------------------------------------------- #18 the row
 
 test('a room with no later class says so, and never invents an end time', () => {
@@ -1103,6 +1185,99 @@ test('the back button on the room screen names the pane back lands on', () => {
   assert.match(show, /from === 'near'\s*\?\s*'Back to the nearest buildings'\s*:\s*'Back to the room list'/);
 });
 
+// ---- the duration, and where the list says it
+
+// #85 took the four-chip radiogroup off the ranked list. It cost 61px of a
+// 321px peeked sheet to keep asking a question that had already been answered,
+// and the room screen had already stopped showing it.
+//
+// The half that is easy to get wrong is the other half. The chip bar was the
+// ONLY place the list named the duration: paintList renders note + strip +
+// caveat + rows, and on the happy path the strip is empty, so deleting the
+// chips without replacing them leaves a column of room names that does not say
+// what question it is the answer to. These hold both halves together, because
+// either one alone is a regression.
+test('the duration chips are gone from the page, not merely hidden on it', () => {
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  // Comments are prose, not markup and not style. scripts/test/sw.test.mjs
+  // strips them before counting for the same reason: the comment explaining
+  // why a thing is gone names the thing, and must not read as it coming back.
+  const live = html.replace(/<!--[\s\S]*?-->/g, '');
+  assert.doesNotMatch(live, /class="chip"/, 'a chip is still in the DOM');
+  assert.doesNotMatch(live, /role="radiogroup"/, 'the duration radiogroup is still in the DOM');
+  // A hidden node still has CSS, and CSS for a node nothing renders is how the
+  // bar comes back by accident. \b rather than a character class: the rule this
+  // change actually deleted was `.row, .chip, .opt, .b-row, ... {`, and a comma
+  // is neither whitespace, a brace nor a bracket, so the old pattern would have
+  // walked straight past the shape it was written to catch.
+  assert.doesNotMatch(live, /^\s*#chips\b[^{]*\{/m, 'the chip bar still has a rule');
+  assert.doesNotMatch(live, /\.chip\b/, 'a chip selector survives in the stylesheet');
+  // And nothing in the app is still wired to it, which is what the roving
+  // tabindex handler and the paintChips sync would be.
+  assert.doesNotMatch(APP, /['"#]chips['"]|\.chip\b/, 'js/app.js still reaches for the chips');
+  assert.doesNotMatch(APP, /paintChips|attachChips/, 'the chip handlers are still here');
+});
+
+test('the #chips node left behind for the old shell is empty, and dated', () => {
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  // sw.js serves navigations network-first and assets cache-first, so the first
+  // load after this deploys runs the new index.html against the js/app.js still
+  // in the shell cache. That app.js calls attachChips() before it wires #back,
+  // popstate, the sheet or boot(), and its first line is
+  // $('chips').querySelectorAll('.chip') — a TypeError on a missing node, and a
+  // screen frozen on "finding campus..." with no way out. This node exists only
+  // so that forEach runs over nothing instead.
+  const node = html.match(/<div id="chips"[^>]*>([\s\S]*?)<\/div>/);
+  assert.ok(node, 'the shim the old shell needs is gone; see #85 before removing it');
+  assert.equal(node[1].trim(), '', 'the shim grew content, which makes it a control again');
+  assert.match(node[0], /\bhidden\b/, 'the shim is not hidden');
+  // It is scaffolding with an expiry, not a feature. Once a release has shipped
+  // carrying it, no cached app.js reaches for #chips and the node can go.
+  const why = html.slice(Math.max(0, html.indexOf('<div id="chips"') - 1400), html.indexOf('<div id="chips"'));
+  assert.match(why, /REMOVE AFTER ONE RELEASE/, 'the shim lost the note saying it is temporary');
+});
+
+test('the ranked list says which question it is answering', () => {
+  const paint = bodyOf('paintList');
+  // In the concatenation, so it cannot be a line that renders somewhere else.
+  assert.match(
+    paint,
+    /list\.innerHTML =\s*\n\s*note \+\s*\n\s*asked\(\) \+/,
+    'the rows are painted without the line that names the ask',
+  );
+  const line = APP.slice(APP.indexOf('const asked = ()'), APP.indexOf('function paintList('));
+  assert.ok(line.length > 0, 'asked() is gone');
+
+  // Prose, not a control. The chips were 44px targets and the replacement is a
+  // paragraph: a second way to change the duration is the thing #85 removed.
+  assert.match(line, /<p class="asked">/);
+  assert.doesNotMatch(line, /<button|onclick|role=/, 'the line naming the ask is a control again');
+
+  // One vocabulary for one figure. The strip two lines below prints
+  // dur(state.needed) and the empty screen prints it too; a second rendering of
+  // the same ask on the same screen is how two lines disagree.
+  assert.match(line, /dur\(state\.needed\)/);
+
+  // It names the ASK, not an offer. state.results can hold rows shorter than
+  // the ask whenever one row meets it, so "free for 2h00" over these rows is a
+  // promise the list does not keep.
+  assert.doesNotMatch(line, /[Ff]ree for/);
+});
+
+test('back is the way to the question, and it says so on the list', () => {
+  // The only route to the duration now, so its accessible name has to name the
+  // screen it lands on rather than reading "Back".
+  const show = bodyOf('showList');
+  assert.match(show, /\$\('back'\)\.setAttribute\('aria-label', 'Back to the question'\)/);
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(html, /id="back"[^>]*aria-label="Back to the question"/);
+  // The four .opt buttons are what back lands on, and they are the four the
+  // chips used to duplicate.
+  for (const min of ['30', '60', '120', 'day']) {
+    assert.match(html, new RegExp(`class="opt[^"]*" data-min="${min}"`), `the ${min} choice is gone`);
+  }
+});
+
 // ---- the night gate
 
 // Nothing in this file pinned a word of the night screen before these. The
@@ -1579,8 +1754,7 @@ test('a focused heading does not wear the ring that means you can press it', () 
   const app = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
   assert.match(app, /el\.focus\(\{ preventScroll: true, focusVisible: false \}\)/);
   const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-  // Scoped to h2, so the roving-tabindex chips, which are buttons carrying the
-  // same attribute, keep their ring.
+  // Scoped to h2, so anything else carrying tabindex="-1" keeps its ring.
   assert.match(html, /h2\[tabindex="-1"\]:focus-visible \{ outline: none; \}/);
 });
 
@@ -1703,7 +1877,8 @@ test('nothing the empty screen calls free is a room that has not opened yet', ()
 // can leave the student on. Measured on Wed 2026-09-02 at 14:10 with a 30 minute
 // ask, two origins 20 m apart on one bearing out of the Oval: at 2.190 km the
 // screen had 0 rows and its only controls were Check again, What Vacant knows
-// and the four duration chips, none of which can change a walk; at 2.210 km the
+// and the four duration chips, none of which can change a walk (the chip bar has
+// since gone, with #85; the two buttons are what is left); at 2.210 km the
 // same situation crossed OFF_CAMPUS_KM, fell back to the Oval and got 40
 // tappable rows.
 test('an origin with nothing walkable is answered, not left on a dead end', () => {
@@ -1960,4 +2135,48 @@ test('the gesture asks js/sheet.js instead of deriving the rule again', () => {
   const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
   assert.match(src, /sheetAfterDrag\(drag\.h0, dy, drag\.from, window\.innerHeight\)/);
   assert.equal(src.includes('DISMISS_PX'), false, 'app.js names the dismiss distance a second time');
+});
+
+test('the click toggle reads travel, not net displacement', () => {
+  const move = APP.slice(APP.indexOf('sheet.addEventListener(\'pointermove\''), APP.indexOf('const end = (e) =>'));
+  const end = APP.slice(APP.indexOf('const end = (e) =>'), APP.indexOf('sheet.addEventListener(\'pointerup\', end)'));
+  // lastY is the LAST sample because the velocity term needs it to be, so
+  // `lastY - y0` is net displacement and any out-and-back reads as a press.
+  // Measured in Chromium at 390x844 before this latch existed: a 60px pull on
+  // the grip returned to its start snapped the sheet 321 -> 658, and the same
+  // gesture begun on a row collapsed it 780 -> 321. Both were no-ops on main.
+  assert.doesNotMatch(end, /lastY\s*-\s*drag\.y0|drag\.lastY\s*-/, 'the toggle is measuring net displacement again');
+  assert.match(move, /Math\.abs\(dy\) >= 8\) drag\.travelled = true/, 'nothing latches the 8px any more');
+  assert.match(end, /const moved = drag\.travelled/, 'the toggle stopped reading the latch');
+  // A latch that is cleared mid-gesture is not a latch.
+  assert.equal((APP.match(/drag\.travelled = /g) || []).length, 1, 'travelled is written more than once');
+  // pointercancel is the platform taking the gesture, not the user releasing it.
+  assert.match(end, /const released = e\.type === 'pointerup'/, 'a cancelled press can toggle the sheet');
+  assert.match(end, /if \(!moved && released\)/, 'the toggle branch does not require a release');
+});
+
+test('the departmental label is a caveat, not the loudest thing on the row', () => {
+  const dept = APP.slice(APP.indexOf('function deptOf('), APP.indexOf('const WALK_ICON'));
+  assert.ok(dept.length > 0, 'deptOf is gone');
+  // `.r-win b` is --fg at weight 650 and it belongs to the free-window: the
+  // promise the row makes. windowOf and seatsOf emit plain text, so bolding the
+  // reason a room ranks LOW would make it the only emphasised token on the row.
+  assert.doesNotMatch(dept, /<b[\s>]/, 'the label is bold, and it outshouts the window it sits beside');
+  assert.match(dept, /&middot; departmental/, 'the label lost the separator the seat count uses');
+  // It carried a class nothing ever styled.
+  assert.doesNotMatch(APP, /r-dept/, 'the dead style hook is back');
+  assert.equal(readFileSync(join(ROOT, 'index.html'), 'utf8').includes('r-dept'), false);
+  // Spoken, because "departmental" next to a seat count is a word with no
+  // sentence around it. deptOf says so in as many words.
+  assert.match(dept, /not a general-assignment room/, 'the row stopped writing the label out');
+});
+
+test('the room screen says the label as fully as the row it came from', () => {
+  // The row's spoken name expands the word; landing on the room is not a reason
+  // for a reader to hear less than the list already told them.
+  const at = APP.indexOf("room.ga === false");
+  assert.ok(at > 0, 'the room screen no longer carries the label');
+  const line = APP.slice(at, at + 220);
+  assert.match(line, /class="sr"/, 'the room screen prints the bare word with no sentence around it');
+  assert.match(line, /not a general-assignment room/, 'and the sentence is not the one the row uses');
 });

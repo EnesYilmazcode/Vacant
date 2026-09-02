@@ -19,7 +19,7 @@
 //
 // Runs in the browser and under node, and imports nothing that touches the DOM.
 
-import { PACKUP, activeSessions, calendarOn, distanceMetres, refusalFor, walkMinutes } from './engine.js';
+import { MAX_WALK, PACKUP, activeSessions, calendarOn, distanceMetres, refusalFor, walkMinutes } from './engine.js';
 
 // ------------------------------------------------------------------- clock
 
@@ -719,6 +719,130 @@ export function unscheduledGate({ now, current, index, busyDay, opening, openNow
   return { heading, body: door ? `${campus} ${door}. ${rooms}` : `${campus} ${rooms}` };
 }
 
+// ------------------------------------------------------------ the relaxed answer
+
+// One sentence per rung of the engine's fallback ladder, for the strip over the
+// list and for the live region that reads the list out.
+//
+// The ladder relaxes one constraint at a time and returns the rung that
+// produced the answer, and until this existed js/app.js read neither `rung` nor
+// `relaxed`, so a list built by dropping the room-type filter was headed by the
+// same words as a list of ordinary classrooms. That is issue #90.
+//
+// Every sentence is written against LADDER_QUORUM rather than against zero, and
+// that is the whole difficulty of the wording. A rung wins by finding THREE
+// rooms, so `further` does not mean nothing near you is free: it means fewer
+// than three rooms near you were, and the ladder preferred three further out to
+// two close by.
+//
+// MEASURED, replaying the shipped app's own ranking (rank() then shape()) beside
+// query() over the committed index, 99 origins on a 0.004 by 0.005 degree grid
+// around the Oval, Mon to Fri 2026-09-14 to 18, hourly 08:00 to 20:00, at a 30
+// and a 60 minute ask, 12,870 answers. The ladder relaxed on 9,486 of them and
+// the list still had rows on 510. On those rows a reader could count, and the
+// count never reached three: for `further`, `anywhere` and `longest` the list
+// held 0, 1 or 2 rooms free now and long enough inside the walk bound (85, 7
+// and 16 of 108), and for `any-type` it held 1 or 2 ordinary classrooms (15 and
+// 151 of 166). "Nothing near you is free" printed over a list showing two free
+// rooms is the one way this disclosure can lie, and counting to three is what
+// stops it.
+//
+// The room words in the `any-type` sentence are measured too: over those 166
+// answers, every room on screen that was free, long enough and not an ordinary
+// classroom carried a secondary type, 2P computer teaching lab 130 and 5K
+// departmental seminar room 120 of 272.
+//
+// `longest` never fired once in the 12,870, so its sentence is the only one
+// here with no measurement behind it. It says the least for that reason.
+// `restOfDay` is the ask the app cannot render as a length. neededMinutes()
+// turns "rest of day" into Math.max(30, latestEnd - now), so dur() prints a
+// figure the user never chose -- 12h15 at 08:00, and a flat "30 min" inside the
+// last half hour of the index's day, which is indistinguishable from the button
+// that does say 30 min. The list already names that button in words directly
+// above this strip, so a second vocabulary here puts two renderings of one ask
+// on adjacent lines.
+export function rungPhrase(rung, { needed = 0, maxWalk = MAX_WALK, restOfDay = false } = {}) {
+  const asked = restOfDay ? 'the rest of the day' : dur(needed);
+  const spoken = restOfDay ? 'the rest of the day' : spokenDur(needed);
+  const line = (text, say) => ({ text, say: say ?? text });
+
+  // The rung the engine comments on twice: the rows it adds are computer labs,
+  // departmental seminar rooms and, in one building, a dental clinic.
+  if (rung === 'any-type') {
+    return line(
+      `Fewer than three ordinary classrooms near you are free for ${asked}. Vacant reached into computer labs and departmental rooms.`,
+      `Fewer than three ordinary classrooms near you are free for ${spoken}. Vacant reached into computer labs and departmental rooms.`,
+    );
+  }
+
+  // `shorter:45` and the rest of RELAX_LADDER. The duration is in the name
+  // because it is the constraint that moved.
+  const shorter = /^shorter:(\d+)$/.exec(String(rung));
+  if (shorter) {
+    const got = Number(shorter[1]);
+    return line(
+      `Fewer than three rooms near you are free for ${asked}. Vacant fell back to ${dur(got)}.`,
+      `Fewer than three rooms near you are free for ${spoken}. Vacant fell back to ${spokenDur(got)}.`,
+    );
+  }
+
+  // The duration is in this one for a reason worth keeping. "Free this second"
+  // on its own reads as a claim about wait, and the screen it sits over can
+  // hold four rows that ARE free this second and are simply too short: Mon
+  // 2026-09-14 10:50 from 39.9915, -83.0230 at a 30 minute ask puts four rooms
+  // in Biological Sciences on screen with no wait and a 19 minute window. The
+  // rung is about rooms that fit, so the sentence has to say what it wanted.
+  //
+  // No second sentence. It said "Vacant fell back to rooms that open later"
+  // over screens where every row was free right now: 12 of the 170 opens-at
+  // lists in the 12,870-answer replay. What the ladder DID and what the list
+  // SHOWS are two different searches, and only the first clause is about the
+  // list.
+  if (rung === 'opens-at') {
+    return line(
+      `Fewer than three rooms near you are free for ${asked} right now.`,
+      `Fewer than three rooms near you are free for ${spoken} right now.`,
+    );
+  }
+
+  // The radius rungs, and the reason neither says what the ladder went on to
+  // do. js/app.js ranks with rank() + shape(), and shape() keeps only the rows
+  // inside maxWalk. `further` and `anywhere` are by definition the rungs whose
+  // answer lies OUTSIDE that cut, so the rooms they found can never appear on
+  // the screen this sentence sits on. Not rarely: never, structurally, on every
+  // one of the 108 such lists in the replay. The draft that said "Vacant looked
+  // twice that far" was printing a claim the rows underneath refuted, over
+  // screens that on main had said nothing at all -- which is worse than the
+  // silence this whole change exists to replace.
+  //
+  // So both keep the one clause that is about the list in front of the reader,
+  // and both quote maxWalk, the bound those rows were actually cut to. They
+  // come out identical, and they should: from the reader's side the two rungs
+  // are the same situation, and the difference between them is a fact about
+  // the search, not about the answer.
+  if (rung === 'further' || rung === 'anywhere') {
+    return line(
+      `Fewer than three rooms within a ${maxWalk} minute walk are free for ${asked}.`,
+      `Fewer than three rooms within a ${maxWalk} minute walk are free for ${spoken}.`,
+    );
+  }
+
+  // The last resort. js/engine.js expects the screen to lead with this rather
+  // than present the one room it found as an answer, so the sentence is the
+  // refusal and the row is the footnote.
+  if (rung === 'longest') {
+    return line(
+      `Nothing Vacant can offer is free for ${asked} today, anywhere on campus.`,
+      `Nothing Vacant can offer is free for ${spoken} today, anywhere on campus.`,
+    );
+  }
+
+  // `asked` gave nothing up, and so has nothing to admit. Any other name is a
+  // rung that grew without a sentence, and the engine test fails on it rather
+  // than letting the app print a relaxed answer in the words of an exact one.
+  return null;
+}
+
 // ---------------------------------------------------------------- the row window
 
 // clock() wraps modulo 24 hours, so a window that ran past midnight would print
@@ -921,4 +1045,71 @@ export function diagnosticsBlock(d) {
     out = `${head}\n${fmt(all.slice(0, keep), all.length - keep)}`;
   }
   return out.length > MAX_BLOCK ? out.slice(0, MAX_BLOCK) : out;
+}
+
+// The watch handle, as a state machine, because the handle was the one half of
+// #87 the tests could not reach.
+//
+// followFix and followAction above are pure and were mutation-checked. The
+// lifecycle around them was not: it lived in js/app.js, which touches the DOM
+// at import and cannot be loaded under node, so scripts/test/follow.test.mjs
+// asserted REGEXES OVER THE SOURCE TEXT. That kills a mutation which rewrites a
+// quoted string and nothing else. Reviewed with 26 mutations, five survived a
+// green suite, and every one of them is a battery or staleness bug a reader
+// would never see:
+//
+//   clearWatch(0) instead of clearWatch(id)  the watch never actually stops
+//   drop the `id != null` guard              two live watches, doubled cost
+//   drop `id = null` in stop()               the watch never restarts
+//   drop the throttle assignments            every fix re-ranks
+//
+// Injecting the geolocation object and the visibility predicate is what makes
+// those assertions possible, so this holds the handle and js/app.js holds the
+// wiring. `geolocation` and `visible` are functions rather than values because
+// both are read at call time in the browser and neither is stable across a
+// session. It is spelled out rather than shortened to `geo` because
+// scripts/test/install.test.mjs forbids the string `geo:` anywhere in js/ --
+// geo: URIs are inert on iOS -- and a property named `geo` trips that guard for
+// no reason.
+export function createWatch({ geolocation, visible, onFix, onError, options = {} }) {
+  let id = null;
+  return {
+    // Read-only on purpose: a caller that can assign the handle can lose it.
+    get id() { return id; },
+    get open() { return id != null; },
+    // Returns why it did what it did, so a test can tell "refused" from "opened"
+    // without reaching for the handle.
+    start(origin) {
+      if (id != null) return 'already-open';
+      if (!origin) return 'no-origin';
+      // A hidden page must never open one: the boot fix can resolve after the
+      // user has switched away, and visibilitychange has already fired by then.
+      if (!visible()) return 'hidden';
+      // A picked building does not expire, so there is nothing to follow.
+      if (origin.source === 'picked') return 'picked';
+      const g = geolocation();
+      if (typeof g?.watchPosition !== 'function') return 'unsupported';
+      try {
+        id = g.watchPosition(onFix, onError, options);
+      } catch {
+        // The locked-down webviews that throw on getCurrentPosition too. The
+        // boot fix still stands and the app is no worse off than it was.
+        id = null;
+        return 'threw';
+      }
+      return 'open';
+    },
+    stop() {
+      if (id == null) return 'closed';
+      try {
+        geolocation()?.clearWatch(id);
+      } catch {
+        /* nothing to do about it, and the handle is dropped either way */
+      }
+      // Cleared even when clearWatch threw, or a start() after a failed stop
+      // refuses forever and the watch never comes back.
+      id = null;
+      return 'stopped';
+    },
+  };
 }

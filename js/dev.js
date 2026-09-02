@@ -9,7 +9,7 @@
 // So this panel moves the app's clock and the app's origin, and nothing else.
 // It does not stub the ranking, it does not inject rows and it does not have a
 // fixture. js/app.js exports devApply, which pins the same clock every screen
-// reads and then calls the same refresh() the duration chips call, so what the
+// reads and then calls the same refresh() a duration button calls, so what the
 // panel shows is what a student standing there would see.
 //
 // Off unless asked for. Add ?dev=1 to the URL, or press D three times. The
@@ -308,7 +308,7 @@ export function start() {
     live = devState.origin ? { ...devState.origin } : null;
     const s = saved();
     // Always apply, even with nothing restored. devApply runs the same
-    // refresh() a duration chip runs, which is what fills in the ranked answer
+    // refresh() a duration button runs, which is what fills in the ranked answer
     // the readout prints. Without it the panel opens claiming 0 rooms free,
     // which is true only in the sense that nothing has been asked yet.
     apply({ at: s.at ?? null, place: s.where });

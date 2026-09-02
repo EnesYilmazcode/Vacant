@@ -54,6 +54,20 @@ and calling the remainder free.
 carry it. It renders `seats unknown` and reads as "seat count not published".
 Never `0 seats`.
 
+## What the list is a list of
+
+The ranked list states its own question, in one quiet non-interactive line above
+the rows: `You asked for 2h00.` It is prose at the weight of `.prov`, not a
+control, and it is the only thing on that screen that names the duration on the
+happy path, where the four-state strip prints nothing at all.
+
+It says what was asked, never what is offered. A heading reading "Free for 2h00"
+over rows that can be shorter than that is a promise the list does not keep.
+
+The duration is changed from the question screen and nowhere else. `#back` is
+the way there and its accessible name says so: on the list it reads "Back to the
+question", not "Back".
+
 ## The building row
 
 The buildings screen carries a door instead of a window, and it has five
@@ -77,8 +91,8 @@ and calling it unknown throws away the only published fact on the screen.
 
 Exactly one. `aria-live="polite"` sits on the result count and nothing else.
 `grep -rn 'aria-live' index.html` returns one hit and that is a rule, not an
-observation. A live region on the list itself reads 40 rows aloud every time a
-chip is tapped.
+observation. A live region on the list itself reads 40 rows aloud every time the
+list repaints.
 
 ## Focus
 
@@ -92,9 +106,10 @@ lands in the same state leaves the reading position alone.
 
 ## Tap targets and reflow
 
-Every control is at least 44 CSS px on its shortest side, including the chips,
-the picker rows and the icon-only clear button. Icon-only controls carry a real
-`aria-label` that reads as a sentence, not as a noun.
+Every control is at least 44 CSS px on its shortest side, including the four
+duration buttons on the question screen, the picker rows and the icon-only clear
+button. Icon-only controls carry a real `aria-label` that reads as a sentence,
+not as a noun.
 
 The room name is the one field a user carries while walking, so it never
 truncates. At large text the row reflows: the name wraps freely, the walk time

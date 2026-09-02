@@ -8,11 +8,24 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c` on gzip 1.12. Shell 87,303 bytes,
-// data 85,157. The data side more than doubled when the index started carrying
-// which class is in the room: 2,024 course labels and one integer per block, so
-// the room screen can draw a day instead of listing it. Running the same command over a Windows working tree gives a
-// different answer, because git checks the text files out with CRLF. The first
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 94,426 bytes, data 85,157.
+// Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
+// name as an argument stores each basename in the gzip FNAME header and reads
+// 142 bytes higher across these twelve files, which is most of a percent of the
+// tolerance spent on nothing. An earlier draft of this line quoted that form
+// and then explained the gap as two gzip versions disagreeing; there was no
+// disagreement to explain. Through the pipe, GNU gzip 1.12 and node's zlib --
+// the tool sw.test.mjs actually measures with -- agree to 0.009%, and the one
+// percent window is there for the day they do not.
+//
+// The shell read 84,201 before the ranking started reading the Registrar's
+// general-assignment flag, which cost 2,582 gzipped bytes: 1,767 on
+// js/engine.js and 815 on js/app.js, nearly all of it the comment recording
+// what was measured. The data side more than doubled when the index
+// started carrying which class is in the room: 2,024 course labels and one
+// integer per block, so the room screen can draw a day instead of listing it.
+// Running the same command over a Windows working tree gives a different
+// answer, because git checks the text files out with CRLF. The first
 // commit of this file guessed 32 and 30 KB without running anything, both were
 // wrong; the correction then went stale by 758 bytes, and integrating the
 // screens lane put it 34.3% out in one merge. scripts/test/sw.test.mjs

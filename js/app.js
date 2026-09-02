@@ -21,7 +21,9 @@
 import { toGrid } from './campus.js';
 import { roomClaim } from './claim.js';
 import { blocksOn, classesOn, dayClaim } from './day.js';
-import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, rank, shape, walkMinutes } from './engine.js';
+// `query` arrives as `ladder` because js/app.js already holds a `state.query`,
+// which is the buildings search box and has nothing to do with the engine.
+import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, query as ladder, rank, shape, walkMinutes } from './engine.js';
 // The deadline every request on the path to a first answer shares. It lives in
 // js/firstrun.js because that is the module holding the rule it comes from.
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
@@ -44,6 +46,7 @@ import {
   rankBuildings,
   resolveState,
   roomsPerBuilding,
+  rungPhrase,
   spokenClock,
   staleness,
   unscheduledGate,
@@ -55,6 +58,7 @@ import {
   attachGestures,
   buildBasemap,
   clampView,
+  createFrameLoop,
   drawFrame,
   drawTarget,
   drawYou,
@@ -169,6 +173,12 @@ const state = {
   needed: 30,
   results: [],
   total: 0,
+  // Which constraint the fallback ladder gave up to reach an answer, and
+  // whether it gave up anything at all. The engine has computed both since the
+  // ladder shipped and nothing read them, so a list built by dropping the
+  // room-type filter was headed by the same words as a list of classrooms.
+  rung: null,
+  relaxed: false,
   // What shape() removed to get from the ranked rows to the shown ones, which
   // neither the footer nor the empty screen can work out from state.results.
   bounds: null,
@@ -227,7 +237,6 @@ function focusHeading(el) {
 
 // ---------------------------------------------------------------- rendering
 
-let raf = 0;
 let flyoverStart = 0;
 let lastSize = { w: 0, h: 0, dpr: 0 };
 const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -281,9 +290,17 @@ function viewport() {
   };
 }
 
+// One frame, and the answer to whether there needs to be another one.
+//
+// It used to re-request a frame on its first line whatever was on screen, which
+// is what issue #75 caught: 290 callbacks in 2 seconds on a settled list with
+// nothing selected, all painting the same pixels. Now the flyover is the only
+// thing that asks for the next frame on its own, and everything else that
+// changes what the map shows calls frames.wake() for a single one. Every one of
+// those call sites is marked; miss one and the map silently keeps the old
+// picture.
 function render(now) {
-  raf = requestAnimationFrame(render);
-  if (!state.basemap) return;
+  if (!state.basemap) return false;
   const ctx = surface();
   const vp = viewport();
 
@@ -305,7 +322,7 @@ function render(now) {
       rotation: reduceMotion ? 0 : Math.sin(t * 0.028) * 0.05,
     });
   }
-  if (!state.view) return;
+  if (!state.view) return false;
 
   drawFrame(ctx, state.basemap, state.view, vp);
 
@@ -320,7 +337,6 @@ function render(now) {
         footprint: footprintFor(state.campus, state.selected.building, target),
         from: you,
         to: target,
-        label: Number.isFinite(state.selected.walk) ? `${state.selected.walk} min walk` : '',
       },
       state.basemap,
       state.view,
@@ -338,11 +354,20 @@ function render(now) {
     state.view,
     vp,
   );
+
+  // The drift over campus is the one thing on this canvas that moves by itself.
+  // Under prefers-reduced-motion t is pinned to 0 above, so the flyover computes
+  // the same view every frame and one paint is the whole of it.
+  return !state.settled && Boolean(state.campus) && !reduceMotion;
 }
+
+// The loop, stopped whenever render() says nothing is moving.
+const frames = createFrameLoop((cb) => requestAnimationFrame(cb), render);
 
 function settle() {
   state.settled = true;
   $('map').classList.add('settled');
+  frames.wake();
   if (!state.origin || !state.campus || !state.basemap || state.userMoved) return;
   const [cx, cy] = toGrid([state.origin.lon, state.origin.lat], state.campus);
   state.view = makeView({ cx, cy, span: SETTLED_SPAN, rotation: 0 });
@@ -351,6 +376,10 @@ function settle() {
 // Put you and the building on screen together. Once a finger has moved the
 // camera this stops firing, otherwise every row tap would undo the gesture.
 function frame(r) {
+  // Before the guards: a tap that does not move the camera still changes which
+  // footprint is lit and where the line ends, and after a hand pan or on a
+  // screen with no fix yet this function returns without touching the view.
+  frames.wake();
   if (!state.basemap || !state.campus || state.userMoved || !state.origin) return;
   const b = state.buildings?.[r.building];
   if (!b || !Number.isFinite(b.lat) || !Number.isFinite(b.lon)) return;
@@ -437,8 +466,8 @@ function attachSheet() {
 
   sheet.addEventListener('pointerdown', (e) => {
     if (e.target.closest('#handle')) return;
-    // The search field and the chips are controls, not surfaces to drag from.
-    if (e.target.closest('#find, #chips')) return;
+    // The search field is a control, not a surface to drag from.
+    if (e.target.closest('#find')) return;
     begin(e, 'pending');
   });
 
@@ -590,22 +619,20 @@ function answer() {
   state.needed = neededMinutes(now);
   const rooms = Object.entries(state.rooms.rooms).map(([id, r]) => ({ id, ...r }));
   const date = isoDate(now);
-  const results = rank(
-    rooms,
-    {
-      origin: state.origin,
-      now: minutes,
-      day: state.day,
-      needed: state.needed,
-      buildings: state.buildings,
-      hoursFor,
-      sessions: state.rooms.sessions,
-      date,
-      // A day with no classes is a day the busy grid describes nobody. 2,048
-      // of the 2,106 Wednesday blocks are still active on Veterans Day.
-      classesSuspended: !!state.situation?.classesSuspended,
-    },
-  );
+  const ask = {
+    origin: state.origin,
+    now: minutes,
+    day: state.day,
+    needed: state.needed,
+    buildings: state.buildings,
+    hoursFor,
+    sessions: state.rooms.sessions,
+    date,
+    // A day with no classes is a day the busy grid describes nobody. 2,048
+    // of the 2,106 Wednesday blocks are still active on Veterans Day.
+    classesSuspended: !!state.situation?.classesSuspended,
+  };
+  const results = rank(rooms, ask);
 
   const usable = results.filter((r) => r.wait <= MAX_WAIT_MIN);
   // rank() orders by tier, then walk. The FIRST building to open is not the
@@ -635,20 +662,69 @@ function answer() {
   // A picked building stands: moving off it answers a question nobody asked.
   // The note is that screen's way out, because it carries #note-pick.
   if (state.origin?.source === 'picked') useOrigin(state.origin, stranded ? NO_WALK : null);
+
+  // Which constraint had to be given up to answer at all. The ladder is a
+  // second pass over the same rooms and the same minute, because rank() has no
+  // ladder in it: it is the flat ranking the list has always been built from,
+  // and shape() bounds that afterwards. So the disclosure costs one more sweep.
+  // MEASURED under node on the committed index, 425 rooms, median of 200 warm
+  // runs from the Oval at 2026-09-16 14:10 on a 60 minute ask: rank() 1.02 ms
+  // and query() 1.01 ms, so an answer goes from about one millisecond to two.
+  //
+  // It runs AFTER the stranded fallback above, which re-enters answer() from
+  // the Oval; running it earlier would sweep twice and throw the first away.
+  //
+  // The calendar goes in because query() reads classesSuspended off it rather
+  // than off the sweep options. Without it the ladder would read a no-classes
+  // day as a full one and relax against a busy grid describing nobody, while
+  // the list beside it showed all of campus free.
   // Nothing is selected until a finger picks one. Asserting row one here is
   // what made the highlight fire on load and never move again.
   state.selected = null;
   state.listScroll = 0;
+  // Rows first, then the sweep that only the strip needs.
+  //
+  // The ladder is a SECOND full sweep of the index. Warm it is about a
+  // millisecond beside rank()'s one, which is nothing; cold, unwarmed, on this
+  // machine it is 10.5 ms against rank()'s 14.6, and a mid-range phone runs
+  // that 5 to 10 times slower. In front of paintList() that is 50 to 100 ms
+  // added between the tap and the first row, on the one path spike #29 exists
+  // to measure. Behind it, it costs the first row nothing.
+  //
+  // Safe because state.rung and state.relaxed have exactly one reader between
+  // them, relaxedLine(), and paintList() is the only caller of that. The strip
+  // is repainted on the line after, off the same state paintList() just used.
   paintList();
+  const answered = ladder(rooms, {
+    ...ask,
+    calendar: state.situation?.classesSuspended ? { noClasses: true } : undefined,
+  });
+  state.rung = answered.rung;
+  state.relaxed = answered.relaxed;
+  if (answered.relaxed) paintList();
   settle();
   // Free is wait === 0, the word the rows and settle() spend. state.total holds
   // everything that cleared the 90 minute wait, so this line read "297 rooms
   // free, 0 shown" over a heading saying nothing was close enough.
   const free = usable.reduce((n, r) => n + (r.wait === 0 ? 1 : 0), 0);
+  // What the strip admits in print, the live region says out loud, and it leads
+  // for the same reason: it is about the whole answer, and the counts behind it
+  // are about the rows. A disclosure only sighted readers get is not one.
+  //
+  // Only when there are rows, because that is the only screen the strip is on.
+  // The empty screen already names the same fact in its own words, and a live
+  // region reading out a sentence that is nowhere on the page is worse than one
+  // that says nothing.
+  const admitted = state.results.length ? relaxedLine()?.say : null;
   say(
-    state.results.length
-      ? `${free} room${free === 1 ? '' : 's'} free, ${state.results.length} shown.`
-      : `${$('list-h')?.textContent ?? ''} ${$('list').querySelector('.empty')?.textContent.replace(/\s+/g, ' ').trim() ?? ''}`.trim(),
+    [
+      admitted,
+      state.results.length
+        ? `${free} room${free === 1 ? '' : 's'} free, ${state.results.length} shown.`
+        : `${$('list-h')?.textContent ?? ''} ${$('list').querySelector('.empty')?.textContent.replace(/\s+/g, ' ').trim() ?? ''}`.trim(),
+    ]
+      .filter(Boolean)
+      .join(' '),
   );
 }
 
@@ -686,6 +762,32 @@ function seatsOf(r) {
     : { html: 'seats unknown', say: 'seat count not published' };
 }
 
+// The one word docs/BACKLOG.md's parked decision asked for, and the reason the
+// row is where it is: the room is not on the Registrar's general-assignment
+// list, so a department holds the key. 98 of the 425 shipped rooms, and the
+// ranking now puts every one of them below a general-assignment room. Written
+// out for a screen reader, because "departmental" alone next to a seat count is
+// a word with no sentence around it.
+//
+// A room the index says nothing about is not labelled: `ga` is absent from
+// every room of an index built before the general-assignment pull, and a label
+// on all 425 rows would say nothing at all.
+//
+// Plain text in the window line, not a `<b>`. `.r-win b` is `--fg` at weight
+// 650 on a line that is otherwise `--dim`, and it exists for the free-window --
+// the promise the row is making. windowOf and seatsOf emit plain text, so a
+// bolded caveat would have been the ONLY emphasised token on the row: the
+// reason the room ranks low, shouting over the reason it is on screen at all. A
+// word among numbers, after the same middot the seat count uses, is already
+// distinct enough. No class either: the one it carried was never styled
+// anywhere in index.html, and a hook nothing reaches for is a hook that
+// misleads the next person who greps for it.
+function deptOf(r) {
+  return r.ga === false
+    ? { html: ' &middot; departmental', say: ', departmental, not a general-assignment room' }
+    : { html: '', say: '' };
+}
+
 const WALK_ICON = '<svg class="ico" aria-hidden="true"><use href="#i-walk"/></svg>';
 const CHEV = '<svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg>';
 
@@ -700,6 +802,54 @@ const FOOT_ACTS = `<p class="foot-acts">
 const CAVEAT = `<p class="foot">Class schedule only. Doors get locked and clubs book rooms, and a
   class scheduled with no room recorded does not appear here at all, so a room can be in use
   with nothing on its timeline.</p>`;
+
+// The list's statement of the question it answers. The duration chips used to
+// be the only thing on this screen that said what was asked for, and they went
+// with #85, so the words have to be somewhere: a list of room names alone does
+// not say whether it is a list of rooms free for half an hour or for the rest
+// of the day.
+//
+// Two decisions in one line, both about not lying:
+//
+// It says what was ASKED, not what is offered. "Free for 2h00" over these rows
+// would be a promise the list does not keep: strip is empty as soon as ONE row
+// meets the ask, and the rows below it can be shorter. "You asked for" is true
+// in every one of the four states below, including the one whose strip says
+// nothing near you is free for that long.
+//
+// It spends dur(state.needed), which is the same function and the same number
+// the strip and the empty screen already print two lines away. The chips said
+// "2h" and needed is minutes, so a second vocabulary for one figure on one
+// screen is how two lines end up disagreeing about the same ask.
+//
+// "rest of day" is the exception, and it has to be, because needed is not the
+// ask there. neededMinutes() returns Math.max(30, latestEnd - now), so inside
+// the last half hour of the index's day the clamp wins and dur() renders the
+// floor rather than what was pressed. Measured on the shipped index: Mon
+// 21:26-21:54, Tue 21:16-21:44, Wed 21:21-21:49, Thu 21:16-21:44, Fri
+// 20:06-20:34, Sat 15:31-15:59 all render "30 min" for a button that does not
+// say 30 min, and are indistinguishable from the button that does. Naming the
+// button instead is true at every minute of the day, including 08:00, where
+// dur() would have printed the 12h15 the app derived rather than the thing the
+// user actually chose.
+//
+// The empty screen above does not get this line. It is not a silent list: it
+// opens with an h2 that states the answer in words, and its last branch already
+// prints dur(state.needed) in a sentence of its own.
+const asked = () =>
+  `<p class="asked">You asked for <b>${state.duration === 'day' ? 'the rest of the day' : dur(state.needed)}</b>.</p>`;
+
+// The sentence the ladder's verdict is worth, or null when the answer gave
+// nothing up. The strip and the live region both read it from here, so the two
+// cannot end up saying different things about the same list.
+const relaxedLine = () =>
+  (state.relaxed
+    ? rungPhrase(state.rung, {
+      needed: state.needed,
+      maxWalk: MAX_WALK,
+      restOfDay: state.duration === 'day',
+    })
+    : null);
 
 function paintList() {
   const list = $('list');
@@ -764,6 +914,20 @@ function paintList() {
        you whether the door is open. They are not a promise.</p>`;
   }
 
+  // The rung wins the strip. Both are true at once often enough to matter:
+  // MEASURED over 12,870 answers replayed from 99 origins around the Oval, Mon
+  // to Fri 2026-09-14 to 18, the ladder had relaxed and the rows still asked
+  // for a strip of their own on 131 of the 510 lists that had rows, 25.7%.
+  // Printing both would stack a second paragraph over the list on every one of
+  // them. The counts above describe the ROWS; the rung describes which question
+  // the whole list is answering, so it replaces them rather than joining them.
+  //
+  // The caveat below is deliberately not touched. It is not a strip, and a list
+  // of rooms nobody publishes hours for has to keep saying so whichever rung
+  // found them.
+  const relaxed = relaxedLine();
+  if (relaxed) strip = `<p class="strip">${esc(relaxed.text)}</p>`;
+
   const coarse = Number.isFinite(state.accuracy) && state.accuracy > COARSE_M;
   // "N more further away" was wrong about most of them: 69.5% of the 40 the old
   // slice showed repeated a building already on screen, over 525 samples from
@@ -782,6 +946,7 @@ function paintList() {
 
   list.innerHTML =
     note +
+    asked() +
     strip +
     caveat +
     state.results
@@ -789,15 +954,16 @@ function paintList() {
         const label = roomLabel(r);
         const win = windowOf(r);
         const seats = seatsOf(r);
+        const dept = deptOf(r);
         const walkSay = coarse ? `about ${r.walk} minutes walk` : `${r.walk} minute walk`;
         // The visible row is glyphs and an icon. The name a screen reader gets
         // is written out, because the computed name would be "Page Hall 110B 4
         // min": no unit, no window, no caveat.
-        const name = `${label}, ${walkSay}, ${win.say}, ${seats.say}. Class schedule only, the door may be locked.`;
+        const name = `${label}, ${walkSay}, ${win.say}, ${seats.say}${dept.say}. Class schedule only, the door may be locked.`;
         return `<button type="button" class="row" data-i="${i}" aria-label="${esc(name)}">
         <span class="r-name">${esc(label)}</span>
         <span class="r-walk">${WALK_ICON}${coarse ? '~' : ''}${r.walk} min</span>
-        <span class="r-win">${win.html} &middot; ${seats.html}</span>
+        <span class="r-win">${win.html} &middot; ${seats.html}${dept.html}</span>
         <span class="r-chev"></span>
       </button>`;
       })
@@ -852,33 +1018,18 @@ function select(i) {
   say(`${roomLabel(r)}, ${r.walk} minute walk, shown on the map.`);
 }
 
-// ---------------------------------------------------------------- the chips
+// ------------------------------------------------------------- the duration
 
-function paintChips() {
-  for (const el of $('chips').querySelectorAll('.chip')) {
-    const on = el.dataset.min === state.duration;
-    el.setAttribute('aria-checked', String(on));
-    // Roving tabindex: one stop for the whole group, arrows move inside it.
-    el.tabIndex = on ? 0 : -1;
-  }
+// The four .opt buttons on the question screen are the only place the duration
+// is chosen now. This used to paint a second copy of the same choice into the
+// chip bar at the bottom of the sheet, with its own roving tabindex and its own
+// arrow keys; #85 took the bar off the list and the pair of them went with it.
+// What is left is one control, on one screen, and the list says in words which
+// of the four it was answered with.
+function paintDuration() {
   for (const el of document.querySelectorAll('#ask .opt[data-min]')) {
     el.classList.toggle('primary', el.dataset.min === state.duration);
   }
-}
-
-function attachChips() {
-  const chips = [...$('chips').querySelectorAll('.chip')];
-  chips.forEach((el, i) => {
-    el.onclick = () => choose(el.dataset.min);
-    el.onkeydown = (e) => {
-      const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
-      if (!step) return;
-      e.preventDefault();
-      const next = chips[(i + step + chips.length) % chips.length];
-      choose(next.dataset.min);
-      next.focus();
-    };
-  });
 }
 
 // ------------------------------------------------------- the buildings screen
@@ -1165,6 +1316,8 @@ function clearPickedOrigin() {
 function useOrigin(origin, note) {
   state.origin = origin;
   state.accuracy = origin.accuracy;
+  // The dot, its accuracy ring and the end of the walk line all hang off this.
+  frames.wake();
   // The one place the app branches on where the origin came from. Nothing in
   // ranking, the off-campus gate or the buildings screen reads it.
   state.originIsGuess = origin.source === 'oval';
@@ -1498,6 +1651,18 @@ function roomHtml(id) {
     walk == null ? '' : `<span class="w">${WALK_ICON}${walk} min walk</span>`,
     room.cap ? `<span>${room.cap} seats</span>` : '<span>seats unknown</span>',
     type ? `<span>${esc(type)}</span>` : '',
+    // The same word the row carries, on the screen a student lands on after
+    // tapping it. A row that is ranked down for a reason has to be able to say
+    // the reason once the reader asks for the room.
+    //
+    // It carries the sentence too. deptOf writes the word out for the list's
+    // spoken name because "departmental" alone next to a seat count is a word
+    // with no sentence around it; that argument does not stop being true one tap
+    // later, and this line read as the bare word while the row it came from read
+    // as the sentence.
+    room.ga === false
+      ? '<span>departmental<span class="sr">, not a general-assignment room</span></span>'
+      : '',
   ].filter(Boolean);
 
   // The day, drawn. Every paragraph that used to sit here explained an absence
@@ -1744,9 +1909,6 @@ async function paintAbout() {
 function showPane(name) {
   if (state.screen === 'room' && name !== 'room' && orientationOff) orientationOff();
   for (const id of PANES) $(id).hidden = id !== name;
-  // The chips belong to the ranked list. Leaving them on the room screen means
-  // a chip tap has to unwind a history entry to get back to the list it edits.
-  $('chips').hidden = name !== 'list';
   $('find').hidden = name !== 'pick';
   $('origin').hidden = !originBarOn(name);
   $('ask').hidden = true;
@@ -1763,6 +1925,7 @@ function showPane(name) {
 }
 
 function reframe() {
+  frames.wake();
   if (!state.basemap || !state.view) return;
   if (state.selected) frame(state.selected);
   // frame() stands down once the camera has been moved by hand, and a cy
@@ -1785,6 +1948,9 @@ function showAsk() {
   sheetH = 0;
   $('map').classList.remove('settled');
   flyoverStart = performance.now();
+  // Back to the question restarts the drift, which is the loop's own reason to
+  // keep running.
+  frames.wake();
   if (orientationOff) orientationOff();
 }
 
@@ -1850,6 +2016,9 @@ function showRoom(id, { keepDay = false } = {}) {
 
   const r = state.results.find((x) => x.id === id);
   state.selected = r ?? { id, building: room.b, walk: null };
+  // frame() below runs only when the room is one of the ranked rows. Opened
+  // from a link or out of hours it is not, and the footprint still has to light.
+  frames.wake();
   attachBearing(id);
   // A week either way, and no clamp. Past the term's own bounds the grid comes
   // back empty and the sentence over it says the schedule does not reach there.
@@ -1888,7 +2057,7 @@ function choose(min) {
   if (!state.ready) return;
   state.duration = String(min);
   safeSet(KEY_DURATION, state.duration);
-  paintChips();
+  paintDuration();
   if (!state.rankable) return;
   if (!state.scheduled) {
     if (state.screen !== 'near') {
@@ -2135,7 +2304,7 @@ async function boot() {
   const json = (f) => fetch(`${BASE}data/${f}`, { signal }).then(answered).then((r) => r.json());
 
   flyoverStart = performance.now();
-  raf = requestAnimationFrame(render);
+  frames.wake();
 
   // Geolocation starts immediately and runs beside the fetches, so the two
   // waits overlap instead of queueing.
@@ -2149,6 +2318,10 @@ async function boot() {
       const shorter = Math.min(window.innerWidth, window.innerHeight) || 390;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       state.basemap = buildBasemap(campus, pixelsPerGridFor(campus, shorter, dpr));
+      // The first frame with anything to draw on it. render() paints nothing and
+      // asks for nothing while state.basemap is null, so without this the map
+      // stays black until the next tap.
+      frames.wake();
       if (state.settled) settle();
     })
     .catch(() => {
@@ -2183,7 +2356,7 @@ async function boot() {
   state.ready = true;
   for (const el of document.querySelectorAll('#ask [disabled]')) el.disabled = false;
   $('ask').classList.add('ready');
-  paintChips();
+  paintDuration();
   paintGate();
   performance.mark('vacant:ready');
 
@@ -2233,7 +2406,6 @@ window.addEventListener('DOMContentLoaded', () => {
   for (const b of document.querySelectorAll('#ask [data-min]')) {
     b.onclick = () => choose(b.dataset.min);
   }
-  attachChips();
   $('back').onclick = () => history.back();
   $('gate-go').onclick = () => openNear();
   $('ask-pick').onclick = () => openPick();
@@ -2270,6 +2442,19 @@ window.addEventListener('DOMContentLoaded', () => {
   attachSheet();
   window.addEventListener('resize', () => {
     if (state.screen !== 'ask') sheetHeight();
+    // surface() reallocates the backing store on the next frame and the band
+    // moves with the height, so a resize that does not reach the loop leaves a
+    // stretched bitmap composed for the old screen.
+    frames.wake();
+  });
+
+  // js/install.js writes --bar-h on the body when the install rail mounts or is
+  // dismissed, and railHeight() feeds the band the map centres in. That is the
+  // one layout change the app makes that no event announces, and --bar-h is the
+  // only inline style anything sets on the body.
+  new MutationObserver(() => frames.wake()).observe(document.body, {
+    attributes: true,
+    attributeFilter: ['style'],
   });
 
   // Drag to pan, wheel or pinch to zoom. Once a finger has moved the camera the
@@ -2279,11 +2464,13 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!state.basemap || !state.view) return;
       state.view = panBy(state.view, dx, dy, state.basemap, viewport());
       state.userMoved = true;
+      frames.wake();
     },
     onZoom: (factor, anchor) => {
       if (!state.basemap || !state.view) return;
       state.view = zoomBy(state.view, factor, state.basemap, viewport(), anchor);
       state.userMoved = true;
+      frames.wake();
     },
   });
 
@@ -2301,7 +2488,7 @@ window.addEventListener('DOMContentLoaded', () => {
 //
 // Nothing here is a mock. devApply moves the same clock the app reads and the
 // same origin the ranking measures from, and then calls the same refresh() the
-// duration chips call. What the panel shows is what the app does.
+// duration buttons call. What the panel shows is what the app does.
 
 export { state as devState };
 

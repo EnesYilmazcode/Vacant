@@ -397,7 +397,14 @@ export function drawFrame(ctx, basemap, view, viewport) {
 // Widths and dashes are in screen pixels and so do not change with zoom. The
 // dash length is tied to the line, because a fitted view can put you 40 px from
 // the door and a fixed 7 px dash draws that as one solid stroke.
-export function drawTarget(ctx, { footprint, from, to, label }, basemap, view, viewport) {
+//
+// NO TEXT. This used to take a `label` and paint "4 min walk" in a pill at the
+// midpoint of the line. The walk minutes are computed through DETOUR = 1.3 in
+// js/engine.js, so the pill stated the time to walk a path 30% longer than the
+// straight line it was pinned to: the drawing and the label disagreed and the
+// reader had no way to tell which one to believe. The number still appears on
+// the row and on the room screen, where nothing contradicts it. Issue #75.
+export function drawTarget(ctx, { footprint, from, to }, basemap, view, viewport) {
   const dpr = viewport.dpr ?? 1;
   ctx.save();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -433,24 +440,6 @@ export function drawTarget(ctx, { footprint, from, to, label }, basemap, view, v
     ctx.lineTo(b[0], b[1]);
     ctx.stroke();
     ctx.setLineDash([]);
-
-    if (label) {
-      const mx = (a[0] + b[0]) / 2;
-      const my = (a[1] + b[1]) / 2;
-      ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif';
-      const w = ctx.measureText(label).width + 14;
-      // A pill wider than the line it sits on hides the line it is labelling.
-      if (len > w + 16) {
-        ctx.fillStyle = 'rgba(11,13,16,.88)';
-        ctx.beginPath();
-        ctx.roundRect(mx - w / 2, my - 11, w, 22, 11);
-        ctx.fill();
-        ctx.fillStyle = PALETTE.target;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(label, mx, my);
-      }
-    }
   }
   ctx.restore();
 }
@@ -505,6 +494,51 @@ export function drawYou(ctx, { at, accuracyM = 0, guess = false }, basemap, view
   ctx.strokeStyle = PALETTE.bg;
   ctx.stroke();
   ctx.restore();
+}
+
+// --------------------------------------------------------------- frame loop
+
+// A frame loop that stops.
+//
+// `draw` is called with the timestamp the frame callback was handed, and it
+// returns true to say the picture is still moving and it wants another frame.
+// Anything that changes the picture from outside the loop calls wake().
+//
+// The loop this replaces re-requested a frame on its first line,
+// unconditionally, so it never stopped. Issue #75 counted it through a wrapped
+// requestAnimationFrame on a settled screen with nothing selected and nothing
+// animating: 290 callbacks in 2 seconds, every one of them painting the same
+// picture, for as long as the app was open. A phone pays for that in heat.
+//
+// `request` is injected rather than read off window. It is the only thing in
+// here that would need a browser, and passing it in keeps the loop testable
+// under node and this file free of one more global.
+export function createFrameLoop(request, draw) {
+  let pending = false;
+
+  const wake = () => {
+    if (pending) return;
+    pending = true;
+    request(tick);
+  };
+
+  function tick(now) {
+    // Cleared BEFORE the draw, so a wake() raised from inside it — a fix
+    // arriving on the same tick, a caller repainting as it changes state — asks
+    // for the next frame instead of being swallowed by a flag still set from
+    // this one.
+    pending = false;
+    if (draw(now)) wake();
+  }
+
+  return {
+    wake,
+    // Only for tests and for anyone asking whether the loop is idle. There is
+    // no stop(): the loop stops by not asking for another frame.
+    get pending() {
+      return pending;
+    },
+  };
 }
 
 // ----------------------------------------------------------------- gestures

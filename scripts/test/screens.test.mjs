@@ -511,6 +511,88 @@ test('the question screen does not centre content it cannot scroll to', () => {
   assert.ok(ask.indexOf('justify-content: center') < ask.indexOf('justify-content: safe center'));
 });
 
+// The wide-direction rules, checked in the source for the same reason as the
+// two above: this suite has no layout engine. What they are worth was measured
+// in headless Chrome at 1900x1000 on the ranked list, before and after. The
+// row's name column went 1777.2 -> 389.2px, so "Psychology Building 115" and
+// its "3 min" went from x=20.6 and x=1813.8 to x=714.6 and x=1119.8; the four
+// duration chips went 459.3/445.5/445.5/508.2 -> 112.3/98.5/98.5/161.2; and
+// #origin-where went 1823.4 -> 435.4px. Nothing moved at 320, 390 or 430px, or
+// at 393px with the root at 53px, which is the check the cap has to keep
+// passing: phone-first is the decision, phone-only was the accident.
+
+test('the sheet holds a capped column instead of stretching to the window', () => {
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const col = css.match(/--col:\s*([\d.]+)rem;/);
+  assert.ok(col, 'the sheet has no content column to cap');
+  // In rem, so it grows with the reader's font size, and wide enough that no
+  // phone can reach it: 32rem is 512px against the 430px of the widest one.
+  assert.ok(Number(col[1]) * 16 > 430, `${col[1]}rem is ${Number(col[1]) * 16}px and binds on a phone`);
+  const cap = css.match(/#sheet > \* \{[^}]*\}/);
+  assert.ok(cap, 'nothing caps the sheet content');
+  assert.match(cap[0], /max-width: var\(--col\)/);
+  assert.match(cap[0], /margin-inline: auto/, 'the column is capped but not centred');
+  // One rule for all three controls. Giving each its own number is how they
+  // drift apart, and #chips and #origin are siblings of the pane, not children.
+  assert.equal(css.split('max-width: var(--col)').length - 1, 1, 'the column is capped twice');
+  // The SHEET keeps the window's width. Its border is a horizon line across the
+  // map and it stands on an install rail that runs the whole way.
+  const sheet = css.slice(css.indexOf('\n  #sheet {'), css.indexOf('#sheet.snap'));
+  assert.doesNotMatch(sheet, /max-width/, 'the sheet narrowed, which is a second design');
+  // And the back arrow rides the same column rather than the window corner.
+  assert.match(css, /#back \{ left: max\(.+, calc\(50% - var\(--col\) \/ 2\)\); \}/);
+});
+
+test('every control answers a mouse before it has been clicked', () => {
+  // `grep -c ":hover" index.html` returned 0 for the whole life of the app, so
+  // the only press feedback anywhere was .opt:active, which is a touch gesture.
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const at = css.indexOf('@media (hover: hover)');
+  assert.ok(at > 0, 'nothing in this app answers a pointer');
+  const block = css.slice(at, css.indexOf('\n  }', at));
+  // .opt is :enabled-guarded: the four duration buttons ship disabled and a
+  // hover that lit them would contradict the .45 opacity dimming them.
+  // No .chip. This block was written against a main that still had the duration
+  // chips, and #85 deletes them in the same batch as this change. A hover rule
+  // for a node nothing renders is CSS that outlives its control, which is
+  // exactly what #85's own guard forbids -- and the two branches were green
+  // apart and red together until this came out.
+  for (const sel of ['.opt:enabled:hover', '.row:hover', '.bar-btn:hover', '.dstep:hover', '#back:hover',
+    '.b-row:hover', '.pick-row:hover']) {
+    assert.ok(block.includes(sel), `${sel} has no hover state`);
+  }
+  // The list is the one index.html:84 already keeps for every control in the
+  // app: .b-row and .pick-row are the nearest-buildings and picker screens, and
+  // a test called "every control" that checks six of eight is not that test.
+  assert.doesNotMatch(block, /(?<![.\w-])\.opt:hover/, 'the disabled duration buttons light up again');
+  // #origin-where is a .bar-btn and is covered by that one.
+  assert.match(css.slice(at, at + 80), /pointer: fine/, 'a phone gets sticky hover');
+  assert.match(css.slice(at, at + 80), /forced-colors: none/, 'high contrast gets author colours');
+  // :hover carries no specificity of its own, so each rule it ties with is
+  // spelled out and the whole block sits below every one of them.
+  for (const [plain, paired] of [
+    ['.row.on {', '.row.on:hover'],
+    ['.opt.primary {', '.opt.primary:hover'],
+  ]) {
+    assert.ok(block.includes(paired), `${paired} is missing, so ${plain} wins on source order`);
+    assert.ok(css.indexOf(plain) < at, `${plain} is declared below the hover block`);
+  }
+});
+
+test('a mouse can open the sheet without first learning to drag', () => {
+  // Dragging the grip is a thumb gesture and it was the only way out of peek,
+  // so on a laptop the fifth row of the answer was behind a gesture nobody
+  // does with a mouse.
+  const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const end = app.slice(app.indexOf('  const end = (e) => {'), app.indexOf("sheet.addEventListener('pointerup', end)"));
+  assert.ok(end, 'no pointerup handler on the sheet');
+  assert.match(end, /const moved = drag\.travelled;/);
+  assert.match(end, /if \(!moved && released\) \{\s*setSheet\(sheetH >= full - 2 \? peek : full, true\);/);
+  // Under the dismiss branch, or a grip pulled to the end of its travel would
+  // toggle instead of throwing the list away.
+  assert.ok(end.indexOf('toAsk();') < end.indexOf('if (!moved && released)'), 'the click branch eats the dismiss');
+});
+
 // ---------------------------------------------------------------- #18 the row
 
 test('a room with no later class says so, and never invents an end time', () => {
@@ -2050,6 +2132,24 @@ test('the gesture asks js/sheet.js instead of deriving the rule again', () => {
   const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
   assert.match(src, /sheetAfterDrag\(drag\.h0, dy, drag\.from, window\.innerHeight\)/);
   assert.equal(src.includes('DISMISS_PX'), false, 'app.js names the dismiss distance a second time');
+});
+
+test('the click toggle reads travel, not net displacement', () => {
+  const move = APP.slice(APP.indexOf('sheet.addEventListener(\'pointermove\''), APP.indexOf('const end = (e) =>'));
+  const end = APP.slice(APP.indexOf('const end = (e) =>'), APP.indexOf('sheet.addEventListener(\'pointerup\', end)'));
+  // lastY is the LAST sample because the velocity term needs it to be, so
+  // `lastY - y0` is net displacement and any out-and-back reads as a press.
+  // Measured in Chromium at 390x844 before this latch existed: a 60px pull on
+  // the grip returned to its start snapped the sheet 321 -> 658, and the same
+  // gesture begun on a row collapsed it 780 -> 321. Both were no-ops on main.
+  assert.doesNotMatch(end, /lastY\s*-\s*drag\.y0|drag\.lastY\s*-/, 'the toggle is measuring net displacement again');
+  assert.match(move, /Math\.abs\(dy\) >= 8\) drag\.travelled = true/, 'nothing latches the 8px any more');
+  assert.match(end, /const moved = drag\.travelled/, 'the toggle stopped reading the latch');
+  // A latch that is cleared mid-gesture is not a latch.
+  assert.equal((APP.match(/drag\.travelled = /g) || []).length, 1, 'travelled is written more than once');
+  // pointercancel is the platform taking the gesture, not the user releasing it.
+  assert.match(end, /const released = e\.type === 'pointerup'/, 'a cancelled press can toggle the sheet');
+  assert.match(end, /if \(!moved && released\)/, 'the toggle branch does not require a release');
 });
 
 test('the departmental label is a caveat, not the loudest thing on the row', () => {

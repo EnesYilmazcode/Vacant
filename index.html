@@ -37,6 +37,16 @@
     --accent: #ff4d3d;
     --you: #4cc2ff;
     --warn: #ffb02e;
+    /* One step up from --card, --line and --accent, for the hover block at the
+       bottom of this sheet. Only --card-hi carries text and it carries --fg,
+       at 14.09:1; --dim on it is 6.72 and is kept off it, because this screen
+       is held to 7. Near-black on --accent-hi is 6.71:1, above the 5.91 the
+       same pairing measures on --accent. */
+    --card-hi: #1a2230;
+    --line-hi: #39434f;
+    --accent-hi: #ff6555;
+    /* How wide the sheet's content may get. Why, at #sheet > * below. */
+    --col: 32rem;
     --safe-b: env(safe-area-inset-bottom, 0px);
     --safe-t: env(safe-area-inset-top, 0px);
   }
@@ -133,10 +143,25 @@
      font size at every size tried (51.09px -> 174px, 76.8px -> 261px, 127.2px
      -> 433px), so the last term caps it at what fits with a little to spare.
      Below AX5 it never binds: at 393px and root 16px it works out to 98.6px
-     against the 51.09px the clamp already picked. */
+     against the 51.09px the clamp already picked.
+     The max() term is the other end of the same problem: 13vw reaches the
+     3.4rem ceiling at 418.5px and nothing binds again above it, so the wordmark
+     was the same 54.4px on a 1900px window as on a 419px phone. 6vw is the rate
+     that lets it grow, and it is picked to clear every phone in portrait: 6vw
+     only passes 3.4rem at 906.7px. That does NOT clear a 430x932 phone turned
+     sideways, and an earlier draft of this comment claimed it did. Measured at
+     932x430 the wordmark is 55.92px against main's 54.4, and the column cap
+     binds too: the sheet's children go from 932px wide to 512. Landscape on a
+     phone is the one place this file's "nothing moves below a laptop" rule
+     bends, and a 512px column inside a 163px-tall peeked sheet is the better
+     answer anyway, so it bends deliberately rather than by accident. Portrait
+     is untouched: 50.7px at 390, 54.4px at 430 and 820, unchanged; 80px at
+     1900. The 5rem ceiling arrives at
+     1333px, and is 5rem because "Vacant." measures 3.40 times its font size, so
+     80px is 272px of wordmark inside the 24rem .opts column below it. */
   #ask h1 {
     margin: 0; font-weight: 800;
-    font-size: min(clamp(2.4rem, 13vw, 3.4rem), calc((100vw - 3rem) / 3.5));
+    font-size: min(max(clamp(2.4rem, 13vw, 3.4rem), min(6vw, 5rem)), calc((100vw - 3rem) / 3.5));
     letter-spacing: -.04em; line-height: 1;
     text-shadow: 0 2px 22px rgba(0,0,0,.75);
   }
@@ -241,6 +266,31 @@
   #sheet.snap { transition: height .22s ease; }
   @media (prefers-reduced-motion: reduce) {
     #sheet.snap { transition: none; }
+  }
+  /* The sheet stays the full width of the window. Its CONTENT does not.
+     Everything in here is `flex: 1 1 auto` inside a box that is left:0 right:0
+     with no cap: on a phone that flex is what makes a row fit, on a laptop it
+     is what tears it apart. Three broken controls, one cause, so one cap rather
+     than three rules. Measured in headless Chrome at 1900x1000 on the ranked
+     list, before this rule and after it. The row's name column 1777.2 ->
+     389.2px, so "Psychology Building 115" and its "3 min" went from x=20.6 and
+     x=1813.8 to x=714.6 and x=1119.8. The four chips 459.3/445.5/445.5/508.2 ->
+     112.3/98.5/98.5/161.2, where the first figure is a 464px pill for a
+     two-character label. #origin-where 1823.4 -> 435.4px, with the ✕ that
+     clears it at x=1842.6 -> x=1148.6; that one also puts the ellipsis on
+     #origin-where span back in reach, since the longest name in the index wants
+     418px in a span that had 418 and now has 383.
+     Only the column narrows, not the sheet. The sheet's top border is a horizon
+     line across the map, and the install-rail rule near the bottom of this
+     sheet stands it on a rail that is the full width of the window; a card
+     floating over the map is a second design, which docs/BLUEPRINT.md rules out
+     for this app.
+     32rem is 512px at the default root, so it cannot bind on a phone: measured
+     at 320, 390 and 430px every box above came back to the pixel. In rem rather
+     than px so it grows with the reader's font size and keeps clear of the
+     large-text reflow, which is the container query below. */
+  #sheet > * {
+    width: 100%; max-width: var(--col); margin-inline: auto;
   }
   /* The grip was decorative for a whole release. It is the drag handle now, so
      it gets a 26px band around it rather than four pixels of hairline. */
@@ -524,6 +574,45 @@
      #ask-where, so the floating pill is redundant there as well as in the way.
      The load error used to be the exception; it has the gate card now. */
   body.asking #note { display: none !important; }
+
+  /* --- what a mouse gets back --- */
+  /* There was nothing here at all. `grep -c ":hover" index.html` returned 0, so
+     the only press feedback in the app was `.opt:active { scale(.97) }`, which
+     is a touch gesture: with a mouse nothing answered until it had already been
+     clicked. #origin-where is not named because it is a .bar-btn.
+     All three conditions are load-bearing. hover and pointer keep the
+     sticky-hover phones out, where a tap leaves a row lit until something else
+     is tapped. forced-colors keeps this out of high contrast, where the block
+     at the top of this sheet hands these same controls ButtonFace with
+     forced-color-adjust:none, and an author colour on top of that is a colour
+     the reader turned off.
+     :hover adds no specificity over a class, so .row:hover and .row.on tie at
+     one element and two classes: this block sits last, and the pairs that
+     overlap are spelled out rather than left to source order. */
+  @media (hover: hover) and (pointer: fine) and (forced-colors: none) {
+    /* :enabled, because the four duration buttons ship disabled and js/app.js
+       clears it only once boot() resolves. Without the guard a hover lit them
+       while #ask:not(.ready) .opts was dimming them to .45, which is the
+       interface promising a control it has not got yet. */
+    .opt:enabled:hover { background: var(--card-hi); border-color: var(--line-hi); }
+    .opt.primary:hover { background: var(--accent-hi); border-color: var(--accent-hi); }
+    /* A row has no background of its own, so its hover is the light it gets,
+       not a surface swap. Over --bg the .05 white resolves to #17191c, where
+       --dim measures 7.42:1 and stays over the 7:1 this screen is held to. */
+    .row:hover { background: rgba(255,255,255,.05); }
+    .row.on:hover { background: rgba(255,77,61,.12); }
+    /* The same light, because .b-row and .pick-row are transparent for the same
+       reason .row is. They are the whole of the nearest-buildings and the picker
+       screens, so leaving them out meant two screens where nothing answered a
+       mouse at all. */
+    .b-row:hover, .pick-row:hover { background: rgba(255,255,255,.05); }
+    .bar-btn:hover { background: var(--card-hi); border-color: var(--line-hi); }
+    .dstep:hover { color: var(--fg); }
+    /* The arrow is already a translucent pill over the map. Hovering makes it
+       opaque rather than lighter, so it does not read as a second state. */
+    #back:hover { background: var(--bg); border-color: var(--line-hi); }
+  }
+
   /* --- the display cutout, in landscape --- */
   /* viewport-fit=cover plus black-translucent draws the page under the status
      bar, which the top and bottom rows already answer with --safe-t and
@@ -534,7 +623,12 @@
     padding-left: max(1.5rem, env(safe-area-inset-left, 0px));
     padding-right: max(1.5rem, env(safe-area-inset-right, 0px));
   }
-  #back { left: max(.6rem, env(safe-area-inset-left, 0px)); }
+  /* The third term anchors the arrow to the sheet's content column rather than
+     to the window corner, so it stays over what it goes back from: at 1900x1000
+     it sat at x=9.6 with the column starting at x=694, and lands on 694 now.
+     Below 32rem the term is negative and max() drops it, so on a phone the
+     arrow does not move: 9.6 at 320, 390 and 430px, before and after. */
+  #back { left: max(.6rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2)); }
   #sheet {
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);

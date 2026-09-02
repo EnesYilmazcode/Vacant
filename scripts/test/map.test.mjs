@@ -2,6 +2,9 @@
 // objects, so none of this needs a browser.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   FIT_PAD,
@@ -10,6 +13,7 @@ import {
   SPAN_MAX,
   SPAN_MIN,
   clampView,
+  createFrameLoop,
   drawTarget,
   drawYou,
   fitPair,
@@ -23,6 +27,9 @@ import {
   zoomBy,
 } from '../../js/map.js';
 import { bandFor } from '../../js/sheet.js';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 // The shipped basemap, pinned to what buildBasemap actually produces for
 // data/campus.json on a dpr-2 phone: a 2693x2229 raster at 0.99 m per pixel.
@@ -395,25 +402,37 @@ test('the target takes the footprint it is given', () => {
   assert.equal(ctx.calls.filter((c) => c[0] === 'fill').length, 1);
 });
 
-test('the walk label is dropped when the pill would cover the line', () => {
-  const short = stubCtx();
-  drawTarget(
-    short,
-    { footprint: null, from: [33000, 33000], to: [33500, 33000], label: '1 min walk' },
-    BASEMAP,
-    CENTRE,
-    PEEK,
-  );
-  assert.equal(short.calls.filter((c) => c[0] === 'fillText').length, 0);
-  const long = stubCtx();
-  drawTarget(
-    long,
-    { footprint: null, from: [30000, 30000], to: [40000, 40000], label: '1 min walk' },
-    BASEMAP,
-    CENTRE,
-    PEEK,
-  );
-  assert.equal(long.calls.filter((c) => c[0] === 'fillText').length, 1);
+test('the map draws no text, on any length of line', () => {
+  // The pill used to be drawn at the midpoint of any line long enough to hold
+  // it, and this second pair is that case: it drew "1 min walk" before #75.
+  // The minutes come out of walkMinutes, which multiplies the straight-line
+  // metres by DETOUR = 1.3, so the pill answered for a path 30% longer than the
+  // dashed line it was sitting on. The row already says the same number without
+  // a drawing beside it to disagree with.
+  for (const [from, to] of [
+    [[33000, 33000], [33500, 33000]],
+    [[30000, 30000], [40000, 40000]],
+  ]) {
+    const ctx = stubCtx();
+    drawTarget(ctx, { footprint: null, from, to, label: '1 min walk' }, BASEMAP, CENTRE, PEEK);
+    const drawn = ctx.calls.map((c) => c[0]);
+    assert.ok(!drawn.includes('fillText'), `text drawn for ${from} to ${to}`);
+    assert.ok(!drawn.includes('measureText'), 'a label was still measured');
+    assert.ok(!drawn.includes('roundRect'), 'the pill behind the label is still drawn');
+    assert.ok(drawn.includes('stroke'), 'the line itself still has to be drawn');
+  }
+});
+
+test('neither the map nor its caller has a text-drawing seam left', () => {
+  // A `label` option nobody passes is a pill waiting to come back. Both halves
+  // of it are gone: the drawing in js/map.js and the string js/app.js fed it.
+  assert.ok(!/fillText|measureText/.test(read('js/map.js')), 'js/map.js draws text again');
+  // The row strip still says "N min walk", which is the whole point: the number
+  // belongs where nothing is drawn beside it to contradict it. What must not
+  // come back is a label handed to the map.
+  const call = read('js/app.js').match(/drawTarget\(\s*ctx,\s*\{[^}]*\}/);
+  assert.ok(call, 'the drawTarget call in js/app.js moved; this test needs to follow it');
+  assert.ok(!/label/.test(call[0]), `js/app.js passes a label again: ${call[0]}`);
 });
 
 test('the dashes stay readable on a line the fit has zoomed right in on', () => {
@@ -430,6 +449,142 @@ test('the dashes stay readable on a line the fit has zoomed right in on', () => 
   const b = project([34560, 33000], BASEMAP, CENTRE, PEEK);
   const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
   assert.ok(dash[0] * 2 < len, `a ${len.toFixed(1)} px line cannot hold a ${dash[0]} px dash pair`);
+});
+
+// --- the frame loop, which used to have no way of stopping
+
+// requestAnimationFrame, on a clock this test owns: queue() holds the pending
+// callbacks and pump() runs the ones queued so far, so "how many frames did
+// this cost" is a count rather than a guess.
+function fakeFrames() {
+  const queue = [];
+  let stamp = 0;
+  return {
+    request: (cb) => queue.push(cb),
+    get queued() {
+      return queue.length;
+    },
+    // One display frame at 60 Hz. Callbacks queued BY these callbacks wait for
+    // the next pump, the way the browser holds them for the next frame.
+    pump() {
+      const due = queue.splice(0, queue.length);
+      stamp += 16.7;
+      for (const cb of due) cb(stamp);
+      return due.length;
+    },
+  };
+}
+
+test('a settled screen costs one frame and then nothing', () => {
+  // The defect in #75, reduced: nothing is moving, so draw says it wants no
+  // more frames. Before the fix this counted 290 callbacks in 2 seconds; the
+  // ceiling here is 1, and the loop pumped 600 times cannot exceed it.
+  const clock = fakeFrames();
+  let painted = 0;
+  const settled = createFrameLoop(clock.request, () => {
+    painted += 1;
+    return false;
+  });
+
+  settled.wake();
+  assert.equal(settled.pending, true, 'the wake has to buy a frame');
+  clock.pump();
+  assert.equal(painted, 1);
+  assert.equal(settled.pending, false, 'the loop is still holding a frame open');
+
+  // Two seconds of display frames with nobody waking it.
+  for (let i = 0; i < 120; i++) clock.pump();
+  assert.equal(painted, 1, `an idle screen painted ${painted} times`);
+  assert.equal(clock.queued, 0, 'a frame is still queued on an idle screen');
+});
+
+test('a draw that says it is still moving keeps the loop running', () => {
+  // The flyover. It is the loading state, so it has to run to the end of itself
+  // without anything poking it.
+  const clock = fakeFrames();
+  let painted = 0;
+  const flyover = createFrameLoop(clock.request, () => {
+    painted += 1;
+    return painted < 30;
+  });
+  flyover.wake();
+  for (let i = 0; i < 60; i++) clock.pump();
+  assert.equal(painted, 30, 'the drift stopped early or never stopped');
+  assert.equal(flyover.pending, false);
+});
+
+test('the loop restarts when whatever settled it starts again', () => {
+  // Back to the question restarts the flyover, a tap moves the camera, a fix
+  // moves the dot. Every one of those is a wake on a loop that had stopped, and
+  // a loop that cannot be restarted is a map that freezes.
+  const clock = fakeFrames();
+  let moving = false;
+  let painted = 0;
+  const loop = createFrameLoop(clock.request, () => {
+    painted += 1;
+    return moving;
+  });
+
+  loop.wake();
+  clock.pump();
+  assert.equal(painted, 1);
+
+  moving = true;
+  loop.wake();
+  for (let i = 0; i < 5; i++) clock.pump();
+  assert.equal(painted, 6, 'the restarted loop did not keep going');
+
+  moving = false;
+  clock.pump();
+  assert.equal(painted, 7);
+  for (let i = 0; i < 10; i++) clock.pump();
+  assert.equal(painted, 7, 'it never came back to rest');
+});
+
+test('waking a loop that is already awake does not stack frames', () => {
+  // A drag delivers pointermove faster than the display draws, and every one of
+  // them wakes the loop. Three moves inside one frame must buy one frame.
+  const clock = fakeFrames();
+  let painted = 0;
+  const loop = createFrameLoop(clock.request, () => {
+    painted += 1;
+    return false;
+  });
+  loop.wake();
+  loop.wake();
+  loop.wake();
+  assert.equal(clock.queued, 1, `${clock.queued} frames queued for three wakes`);
+  clock.pump();
+  assert.equal(painted, 1);
+});
+
+test('a wake raised from inside the draw is not swallowed', () => {
+  // A fix landing on the same tick the frame is painting. The flag is cleared
+  // before the draw for exactly this: cleared after, the wake would find it set
+  // and the frame it asked for would never be requested.
+  const clock = fakeFrames();
+  let painted = 0;
+  let loop;
+  loop = createFrameLoop(clock.request, () => {
+    painted += 1;
+    if (painted === 1) loop.wake();
+    return false;
+  });
+  loop.wake();
+  clock.pump();
+  assert.equal(clock.queued, 1, 'the wake from inside the draw was lost');
+  clock.pump();
+  assert.equal(painted, 2);
+});
+
+test('nothing in js/app.js asks for a frame outside the loop', () => {
+  // render() used to open with `raf = requestAnimationFrame(render)`, which is
+  // what made it unstoppable. The one remaining call is the request handed to
+  // createFrameLoop; anything else is a second loop nobody can stop.
+  const app = read('js/app.js');
+  const asks = app.match(/requestAnimationFrame/g) ?? [];
+  assert.equal(asks.length, 1, `js/app.js requests frames in ${asks.length} places`);
+  assert.match(app, /createFrameLoop\(\(cb\) => requestAnimationFrame\(cb\), render\)/);
 });
 
 // ---- the band each screen leaves

@@ -9,7 +9,7 @@ asks one question, and hands you rooms you can walk to, nearest first.
 
 | | | |
 | :--: | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark campus map, the question "How long do you need?", and three buttons reading 30 min, 1 hour and 2 hours](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. 117 rooms free, 39 shown, one room per building. Psychology Building 115, 3 min walk, no class rest of today, 26 seats. University Hall 448, 3 min, no class rest of today, 25 seats.](docs/media/list.webp) | ![One room picked, Cunz Hall 160. Its building footprint is outlined in red on the map and a dashed line runs from the blue dot to it, labelled 4 min walk.](docs/media/room.webp) |
+| ![The opening screen: the word Vacant over a dark campus map, the question "How long?", and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. One room per building, under a line reading "You asked for 2h00." Cunz Hall 160, 4 min walk, no class rest of today, 42 seats. PAES A111, 4 min, free till 4:00pm, 34 seats.](docs/media/list.webp) | ![One room picked, Cunz Hall 160. Its building footprint is outlined in red on the map, a dashed line runs from the blue dot to it, and its row is lit in the list below.](docs/media/room.webp) |
 | One question. | The answer. | Where it is. |
 
 ## Yours for, not free until
@@ -22,14 +22,14 @@ in the room's schedule, subtracts the walk, and leaves ten minutes at the end so
 you are not packing up while the next class files in. Walk time is straight line
 distance times 1.3 for the fact that campus paths bend, at 78 metres a minute.
 
-Read the third row of the middle screenshot. Psychology Building 217 says **free
-till 1:50pm**. The next class in that room starts at 2:00pm, you are three minutes
-away, and 1:50pm is when you have to be packed up.
+Read the second row of the middle screenshot. PAES A111 says **free till 4:00pm**.
+The next class in that room starts at 4:10pm, you are four minutes away, and
+4:00pm is when you have to be packed up.
 
 Tap it and the room screen says the same minute, then spells the rest out:
-**Yours for 3h27 once you get there.** The two screens agreeing is the point.
-They did not for a while: the room screen printed 2:45pm, the raw class start,
-handing back the ten minutes the row had already taken off
+**Yours for 5h36 once you get there.** The two screens agreeing is the point.
+They did not for a while: the room screen printed the raw class start, handing
+back the ten minutes the row had already taken off
 ([#77](https://github.com/EnesYilmazcode/Vacant/issues/77)).
 
 A row that says **no class rest of today** instead of a time means no class is
@@ -37,7 +37,7 @@ coming at all, and the timeline behind it ends where the building locks.
 
 | | |
 | :--: | :--: |
-| ![The list dragged up to fill the screen, showing eight rooms in eight different buildings, 3 min to 5 min away](docs/media/list-full.webp) | ![The room screen for Cunz Hall 160: no class in here for the rest of today, yours for 8h26 once you get there, 4 min walk, 42 seats, classroom, then Wednesday drawn as a calendar from 6 AM with two red blocks, KNSISM 3208 from 8:00am to 8:55am and KNSISM 3550 from 9:10am to 10:05am, and everything else empty](docs/media/timeline.webp) |
+| ![The list dragged up to fill the screen, showing eight rooms in eight different buildings, 3 min to 7 min away](docs/media/list-full.webp) | ![The room screen for Cunz Hall 160: no class in here for the rest of today, yours for 8h26 once you get there, 4 min walk, 42 seats, classroom, then Wednesday drawn as a calendar from 6 AM with two red blocks, KNSISM 3208 from 8:00am to 8:55am and KNSISM 3550 from 9:10am to 10:05am, and everything else empty](docs/media/timeline.webp) |
 | Drag the sheet up for the rest. | Tap a room twice for its whole day, doors included. |
 
 ## Put it on your home screen

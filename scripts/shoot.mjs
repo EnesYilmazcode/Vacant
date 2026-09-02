@@ -5,10 +5,11 @@
 //   node scripts/shoot.mjs --check    capture and verify, write nothing
 //
 // Needs Chrome or Chromium on the machine and nothing else. It finds the
-// browser itself, serves the repo over a local port, drives the real app and
-// refuses to write if a frame came out blank, a screen came out empty, or the
-// page logged a console error or threw. Point CHROME at the binary if the
-// search misses:
+// browser itself -- on Linux a Playwright-downloaded Chromium included, which
+// the win32 and darwin branches do not yet search -- serves the repo
+// over a local port, drives the real app and refuses to write if a frame came
+// out blank, a screen came out empty, or the page logged a console error or
+// threw. Point CHROME at the binary if the search misses:
 //
 //   CHROME="/path/to/chrome" node scripts/shoot.mjs
 //
@@ -128,7 +129,34 @@ function chromePaths() {
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
     '/snap/bin/chromium',
+    // Containers often have no Chrome on PATH but do have the one Playwright
+    // downloaded, under PLAYWRIGHT_BROWSERS_PATH or its default cache. The
+    // list above missed it and this repo was twice told the machine had no
+    // browser, while /opt/pw-browsers/chromium-1194 (Chromium 141) sat there
+    // and drove the shoot fine. Newest build first: the dirs are versioned.
+    ...playwrightChromiums(),
   ];
+}
+
+// chromium-<build>/chrome-linux/chrome under each Playwright browsers root.
+// Only the directory listing is done here; findChrome still checks the file.
+function playwrightChromiums() {
+  const roots = [process.env.PLAYWRIGHT_BROWSERS_PATH, path.join(os.homedir(), '.cache', 'ms-playwright')];
+  const found = [];
+  for (const root of roots) {
+    if (!root) continue;
+    let entries;
+    try {
+      entries = fs.readdirSync(root);
+    } catch {
+      continue; // no such root on this machine
+    }
+    const builds = entries
+      .filter((e) => /^chromium-\d+$/.test(e))
+      .sort((a, b) => Number(b.slice(9)) - Number(a.slice(9)));
+    for (const b of builds) found.push(path.join(root, b, 'chrome-linux', 'chrome'));
+  }
+  return found;
 }
 
 function findChrome() {
@@ -160,16 +188,35 @@ async function launch() {
       '--hide-scrollbars',
       '--force-color-profile=srgb',
       '--font-render-hinting=none',
+      // Chromium's sandbox needs a non-root user to drop privileges to, and
+      // refuses to start at all without one: as root it exits 1 before it ever
+      // writes DevToolsActivePort, which surfaced here as "chrome exited with
+      // 1" and got read as "no browser on this machine". CI and container runs
+      // are root, so the flag is added there and only there — on a normal
+      // desktop account the sandbox stays on, which is the point of asking.
+      ...(process.getuid?.() === 0 ? ['--no-sandbox'] : []),
       'about:blank',
     ],
     { stdio: ['ignore', 'ignore', 'pipe'] },
   );
-  child.stderr.resume();
+  // Kept, not dropped. This line used to be `child.stderr.resume()`, which threw
+  // the browser's own explanation away and left a bare "chrome exited with 1" --
+  // and two people concluded from that message that no browser existed here,
+  // when the real text named the sandbox and the fix was one flag. The tail is
+  // bounded because a failing Chromium can be chatty.
+  let stderr = '';
+  child.stderr.on('data', (chunk) => {
+    stderr = (stderr + chunk).slice(-4000);
+  });
+  child.lastStderr = () => stderr.trim();
 
   const portFile = path.join(profile, 'DevToolsActivePort');
   const until = Date.now() + 30000;
   while (Date.now() < until) {
-    if (child.exitCode !== null) throw new Error(`chrome exited with ${child.exitCode}`);
+    if (child.exitCode !== null) {
+      const said = child.lastStderr();
+      throw new Error(`chrome exited with ${child.exitCode}${said ? `\n${said}` : ''}`);
+    }
     try {
       const [port] = (await fsp.readFile(portFile, 'utf8')).split('\n');
       if (port) return { child, profile, port: Number(port) };
@@ -371,7 +418,21 @@ class Phone {
   // thing left moving on the question screen is the "finding campus" line
   // fading out, which is 300ms of CSS on one element.
   async boot(url) {
+    // Page.navigate resolves when the navigation BEGINS, not when the new
+    // document commits, so everything below can run against the OUTGOING page.
+    // Measured over nine runs, this raced twice. From about:blank it is a loud
+    // crash -- no #ask, so .classList throws -- but the second boot() of a shoot
+    // reloads the SAME url, and there the stale document is the already-booted
+    // app: all three predicates pass against it, boot() returns while the reload
+    // is still in flight, and the ask frame can be a photograph of the list.
+    // A wrong picture that looks right is the one failure this script must not
+    // have, since nothing downstream can tell.
+    //
+    // Marking the document and waiting for the mark to disappear is the whole
+    // fix: only a committed navigation can clear a property set on the old one.
+    await this.call('Runtime.evaluate', { expression: 'window.__shootDoc = 1' });
     await this.call('Page.navigate', { url });
+    await this.waitFor('window.__shootDoc === undefined', 'the navigation to commit');
     await this.waitFor(`document.getElementById('ask').classList.contains('ready')`, 'the app to boot');
     await this.painted();
     await this.waitFor(

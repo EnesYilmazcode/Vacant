@@ -9,7 +9,7 @@ asks one question, and hands you rooms you can walk to, nearest first.
 
 | | | |
 | :--: | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark campus map, the question "How long?", and four buttons reading 30 min, 1 hour, 2 hours and rest of day](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. 117 rooms free, 39 shown, one room per building, under a line reading "You asked for 2h00." Cunz Hall 160, 4 min walk, no class rest of today, 42 seats. PAES A111, 4 min, free till 4:00pm, 34 seats.](docs/media/list.webp) | ![One room picked, Cunz Hall 160. Its building footprint is outlined in red on the map, a dashed line runs from the blue dot to it, and its row is lit in the list below.](docs/media/room.webp) |
+| ![The opening screen: the word Vacant over a dark campus map, the question "How long?", and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. One room per building, under a line reading "You asked for 2h00." Cunz Hall 160, 4 min walk, no class rest of today, 42 seats. PAES A111, 4 min, free till 4:00pm, 34 seats.](docs/media/list.webp) | ![One room picked, Cunz Hall 160. Its building footprint is outlined in red on the map, a dashed line runs from the blue dot to it, and its row is lit in the list below.](docs/media/room.webp) |
 | One question. | The answer. | Where it is. |
 
 ## Yours for, not free until

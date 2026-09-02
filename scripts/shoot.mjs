@@ -5,7 +5,8 @@
 //   node scripts/shoot.mjs --check    capture and verify, write nothing
 //
 // Needs Chrome or Chromium on the machine and nothing else. It finds the
-// browser itself, a Playwright-downloaded Chromium included, serves the repo
+// browser itself -- on Linux a Playwright-downloaded Chromium included, which
+// the win32 and darwin branches do not yet search -- serves the repo
 // over a local port, drives the real app and refuses to write if a frame came
 // out blank, a screen came out empty, or the page logged a console error or
 // threw. Point CHROME at the binary if the search misses:
@@ -198,12 +199,24 @@ async function launch() {
     ],
     { stdio: ['ignore', 'ignore', 'pipe'] },
   );
-  child.stderr.resume();
+  // Kept, not dropped. This line used to be `child.stderr.resume()`, which threw
+  // the browser's own explanation away and left a bare "chrome exited with 1" --
+  // and two people concluded from that message that no browser existed here,
+  // when the real text named the sandbox and the fix was one flag. The tail is
+  // bounded because a failing Chromium can be chatty.
+  let stderr = '';
+  child.stderr.on('data', (chunk) => {
+    stderr = (stderr + chunk).slice(-4000);
+  });
+  child.lastStderr = () => stderr.trim();
 
   const portFile = path.join(profile, 'DevToolsActivePort');
   const until = Date.now() + 30000;
   while (Date.now() < until) {
-    if (child.exitCode !== null) throw new Error(`chrome exited with ${child.exitCode}`);
+    if (child.exitCode !== null) {
+      const said = child.lastStderr();
+      throw new Error(`chrome exited with ${child.exitCode}${said ? `\n${said}` : ''}`);
+    }
     try {
       const [port] = (await fsp.readFile(portFile, 'utf8')).split('\n');
       if (port) return { child, profile, port: Number(port) };
@@ -405,7 +418,21 @@ class Phone {
   // thing left moving on the question screen is the "finding campus" line
   // fading out, which is 300ms of CSS on one element.
   async boot(url) {
+    // Page.navigate resolves when the navigation BEGINS, not when the new
+    // document commits, so everything below can run against the OUTGOING page.
+    // Measured over nine runs, this raced twice. From about:blank it is a loud
+    // crash -- no #ask, so .classList throws -- but the second boot() of a shoot
+    // reloads the SAME url, and there the stale document is the already-booted
+    // app: all three predicates pass against it, boot() returns while the reload
+    // is still in flight, and the ask frame can be a photograph of the list.
+    // A wrong picture that looks right is the one failure this script must not
+    // have, since nothing downstream can tell.
+    //
+    // Marking the document and waiting for the mark to disappear is the whole
+    // fix: only a committed navigation can clear a property set on the old one.
+    await this.call('Runtime.evaluate', { expression: 'window.__shootDoc = 1' });
     await this.call('Page.navigate', { url });
+    await this.waitFor('window.__shootDoc === undefined', 'the navigation to commit');
     await this.waitFor(`document.getElementById('ask').classList.contains('ready')`, 'the app to boot');
     await this.painted();
     await this.waitFor(

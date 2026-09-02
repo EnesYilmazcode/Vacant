@@ -754,9 +754,16 @@ export function unscheduledGate({ now, current, index, busyDay, opening, openNow
 //
 // `longest` never fired once in the 12,870, so its sentence is the only one
 // here with no measurement behind it. It says the least for that reason.
-export function rungPhrase(rung, { needed = 0, maxWalk = MAX_WALK } = {}) {
-  const asked = dur(needed);
-  const spoken = spokenDur(needed);
+// `restOfDay` is the ask the app cannot render as a length. neededMinutes()
+// turns "rest of day" into Math.max(30, latestEnd - now), so dur() prints a
+// figure the user never chose -- 12h15 at 08:00, and a flat "30 min" inside the
+// last half hour of the index's day, which is indistinguishable from the button
+// that does say 30 min. The list already names that button in words directly
+// above this strip, so a second vocabulary here puts two renderings of one ask
+// on adjacent lines.
+export function rungPhrase(rung, { needed = 0, maxWalk = MAX_WALK, restOfDay = false } = {}) {
+  const asked = restOfDay ? 'the rest of the day' : dur(needed);
+  const spoken = restOfDay ? 'the rest of the day' : spokenDur(needed);
   const line = (text, say) => ({ text, say: say ?? text });
 
   // The rung the engine comments on twice: the rows it adds are computer labs,
@@ -785,26 +792,38 @@ export function rungPhrase(rung, { needed = 0, maxWalk = MAX_WALK } = {}) {
   // 2026-09-14 10:50 from 39.9915, -83.0230 at a 30 minute ask puts four rooms
   // in Biological Sciences on screen with no wait and a 19 minute window. The
   // rung is about rooms that fit, so the sentence has to say what it wanted.
+  //
+  // No second sentence. It said "Vacant fell back to rooms that open later"
+  // over screens where every row was free right now: 12 of the 170 opens-at
+  // lists in the 12,870-answer replay. What the ladder DID and what the list
+  // SHOWS are two different searches, and only the first clause is about the
+  // list.
   if (rung === 'opens-at') {
     return line(
-      `Fewer than three rooms near you are free for ${asked} right now. Vacant fell back to rooms that open later.`,
-      `Fewer than three rooms near you are free for ${spoken} right now. Vacant fell back to rooms that open later.`,
+      `Fewer than three rooms near you are free for ${asked} right now.`,
+      `Fewer than three rooms near you are free for ${spoken} right now.`,
     );
   }
 
-  // The radius rungs. maxWalk is the app's own bound and the one the rows on
-  // screen were cut to, so the number in the sentence is a number the reader
-  // can check against the walk times in front of them.
-  if (rung === 'further') {
+  // The radius rungs, and the reason neither says what the ladder went on to
+  // do. js/app.js ranks with rank() + shape(), and shape() keeps only the rows
+  // inside maxWalk. `further` and `anywhere` are by definition the rungs whose
+  // answer lies OUTSIDE that cut, so the rooms they found can never appear on
+  // the screen this sentence sits on. Not rarely: never, structurally, on every
+  // one of the 108 such lists in the replay. The draft that said "Vacant looked
+  // twice that far" was printing a claim the rows underneath refuted, over
+  // screens that on main had said nothing at all -- which is worse than the
+  // silence this whole change exists to replace.
+  //
+  // So both keep the one clause that is about the list in front of the reader,
+  // and both quote maxWalk, the bound those rows were actually cut to. They
+  // come out identical, and they should: from the reader's side the two rungs
+  // are the same situation, and the difference between them is a fact about
+  // the search, not about the answer.
+  if (rung === 'further' || rung === 'anywhere') {
     return line(
-      `Fewer than three rooms within a ${maxWalk} minute walk are free for ${asked}. Vacant looked twice that far.`,
-      `Fewer than three rooms within a ${maxWalk} minute walk are free for ${spoken}. Vacant looked twice that far.`,
-    );
-  }
-  if (rung === 'anywhere') {
-    return line(
-      `Fewer than three rooms within a ${maxWalk * 2} minute walk are free for ${asked}. Vacant looked across the whole campus.`,
-      `Fewer than three rooms within a ${maxWalk * 2} minute walk are free for ${spoken}. Vacant looked across the whole campus.`,
+      `Fewer than three rooms within a ${maxWalk} minute walk are free for ${asked}.`,
+      `Fewer than three rooms within a ${maxWalk} minute walk are free for ${spoken}.`,
     );
   }
 

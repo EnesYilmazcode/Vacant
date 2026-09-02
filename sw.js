@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 86,052 bytes, data 85,157.
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 86,235 bytes, data 85,157.
 // The shell figure was re-measured on gzip 1.12 when the fallback ladder's
 // disclosure landed in js/app.js and js/engine.js; the data figure is the
 // earlier one, on gzip 1.14. The data side more than doubled when the index started carrying

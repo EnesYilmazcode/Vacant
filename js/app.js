@@ -629,17 +629,30 @@ function answer() {
   // than off the sweep options. Without it the ladder would read a no-classes
   // day as a full one and relax against a busy grid describing nobody, while
   // the list beside it showed all of campus free.
+  // Nothing is selected until a finger picks one. Asserting row one here is
+  // what made the highlight fire on load and never move again.
+  state.selected = null;
+  state.listScroll = 0;
+  // Rows first, then the sweep that only the strip needs.
+  //
+  // The ladder is a SECOND full sweep of the index. Warm it is about a
+  // millisecond beside rank()'s one, which is nothing; cold, unwarmed, on this
+  // machine it is 10.5 ms against rank()'s 14.6, and a mid-range phone runs
+  // that 5 to 10 times slower. In front of paintList() that is 50 to 100 ms
+  // added between the tap and the first row, on the one path spike #29 exists
+  // to measure. Behind it, it costs the first row nothing.
+  //
+  // Safe because state.rung and state.relaxed have exactly one reader between
+  // them, relaxedLine(), and paintList() is the only caller of that. The strip
+  // is repainted on the line after, off the same state paintList() just used.
+  paintList();
   const answered = ladder(rooms, {
     ...ask,
     calendar: state.situation?.classesSuspended ? { noClasses: true } : undefined,
   });
   state.rung = answered.rung;
   state.relaxed = answered.relaxed;
-  // Nothing is selected until a finger picks one. Asserting row one here is
-  // what made the highlight fire on load and never move again.
-  state.selected = null;
-  state.listScroll = 0;
-  paintList();
+  if (answered.relaxed) paintList();
   settle();
   // Free is wait === 0, the word the rows and settle() spend. state.total holds
   // everything that cleared the 90 minute wait, so this line read "297 rooms
@@ -719,7 +732,13 @@ const CAVEAT = `<p class="foot">Class schedule only. Doors get locked and clubs 
 // nothing up. The strip and the live region both read it from here, so the two
 // cannot end up saying different things about the same list.
 const relaxedLine = () =>
-  (state.relaxed ? rungPhrase(state.rung, { needed: state.needed, maxWalk: MAX_WALK }) : null);
+  (state.relaxed
+    ? rungPhrase(state.rung, {
+      needed: state.needed,
+      maxWalk: MAX_WALK,
+      restOfDay: state.duration === 'day',
+    })
+    : null);
 
 function paintList() {
   const list = $('list');

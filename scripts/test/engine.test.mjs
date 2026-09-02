@@ -1136,8 +1136,25 @@ test('the ladder walks the names in RUNGS and keeps no second copy of them', () 
   const src = readFileSync(new URL('../../js/engine.js', import.meta.url), 'utf8');
   const block = src.slice(src.indexOf('  const runs = {'), src.indexOf('  const rungs = RUNGS'));
   assert.ok(block.length > 200, 'the ladder no longer builds its rungs from a `runs` object');
-  const named = [...block.matchAll(/^ {4}'?([a-z-]+(?::\$\{n\})?)'?:/gm)].map((m) => m[1]);
-  assert.ok(named.length >= 6, `only found ${named.length} rung runners`);
+  // Any key at any indentation, any characters a JS identifier or a quoted key
+  // can hold. The first version of this line was /^ {4}'?([a-z-]+...)'?:/ and it
+  // captured six literal names: the `shorter:${n}` entry sits deeper, inside
+  // Object.fromEntries, so it never matched and the branch below that handles it
+  // was dead code. Worse, [a-z-] rejects digits, so a rung called `roof2` could
+  // be added to the runner and never to RUNGS and this test stayed green while
+  // the rung never ran -- the exact failure it exists to catch.
+  // Two shapes, because the ladder holds two. Most rungs are plain object keys;
+  // the `shorter` family is a template literal spread in through
+  // Object.fromEntries, which is a different line entirely and is why the first
+  // version of this scan missed it.
+  // Four spaces exactly: a rung key is a top-level property of `runs`, and
+  // anything deeper is the options object being handed to rung() -- `mode:
+  // 'soon'` inside the opens-at runner is not a rung. \s+ here captured it.
+  const keys = [...block.matchAll(/^ {4}'?([A-Za-z0-9_$-]+)'?:\s/gm)].map((m) => m[1]);
+  const built = [...block.matchAll(/`([A-Za-z0-9_$-]+):\$\{n\}`/g)].map((m) => `${m[1]}:\${n}`);
+  const named = [...keys, ...built];
+  assert.ok(keys.length >= 6, `only found ${keys.length} rung runners`);
+  assert.ok(built.length >= 1, 'the shorter family is not being captured');
   for (const name of named) {
     const inRungs = name === 'shorter:${n}'
       ? RUNGS.some((r) => r.startsWith('shorter:'))
@@ -1198,8 +1215,23 @@ test('the walk bound in the sentence is the bound the rows were cut to', () => {
   // the disclosure lying about the one fact it is easiest to check.
   const at12 = rungPhrase('further', { needed: 60, maxWalk: 12 });
   assert.match(at12.text, /within a 12 minute walk/);
-  assert.match(rungPhrase('anywhere', { needed: 60, maxWalk: 12 }).text, /within a 24 minute walk/);
   assert.match(rungPhrase('further', { needed: 60, maxWalk: 20 }).text, /within a 20 minute walk/);
+  // `anywhere` quotes maxWalk too, not maxWalk * 2. 24 is where the LADDER
+  // looked; 12 is where the rows were cut. js/app.js ranks with rank() +
+  // shape(), shape() keeps only rows inside maxWalk, and these two rungs are by
+  // definition the ones whose answer is outside it -- so a reader checking 24
+  // against the walk times in front of them finds nothing above 12, every time.
+  assert.match(rungPhrase('anywhere', { needed: 60, maxWalk: 12 }).text, /within a 12 minute walk/);
+  assert.doesNotMatch(rungPhrase('anywhere', { needed: 60, maxWalk: 12 }).text, /24/);
+  // And neither promises a search the list cannot show. These clauses shipped
+  // over 108 of 108 such lists in the replay and were refuted by the rows on
+  // every one of them.
+  for (const rung of ['further', 'anywhere', 'opens-at']) {
+    const said = rungPhrase(rung, { needed: 60, maxWalk: 12 });
+    assert.doesNotMatch(said.text, /looked twice that far|across the whole campus|rooms that open later/,
+      `${rung} still describes the ladder's search instead of the list under it`);
+    assert.doesNotMatch(said.say, /looked twice that far|across the whole campus|rooms that open later/);
+  }
   // Default is the engine's own bound, so a caller that passes nothing does not
   // get a sentence about a radius nobody used.
   assert.equal(rungPhrase('further', { needed: 60 }).text, rungPhrase('further', { needed: 60, maxWalk: MAX_WALK }).text);
@@ -1841,4 +1873,23 @@ test('shape holds the committed index to a walk you would actually make', () => 
     assert.notEqual(r.id, far.beyond.nearest.id, 'the named room is not free');
   }
   assert.equal(far.beyond.waiting.count, 133);
+});
+
+test('a rest-of-day ask is named, not priced, in the strip too', () => {
+  // neededMinutes() renders "rest of day" as Math.max(30, latestEnd - now), so
+  // dur() prints a figure nobody chose: 12h15 in the morning, and a flat
+  // "30 min" in the last half hour of the index's day, which is the other
+  // button's answer exactly. The list states the ask in words directly above
+  // this strip, and two renderings of one ask on adjacent lines is the thing
+  // that line exists to stop.
+  const day = rungPhrase('any-type', { needed: 735, restOfDay: true });
+  assert.match(day.text, /free for the rest of the day/);
+  assert.match(day.say, /free for the rest of the day/);
+  assert.doesNotMatch(day.text, /12h15|735/, 'the strip priced an ask the app only derived');
+  // Clamped to the floor, where dur() and the 30 min button agree and the
+  // reader cannot tell which one they pressed.
+  assert.doesNotMatch(rungPhrase('any-type', { needed: 30, restOfDay: true }).text, /30 min/);
+  // The three fixed lengths still print as lengths.
+  assert.match(rungPhrase('any-type', { needed: 60 }).text, /free for 1h00/);
+  assert.match(rungPhrase('any-type', { needed: 60 }).say, /free for 1 hour/);
 });

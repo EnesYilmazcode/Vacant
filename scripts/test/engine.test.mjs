@@ -1030,7 +1030,7 @@ test('an answer made of departmental rooms is labelled relaxed on every rung tha
     const out = askFor(needed, spec, extra);
     if (!out.rows.length) continue;
     assert.notEqual(out.rung, 'asked');
-    assert.equal(out.relaxed, true, `rung ${out.rung} handed back a clinic without saying so`);
+    assert.equal(out.relaxed, true, `rung ${out.rung} handed back a departmental room without saying so`);
   }
 });
 

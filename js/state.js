@@ -766,12 +766,17 @@ export function rungPhrase(rung, { needed = 0, maxWalk = MAX_WALK, restOfDay = f
   const spoken = restOfDay ? 'the rest of the day' : spokenDur(needed);
   const line = (text, say) => ({ text, say: say ?? text });
 
-  // The rung the engine comments on twice: the rows it adds are computer labs,
-  // departmental seminar rooms and, in one building, a dental clinic.
+  // The rung the engine comments on twice. It used to say "computer labs and
+  // departmental rooms" and the labs left OFFERABLE, so that named rooms the
+  // list can no longer contain. Replayed over 49 origins after the change, the
+  // rows this rung adds are 1,535 conference rooms, 99 of an unlabelled type,
+  // 14 TV and radio facilities and one meeting room -- and zero labs. One of
+  // the conference rooms is a working dental clinic, which is why the sentence
+  // still admits rather than reassures.
   if (rung === 'any-type') {
     return line(
-      `Fewer than three ordinary classrooms near you are free for ${asked}. Vacant reached into computer labs and departmental rooms.`,
-      `Fewer than three ordinary classrooms near you are free for ${spoken}. Vacant reached into computer labs and departmental rooms.`,
+      `Fewer than three ordinary classrooms near you are free for ${asked}. Vacant reached into conference and meeting rooms.`,
+      `Fewer than three ordinary classrooms near you are free for ${spoken}. Vacant reached into conference and meeting rooms.`,
     );
   }
 

@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 121,542 bytes, data 85,157.
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 122,257 bytes, data 85,157.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these sixteen files, which is most of a percent of

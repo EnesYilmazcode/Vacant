@@ -113,12 +113,32 @@ export const RUNGS = [
 // can sit down in with a laptop.
 export const PREFERRED_TYPES = ['1B', '1C', '1A', 'LCTR', 'SMNR'];
 
-// Rooms the note puts behind a toggle: computer labs and departmental seminar
-// rooms, real rooms with chairs and tables but access controlled or socially
-// awkward, and 5K holds at least one working dental clinic. MEASURED on the
-// committed index: 101 of 871 rooms (11.6%) carry one of these. The ladder may
-// offer them once the preferred ones run out, and it says so when it does.
-export const SECONDARY_TYPES = ['2P', '2Q', '5K', '6L', '2J', '5C'];
+// Rooms the ladder may fall back to once the preferred ones run out, saying so
+// when it does: real rooms with chairs and tables, but access controlled or
+// socially awkward, and 5K holds at least one working dental clinic.
+//
+// The computer labs, 2P and 2Q, USED TO BE HERE and are not any more. They were
+// the worst rooms in the set by the one signal the index carries about who can
+// open a door: 26 of the 27 shipped labs are absent from the Registrar's
+// general-assignment list, 96%, against 41 of 309 for ordinary classrooms, 13%.
+// A room a department locks is not an answer, it is a walk.
+//
+// Dropping them is free, which is the part that settles it. MEASURED by
+// replaying rank() plus shape() from 49 origins across campus, five weekdays,
+// six hours a day, at asks of 30, 60 and 120 -- 4,410 answers:
+//
+//   answers that had rows   3,715 with the labs, 3,715 without
+//   answers that went empty 0
+//   rows lost               813 of 63,709, 1.28%
+//
+// Not one list loses its answer, because shape() hands the slot to a real
+// classroom instead. A lab was row one 37 times, 1.00% of answered lists, and
+// those 37 are the walks this removes.
+//
+// They stay in TYPE_VISIBILITY for now, so the index still carries them and the
+// bytes are still spent; the harvest is where that gets fixed, and it runs
+// weekly. This is the half that takes effect on deploy.
+export const SECONDARY_TYPES = ['5K', '6L', '2J', '5C'];
 
 // Within the preferred set, ordered by how likely the room is to be a room one
 // person can sit down in for an hour. 1B is the confident general classroom,
@@ -646,9 +666,20 @@ function sweep(rooms, opts) {
   } = opts;
   const walkCache = new Map();
   const out = [];
-  const dropped = { noBuilding: 0, noCoordinate: 0, badOrigin: 0, closed: 0, noWindow: 0 };
+  const dropped = { notOfferable: 0, noBuilding: 0, noCoordinate: 0, badOrigin: 0, closed: 0, noWindow: 0 };
 
   for (const room of rooms) {
+    // A room type nothing offers never enters the ranking. This has to live
+    // HERE and not only in rung(): js/app.js builds the list from rank() plus
+    // shape(), and rank() had no type filter at all, so dropping the computer
+    // labs from OFFERABLE changed which rung the ladder reported and left the
+    // labs sitting in the rows underneath it. The disclosure moved and the
+    // answer did not, which is the same rank()/rung() split that let a strip
+    // describe a search the list could not show.
+    if (room.type !== undefined && !OFFERABLE.has(room.type)) {
+      dropped.notOfferable++;
+      continue;
+    }
     const building = buildings[room.b];
     if (!building) {
       dropped.noBuilding++;

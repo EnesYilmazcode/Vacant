@@ -16,6 +16,7 @@ import {
   RELAX_LADDER,
   RUNGS,
   SCREEN_ROWS,
+  SECONDARY_TYPES,
   SILENT_SHARE,
   SURPLUS_CAP,
   SURPLUS_WEIGHT,
@@ -1001,11 +1002,13 @@ test('the ladder stops at the first rung with three rooms and does not keep walk
 });
 
 test('two rooms is not a quorum, so the ladder keeps looking and takes the better rung', () => {
-  // Two classrooms and a computer lab, all free. The type filter answers with
-  // two, which is under quorum, so the next rung offers the lab as well.
+  // Two classrooms and a conference room, all free. The type filter answers with
+  // two, which is under quorum, so the next rung offers the third as well.
+  // 5K rather than 2P: the computer labs left the offerable set entirely, so a
+  // 2P fixture now tests a room that can never appear rather than the rung.
   const out = askFor(60, campus([
     ['A', 300, 2],
-    ['B', 300, 1, { type: '2P' }],
+    ['B', 300, 1, { type: '5K' }],
   ]));
   assert.equal(out.rung, 'any-type');
   assert.equal(out.rows.length, 3);
@@ -1013,7 +1016,7 @@ test('two rooms is not a quorum, so the ladder keeps looking and takes the bette
 });
 
 test('the room-type filter comes off before the duration does', () => {
-  const out = askFor(60, campus([['B', 300, 4, { type: '2P' }]]));
+  const out = askFor(60, campus([['B', 300, 4, { type: '5K' }]]));
   assert.equal(out.rung, 'any-type');
   assert.equal(out.need, 60, 'still the duration that was asked for');
   assert.equal(out.askedNeed, 60);
@@ -1187,7 +1190,9 @@ test('a screen full of unknown-hours rooms is countable, not disguised', () => {
 // read neither, so a list built by dropping the room-type filter was headed by
 // the same words as a list of ordinary classrooms: 20 computer labs, 12
 // conference rooms and a dental clinic under no sentence at all. That is issue
-// #90, and these are the tests that stop it coming back.
+// #90, and these are the tests that stop it coming back. The labs have since
+// left OFFERABLE entirely, so the rung reaches conference and meeting rooms
+// now; the dental clinic is one of those and the sentence still admits it.
 //
 // The sentences live in js/state.js rather than in js/app.js because js/app.js
 // touches the DOM at import and cannot be loaded under node. js/state.js is the
@@ -1969,8 +1974,13 @@ test('shape holds the committed index to a walk you would actually make', () => 
   assert.equal(usable[0].walk, 71, 'the unbounded ranking still leads with a 71 minute walk');
   const far = shape(usable);
   assert.equal(far.rows.length, 0);
-  assert.equal(far.beyond.count + far.beyond.waiting.count, 306, 'every usable row is past the bound');
-  assert.equal(far.beyond.count, 173, 'and only these are free right now');
+  // 280, 162 and 118, down from 306, 173 and 133. The difference is exactly the
+  // computer labs leaving OFFERABLE: 26 of them ranked from this origin, 11 free
+  // at this minute and 15 waiting. 306 - 26 = 280, 173 - 11 = 162,
+  // 133 - 15 = 118, and 162 + 118 = 280 as it did before. The walk bound this
+  // test is about did not move, and neither did the room it names.
+  assert.equal(far.beyond.count + far.beyond.waiting.count, 280, 'every usable row is past the bound');
+  assert.equal(far.beyond.count, 162, 'and only these are free right now');
   assert.equal(far.beyond.nearest.walk, 71);
   // The screenshot named Pomerene Hall. 8 rooms tie at exactly 71 minutes,
   // across Pomerene Hall and Jennings Hall, and `nearest` keeps the first one
@@ -1985,7 +1995,7 @@ test('shape holds the committed index to a walk you would actually make', () => 
     if (r.wait === 0) continue;
     assert.notEqual(r.id, far.beyond.nearest.id, 'the named room is not free');
   }
-  assert.equal(far.beyond.waiting.count, 133);
+  assert.equal(far.beyond.waiting.count, 118);
 });
 
 test('a rest-of-day ask is named, not priced, in the strip too', () => {
@@ -2005,4 +2015,23 @@ test('a rest-of-day ask is named, not priced, in the strip too', () => {
   // The three fixed lengths still print as lengths.
   assert.match(rungPhrase('any-type', { needed: 60 }).text, /free for 1h00/);
   assert.match(rungPhrase('any-type', { needed: 60 }).say, /free for 1 hour/);
+});
+
+test('a computer lab is never offered, on any rung', () => {
+  // 26 of the 27 shipped labs are absent from the Registrar's general-assignment
+  // list -- 96%, against 13% for ordinary classrooms -- so a lab is the room
+  // most likely to be a locked door at the end of a walk. They left OFFERABLE
+  // rather than being ranked low, because ranking low still shows them.
+  assert.equal(SECONDARY_TYPES.includes('2P'), false, 'the computer labs are offerable again');
+  assert.equal(SECONDARY_TYPES.includes('2Q'), false, 'the computer labs are offerable again');
+  // A campus made of nothing but labs answers with nothing, rather than with
+  // labs. The ladder runs out instead of reaching for them.
+  const only = askFor(60, campus([['B', 300, 6, { type: '2P' }]]));
+  assert.equal(only.rows.length, 0, 'the ladder still reaches a computer lab');
+  // And a lab beside real classrooms does not appear once the rung relaxes.
+  const mixed = askFor(60, campus([
+    ['A', 300, 1],
+    ['B', 300, 4, { type: '2Q' }],
+  ]));
+  assert.equal(mixed.rows.every((r) => !/^B/.test(r.id)), true, 'a lab came back on a relaxed rung');
 });

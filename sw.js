@@ -41,7 +41,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-8323b68';
+const SHELL_CACHE = 'vacant-shell-7bf7b7e';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also

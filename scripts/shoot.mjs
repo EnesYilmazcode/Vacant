@@ -5,10 +5,10 @@
 //   node scripts/shoot.mjs --check    capture and verify, write nothing
 //
 // Needs Chrome or Chromium on the machine and nothing else. It finds the
-// browser itself, serves the repo over a local port, drives the real app and
-// refuses to write if a frame came out blank, a screen came out empty, or the
-// page logged a console error or threw. Point CHROME at the binary if the
-// search misses:
+// browser itself, a Playwright-downloaded Chromium included, serves the repo
+// over a local port, drives the real app and refuses to write if a frame came
+// out blank, a screen came out empty, or the page logged a console error or
+// threw. Point CHROME at the binary if the search misses:
 //
 //   CHROME="/path/to/chrome" node scripts/shoot.mjs
 //
@@ -128,7 +128,34 @@ function chromePaths() {
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
     '/snap/bin/chromium',
+    // Containers often have no Chrome on PATH but do have the one Playwright
+    // downloaded, under PLAYWRIGHT_BROWSERS_PATH or its default cache. The
+    // list above missed it and this repo was twice told the machine had no
+    // browser, while /opt/pw-browsers/chromium-1194 (Chromium 141) sat there
+    // and drove the shoot fine. Newest build first: the dirs are versioned.
+    ...playwrightChromiums(),
   ];
+}
+
+// chromium-<build>/chrome-linux/chrome under each Playwright browsers root.
+// Only the directory listing is done here; findChrome still checks the file.
+function playwrightChromiums() {
+  const roots = [process.env.PLAYWRIGHT_BROWSERS_PATH, path.join(os.homedir(), '.cache', 'ms-playwright')];
+  const found = [];
+  for (const root of roots) {
+    if (!root) continue;
+    let entries;
+    try {
+      entries = fs.readdirSync(root);
+    } catch {
+      continue; // no such root on this machine
+    }
+    const builds = entries
+      .filter((e) => /^chromium-\d+$/.test(e))
+      .sort((a, b) => Number(b.slice(9)) - Number(a.slice(9)));
+    for (const b of builds) found.push(path.join(root, b, 'chrome-linux', 'chrome'));
+  }
+  return found;
 }
 
 function findChrome() {
@@ -160,6 +187,13 @@ async function launch() {
       '--hide-scrollbars',
       '--force-color-profile=srgb',
       '--font-render-hinting=none',
+      // Chromium's sandbox needs a non-root user to drop privileges to, and
+      // refuses to start at all without one: as root it exits 1 before it ever
+      // writes DevToolsActivePort, which surfaced here as "chrome exited with
+      // 1" and got read as "no browser on this machine". CI and container runs
+      // are root, so the flag is added there and only there — on a normal
+      // desktop account the sandbox stays on, which is the point of asking.
+      ...(process.getuid?.() === 0 ? ['--no-sandbox'] : []),
       'about:blank',
     ],
     { stdio: ['ignore', 'ignore', 'pipe'] },

@@ -907,6 +907,80 @@ export function windowPhrase(row, close) {
   };
 }
 
+// -------------------------------------------------------- following the walk
+
+// The app asked the phone where it was exactly once, at launch, and then ranked
+// every answer for the rest of the session from that one point. The whole
+// product is one number, `usable = window - walk - packup`, and the walk is
+// measured from a place the student leaves the moment they set off toward the
+// room, so the number was wrong by the time it mattered. Issue #87.
+//
+// A watch fixes that and breaks something else if it is left ungated, because
+// refresh() in js/app.js is written around a rule of its own: a list that
+// re-sorts under a thumb loses the row somebody was reaching for. Both
+// decisions live here, and not in js/app.js, for the reason at the top of this
+// file: neither can be checked by opening the app. Reaching them by hand means
+// walking across campus with a phone in your hand.
+
+// How far the phone has to have moved before the app re-measures from the new
+// point. 40 m is 0.51 minutes of walking at the engine's WALK_MPM of 78, so no
+// walk figure on screen can be a whole minute wrong inside it, and it sits
+// under the 75 m that js/app.js already calls a coarse fix. Below this the app
+// would be re-ranking on the difference between two readings of one spot.
+export const FOLLOW_M = 40;
+
+// And a floor on how often that may happen at all. Somebody actually walking
+// covers 40 m every 31 seconds at that pace, so this delays them by at most one
+// fix; it is here for the phone standing still whose readings wander, which the
+// 75 m coarse line says is a shape campus GPS really has.
+//
+// NOT MEASURED. No phone has been watched through a walk yet, which is the item
+// still open on #87, and this number is the one that would move if it were.
+export const FOLLOW_MS = 15000;
+
+// Whether a position off the watch is worth acting on. Both gates, and the
+// first fix passes both: js/app.js has no previous position to measure against
+// and hands in Infinity for each.
+export function followFix({ movedM, sinceMs, minM = FOLLOW_M, minMs = FOLLOW_MS } = {}) {
+  // Written to fail closed. A NaN distance out of a malformed fix must not read
+  // as "moved far enough", which `movedM < minM` would have done.
+  if (!(sinceMs >= minMs)) return false;
+  return movedM >= minM;
+}
+
+// What a fix that cleared those gates is allowed to do to the screen. Four
+// answers, and three of them are refusals:
+//
+//   stop   a building was picked by hand. A deliberate choice is not a sensor
+//          reading and does not expire, so there is nothing left to follow
+//   room   a room is open. The reader has already chosen; the walk minutes on
+//          that screen are redrawn where they stand and the ranking behind it
+//          is not touched
+//   hold   the dot and the line move with the new origin on the next frame and
+//          the order stands. This is the thumb rule
+//   rank   the list is idle and untouched, so it may be re-ordered
+//
+// The order of the tests is the whole function. `screen === 'room'` has to come
+// before `selected`, because opening a room always selects its row, and a room
+// screen tested for selection first would only ever hold.
+export function followAction({ screen, selected, dragging, picked, scrolled } = {}) {
+  if (picked) return 'stop';
+  // A finger is down on the sheet. Not merely dragging it: a tap that has not
+  // been let go of yet is a finger on a row, which is the case the rule is
+  // about.
+  if (dragging) return 'hold';
+  if (screen === 'room') return 'room';
+  if (selected != null) return 'hold';
+  // Scrolled down the list is read as touched. The rows under the fold are the
+  // ones somebody scrolled to see, and answer() paints from the top, so a
+  // re-rank here throws away both the order and their place in it.
+  if (scrolled) return 'hold';
+  // Everywhere else is a control surface the ranking is not on screen behind:
+  // the building picker, the about pane. Re-ranking under those repaints a list
+  // nobody is looking at and reframes the map while they read.
+  return screen === 'list' || screen === 'near' || screen === 'ask' ? 'rank' : 'hold';
+}
+
 // ---------------------------------------------------------------- diagnostics
 
 export const round4 = (n) => (Number.isFinite(n) ? Number(n.toFixed(4)) : n);
@@ -971,4 +1045,71 @@ export function diagnosticsBlock(d) {
     out = `${head}\n${fmt(all.slice(0, keep), all.length - keep)}`;
   }
   return out.length > MAX_BLOCK ? out.slice(0, MAX_BLOCK) : out;
+}
+
+// The watch handle, as a state machine, because the handle was the one half of
+// #87 the tests could not reach.
+//
+// followFix and followAction above are pure and were mutation-checked. The
+// lifecycle around them was not: it lived in js/app.js, which touches the DOM
+// at import and cannot be loaded under node, so scripts/test/follow.test.mjs
+// asserted REGEXES OVER THE SOURCE TEXT. That kills a mutation which rewrites a
+// quoted string and nothing else. Reviewed with 26 mutations, five survived a
+// green suite, and every one of them is a battery or staleness bug a reader
+// would never see:
+//
+//   clearWatch(0) instead of clearWatch(id)  the watch never actually stops
+//   drop the `id != null` guard              two live watches, doubled cost
+//   drop `id = null` in stop()               the watch never restarts
+//   drop the throttle assignments            every fix re-ranks
+//
+// Injecting the geolocation object and the visibility predicate is what makes
+// those assertions possible, so this holds the handle and js/app.js holds the
+// wiring. `geolocation` and `visible` are functions rather than values because
+// both are read at call time in the browser and neither is stable across a
+// session. It is spelled out rather than shortened to `geo` because
+// scripts/test/install.test.mjs forbids the string `geo:` anywhere in js/ --
+// geo: URIs are inert on iOS -- and a property named `geo` trips that guard for
+// no reason.
+export function createWatch({ geolocation, visible, onFix, onError, options = {} }) {
+  let id = null;
+  return {
+    // Read-only on purpose: a caller that can assign the handle can lose it.
+    get id() { return id; },
+    get open() { return id != null; },
+    // Returns why it did what it did, so a test can tell "refused" from "opened"
+    // without reaching for the handle.
+    start(origin) {
+      if (id != null) return 'already-open';
+      if (!origin) return 'no-origin';
+      // A hidden page must never open one: the boot fix can resolve after the
+      // user has switched away, and visibilitychange has already fired by then.
+      if (!visible()) return 'hidden';
+      // A picked building does not expire, so there is nothing to follow.
+      if (origin.source === 'picked') return 'picked';
+      const g = geolocation();
+      if (typeof g?.watchPosition !== 'function') return 'unsupported';
+      try {
+        id = g.watchPosition(onFix, onError, options);
+      } catch {
+        // The locked-down webviews that throw on getCurrentPosition too. The
+        // boot fix still stands and the app is no worse off than it was.
+        id = null;
+        return 'threw';
+      }
+      return 'open';
+    },
+    stop() {
+      if (id == null) return 'closed';
+      try {
+        geolocation()?.clearWatch(id);
+      } catch {
+        /* nothing to do about it, and the handle is dropped either way */
+      }
+      // Cleared even when clearWatch threw, or a start() after a failed stop
+      // refuses forever and the watch never comes back.
+      id = null;
+      return 'stopped';
+    },
+  };
 }

@@ -95,12 +95,23 @@
   stairwell with no signal gets you the browser's error page rather than a room. That
   is worth saying plainly because the reason to have no backend is often given as
   "it works offline", and today it does not.</p>
-  <p>Your position is read once per search, held in a variable, and gone when you
-  close the tab. The app asks for it once and does not keep watching. It is never
-  written to storage, never put in a URL, and never attached to anything the app
-  caches. You can check: every line of the app is at
+  <p>Your position is held in a variable and gone when you close the tab. It is
+  read once when you open the app, and then followed while the app is on screen,
+  because a walk time measured from where you were standing five minutes ago is
+  not a walk time. The following stops the moment you switch away or lock the
+  phone, and it never starts at all if you picked a building by hand. It is never
+  written to storage and never attached to anything the app caches.</p>
+  <p>It leaves the app in exactly one place, and only if you ask it to. Tapping
+  <em>Directions</em> on a room opens Apple or Google Maps with your position as
+  the starting point, which means those coordinates are in the address bar of
+  whichever map app you just handed the journey to. That is the whole point of
+  the button, it happens on a tap and never on its own, and no other part of
+  Vacant sends your position anywhere. An earlier version of this paragraph
+  claimed otherwise; it was written before the button existed and it was wrong.</p>
+  <p>You can check: every line of the app is at
   <a href="https://github.com/EnesYilmazcode/Vacant">github.com/EnesYilmazcode/Vacant</a>,
-  and there are only four JavaScript files.</p>
+  and it is twelve JavaScript files with no build step, so what is in the
+  repository is what your browser runs.</p>
   <p>The app does store exactly one thing on your phone, and it is not about you:
   a key called <code>vacant:duration</code> holding how long you last said you
   needed a room, so it does not have to ask twice. Clearing your browser data

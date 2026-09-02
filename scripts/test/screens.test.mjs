@@ -1897,7 +1897,10 @@ test('an origin with nothing walkable is answered, not left on a dead end', () =
   assert.match(src, /const NO_WALK = 'No classroom close enough to walk to';/);
   assert.match(src, /const NO_WALK_OVAL = `\$\{NO_WALK\}, showing from the Oval`;/);
   // And the gate still prints it, so the 2.19 km and 2.21 km screens agree.
-  assert.match(src, /if \(far\) return finish\(oval, NO_WALK_OVAL\);/);
+  // The circle moved into offCampus() when the watch landed (#87), because it
+  // now has to run on every accepted position rather than only the first one.
+  // scripts/test/follow.test.mjs is what holds it on both paths.
+  assert.match(src, /if \(offCampus\(here\)\) return finish\(oval, NO_WALK_OVAL\);/);
 });
 
 // Three invariants this change turns on, all read out of js/app.js because

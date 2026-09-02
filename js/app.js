@@ -35,6 +35,9 @@ import {
   closedDayFor,
   diagnosticsBlock,
   dur,
+  createWatch,
+  followAction,
+  followFix,
   inScheduledHours,
   inTermOn,
   isoDate,
@@ -155,6 +158,10 @@ const state = {
   view: null,
   band: null,
   userMoved: false,
+  // Whether a finger is on the sheet right now. Read by the watch in the
+  // geolocation section: a position that lands mid-gesture may move the dot and
+  // may not re-order the rows under it.
+  dragging: false,
   rooms: null,
   buildings: null,
   counts: null,
@@ -429,6 +436,10 @@ function attachSheet() {
 
   const begin = (e, mode) => {
     swallow = false;
+    // Set on pointerDOWN, not on the first 8px of travel. The rule the flag
+    // exists for is about the row somebody is reaching for, and they are
+    // reaching for it before they have moved.
+    state.dragging = true;
     drag = {
       id: e.pointerId,
       y0: e.clientY,
@@ -479,6 +490,9 @@ function attachSheet() {
       // Already scrolled: the pane keeps the gesture, momentum and all.
       if (drag.pane.scrollTop > 0) {
         drag = null;
+        // Handed to the browser, so no pointerup of ours ends it. Left true
+        // here the flag would hold the list frozen until the next tap.
+        state.dragging = false;
         return;
       }
       // At full height a pull upward is the list, not the sheet. touch-action
@@ -504,7 +518,14 @@ function attachSheet() {
   });
 
   const end = (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
+    // A pointer that ends with no drag on it still ends a finger's contact with
+    // the sheet, which is what the flag tracks. A second pointer's up while the
+    // first is still down is left alone.
+    if (!drag) {
+      state.dragging = false;
+      return;
+    }
+    if (e.pointerId !== drag.id) return;
     const mode = drag.mode;
     const v = drag.v;
     const dismiss = drag.dismiss;
@@ -524,6 +545,7 @@ function attachSheet() {
     // the gesture away, which is not the user letting go of it.
     const released = e.type === 'pointerup';
     drag = null;
+    state.dragging = false;
     syncTouch();
     if (mode !== 'sheet') return;
     const H = window.innerHeight;
@@ -556,6 +578,19 @@ function attachSheet() {
   sheet.addEventListener('pointercancel', end);
   handle.addEventListener('pointerup', end);
   handle.addEventListener('pointercancel', end);
+
+  // The finger flag, released from the window as well. A touch pointer is
+  // implicitly captured by the element it went down on, so its up always comes
+  // back to the two handlers above; a mouse released off the sheet does not, and
+  // a flag left true would hold the ranking frozen for the rest of the session.
+  // The drag itself is left alone here: it is the same mouse-only gap it always
+  // had, and taking a gesture apart from the window is how a real drag ends up
+  // cancelled by the wrong pointer.
+  const release = () => {
+    state.dragging = false;
+  };
+  window.addEventListener('pointerup', release);
+  window.addEventListener('pointercancel', release);
 
   // Pointer capture redirects pointer events but not the click a mouse still
   // synthesises, so without this a drag begun on a row would open that room.
@@ -1286,6 +1321,13 @@ function pickBuilding(code) {
     at: Date.now(),
   };
   safeSet(KEY_ORIGIN, JSON.stringify(origin));
+  // Now, not at the next fix. startWatch() refuses a picked origin, but a pick
+  // made mid-session happens while a watch is already open, and followAction
+  // only returns 'stop' when a position arrives to be judged. With
+  // maximumAge 0, no timeout and a student who has just walked indoors, that
+  // next position can be minutes away or never, and privacy.html says the
+  // following does not start at all on a picked building.
+  stopWatch();
   useOrigin(origin, null);
   state.query = '';
   $('find-q').value = '';
@@ -1306,6 +1348,9 @@ function clearPickedOrigin() {
   safeDel(KEY_ORIGIN);
   locate().then((got) => {
     useOrigin(got.origin, got.note);
+    // The pick is gone, so the fix is back in charge and the watch that a
+    // picked origin turned off comes back with it.
+    follow(got.origin);
     refresh();
     // The X always goes; on the Oval fallback the row it sits in stays. Focus
     // moves to whichever survives, or it lands on the body and is lost.
@@ -1961,6 +2006,14 @@ function sheetHeight() {
 
 function showList() {
   showPane('list');
+  // Nothing else clears it on the way back. followAction reads state.selected
+  // as "a finger is on a row somebody is reaching for" and returns 'hold', and
+  // under 'hold' refresh() never runs, so answer() -- the only other thing that
+  // nulls it -- never runs either. Open the app, tap a room, press back, walk:
+  // the gate stays shut and the list holds boot values for the rest of the
+  // session, which is exactly the staleness #87 exists to remove. Selection is
+  // a property of the room screen; coming back to the list ends it.
+  state.selected = null;
   $('back').setAttribute('aria-label', 'Back to the question');
   $('list').scrollTop = state.listScroll;
   sheetHeight();
@@ -1994,6 +2047,71 @@ function showAbout() {
   paintAbout();
 }
 
+// Everything the room screen's markup has to be given back after it is written.
+// Split out of showRoom because a repaint driven by a moving fix has to restore
+// the handlers WITHOUT re-entering the screen: showRoom also moves focus to the
+// heading and re-snaps the sheet to rest, and a sheet that jumps back to rest
+// under a reader is worse than a stale number.
+function wireRoom(id) {
+  attachBearing(id);
+  // A week either way, and no clamp. Past the term's own bounds the grid comes
+  // back empty and the sentence over it says the schedule does not reach there.
+  for (const el of $('room').querySelectorAll('[data-day]')) {
+    el.onclick = () => {
+      roomDayOffset += Number(el.dataset.day);
+      const at = $('room').scrollTop;
+      showRoom(id, { keepDay: true });
+      $('room').scrollTop = at;
+    };
+  }
+  for (const el of $('room').querySelectorAll('[data-act]')) el.onclick = () => openAbout();
+}
+
+// The room screen, redrawn where it stands, for a fix that landed while it was
+// open. The ranking behind it does not move: the reader has already chosen, and
+// re-ordering a list they are about to press back into is the thumb rule. What
+// does move is every number on this screen measured from the origin, which is
+// the walk minutes AND the "yours for" duration in the claim above them, since
+// usableMinutes subtracts the walk from the window. Printing one of them from
+// where the student used to be is the bug this whole change is about.
+function repaintRoom() {
+  const id = state.selected?.id;
+  const room = id ? state.rooms?.rooms?.[id] : null;
+  if (!room || $('room').hidden) return;
+  // The compass first. The needle, its arrow and its label are built inside
+  // roomHtml, so the innerHTML below detaches them -- but orientationOff still
+  // closes over the OLD nodes and its two window listeners are still bound.
+  // Left alone, the needle silently vanishes every FOLLOW_M of the walk it
+  // exists for, the label reverts to "Point me", and tapping it again
+  // overwrites the closure and orphans the first pair for good.
+  if (orientationOff) orientationOff();
+  const b = state.buildings?.[room.b];
+  if (!b || !Number.isFinite(b.lat) || !Number.isFinite(b.lon) || !state.origin) return;
+  const metres = Math.round(distanceMetres(state.origin, b));
+  const walk = walkMinutes(metres);
+  // Nothing a reader can see has changed. A repaint costs them their place in
+  // the day grid, and it is not worth spending on a number that came back the
+  // same: FOLLOW_M is 40 m and a walk minute is 78 m of it.
+  if (walk === state.selected.walk) return;
+  // The row the list handed over carries the walk it was RANKED with, and
+  // roomHtml prefers that over re-deriving one. Both fields are a function of
+  // the origin, so both are rewritten, and they are rewritten off the same
+  // rounded metres so the screen cannot disagree with itself by a minute. The
+  // ORDER of state.results is not touched, which is the promise being kept.
+  state.selected.metres = metres;
+  state.selected.walk = walk;
+  const at = $('room').scrollTop;
+  // Focus by position, not by node: the markup is rebuilt, so whatever was
+  // focused no longer exists. Same room, same shape, so the nth control is the
+  // same control. A reader on the Directions link keeps it.
+  const stops = () => [...$('room').querySelectorAll('a[href], button, [tabindex]')];
+  const focused = stops().indexOf(document.activeElement);
+  $('room').innerHTML = roomHtml(id);
+  $('room').scrollTop = at;
+  wireRoom(id);
+  if (focused >= 0) stops()[focused]?.focus({ preventScroll: true });
+}
+
 function showRoom(id, { keepDay = false } = {}) {
   const room = state.rooms?.rooms?.[id];
   if (!room) return showList();
@@ -2019,18 +2137,7 @@ function showRoom(id, { keepDay = false } = {}) {
   // frame() below runs only when the room is one of the ranked rows. Opened
   // from a link or out of hours it is not, and the footprint still has to light.
   frames.wake();
-  attachBearing(id);
-  // A week either way, and no clamp. Past the term's own bounds the grid comes
-  // back empty and the sentence over it says the schedule does not reach there.
-  for (const el of $('room').querySelectorAll('[data-day]')) {
-    el.onclick = () => {
-      roomDayOffset += Number(el.dataset.day);
-      const at = $('room').scrollTop;
-      showRoom(id, { keepDay: true });
-      $('room').scrollTop = at;
-    };
-  }
-  for (const el of $('room').querySelectorAll('[data-act]')) el.onclick = () => openAbout();
+  wireRoom(id);
   focusHeading($('room-h'));
   // The sheet DOES grow for this screen now. It used to hold four or five text
   // rows and peek was enough; it holds a day as a calendar, and a calendar
@@ -2193,6 +2300,13 @@ function pickedOrigin() {
   return null;
 }
 
+// The circle OFF_CAMPUS_KM draws, in the flat conversion that constant is
+// documented against. It is a function rather than a line inside locate()
+// because it has to run on EVERY accepted position and not only the first: a
+// student who walks out of the circle with the app open used to keep a ranking
+// measured from the last point inside it, and never saw the note.
+const offCampus = (here) => Math.hypot((here.lon - OVAL.lon) * 85, (here.lat - OVAL.lat) * 111) > OFF_CAMPUS_KM;
+
 function locate() {
   const picked = pickedOrigin();
   if (picked) return Promise.resolve({ origin: picked, note: null });
@@ -2221,8 +2335,7 @@ function locate() {
         (p) => {
           clearTimeout(watchdog);
           const here = { lon: p.coords.longitude, lat: p.coords.latitude };
-          const far = Math.hypot((here.lon - oval.lon) * 85, (here.lat - oval.lat) * 111) > OFF_CAMPUS_KM;
-          if (far) return finish(oval, NO_WALK_OVAL);
+          if (offCampus(here)) return finish(oval, NO_WALK_OVAL);
           finish(
             { ...here, accuracy: p.coords.accuracy, source: 'gps', label: null, at: Date.now() },
             null,
@@ -2230,6 +2343,10 @@ function locate() {
         },
         (err) =>
           fail(err.code === 1 ? 'Location is off' : err.code === 2 ? 'Location unavailable' : 'Location timed out'),
+        // A minute-old fix is accepted HERE and nowhere else. This call is on
+        // the path to the first answer, the student has not walked anywhere
+        // yet, and a cached position saves them the cold-start wait. The watch
+        // below takes maximumAge 0 for the opposite reason.
         { enableHighAccuracy: false, timeout: FIX_TIMEOUT_MS, maximumAge: 60000 },
       );
     } catch {
@@ -2238,6 +2355,116 @@ function locate() {
       fail('Location is unavailable');
     }
   });
+}
+
+
+// ---------------------------------------------------------------- the watch
+//
+// locate() answers once. This is what keeps the answer true while the student
+// walks, which is the whole of issue #87: one fix at boot meant every walk
+// figure described a place they had already left.
+//
+// What it must not do is re-sort the list under a thumb, the rule refresh() is
+// written around. followAction() in js/state.js holds that line and this
+// function does what it says: a position that lands on the room screen, on a
+// selected row, under a finger or on a scrolled list moves the dot and nothing
+// else.
+// The handle lives in js/state.js as a state machine, with the geolocation
+// object and the visibility predicate injected, because js/app.js cannot be
+// imported under node and a suite that can only regex this file is a suite that
+// misses clearWatch(0). See createWatch's comment for the five mutations that
+// survived while this was inline.
+//
+// The last position acted on, which is deliberately not state.origin. Off
+// campus, and on a stranded ranking, state.origin is the Oval, and measuring
+// the next fix against the Oval would accept every one of them.
+let lastFix = null;
+let lastFixAt = 0;
+
+const watch = createWatch({
+  geolocation: () => navigator.geolocation,
+  visible: () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
+  onFix,
+  onError: onWatchError,
+  options: {
+    // Unchanged from the boot fix, and load-bearing. High accuracy is what
+    // holds the GPS chip awake, and ranking by walk minutes across a campus
+    // 2.2 km wide has never needed 5 m.
+    enableHighAccuracy: false,
+    // Zero, where the boot fix takes one up to a minute old. A minute of
+    // walking is 78 m at WALK_MPM, nearly twice FOLLOW_M, so a cached fix here
+    // is exactly the staleness this watch exists to remove.
+    maximumAge: 0,
+  },
+});
+
+function startWatch() {
+  watch.start(state.origin);
+}
+
+// A watch left running behind a locked screen keeps asking the phone where it
+// is for a list nobody can see, which is a battery complaint and nothing else.
+// Nothing is lost by dropping it: the page comes back through refresh().
+function stopWatch() {
+  watch.stop();
+}
+
+function onWatchError(err) {
+  // A denied permission is terminal on iOS, with no way back to the prompt from
+  // inside a web page, so nothing will ever arrive and the watch is closed
+  // rather than left holding the callback.
+  if (err?.code === 1) stopWatch();
+  // Every other code is a fix that did not turn up. The origin on screen is
+  // then as old as it would have been before any of this existed, so nothing is
+  // said and nothing already on screen is thrown away.
+}
+
+function onFix(p) {
+  // Asked BEFORE anything is written, because the first answer is a refusal to
+  // write at all.
+  const act = followAction({
+    screen: state.screen,
+    selected: state.selected,
+    dragging: state.dragging,
+    picked: state.origin?.source === 'picked',
+    scrolled: PANES.some((id) => !$(id).hidden && $(id).scrollTop > 0),
+  });
+  // A building was picked while the watch was running. A deliberate choice is
+  // not a sensor reading and must never be overwritten by one.
+  if (act === 'stop') return stopWatch();
+
+  const here = { lon: p.coords.longitude, lat: p.coords.latitude };
+  const at = Date.now();
+  const moved = followFix({
+    movedM: lastFix ? distanceMetres(lastFix, here) : Infinity,
+    sinceMs: lastFix ? at - lastFixAt : Infinity,
+  });
+  if (!moved) return;
+  lastFix = here;
+  lastFixAt = at;
+
+  const far = offCampus(here);
+  useOrigin(
+    far ? ovalOrigin() : { ...here, accuracy: p.coords.accuracy, source: 'gps', label: null, at },
+    far ? NO_WALK_OVAL : null,
+  );
+
+  // The dot and the line are drawn off state.origin on the next frame, so both
+  // have already moved by the time this runs. All that is left to decide is who
+  // is allowed to re-order.
+  if (act === 'rank') refresh();
+  else if (act === 'room') repaintRoom();
+}
+
+// Called once the boot fix has landed. The watch starts AFTER it, not beside
+// it: two position callbacks racing to be the first origin is two answers to
+// the question the app opens with.
+function follow(origin) {
+  if (origin?.source === 'gps') {
+    lastFix = { lat: origin.lat, lon: origin.lon };
+    lastFixAt = origin.at ?? Date.now();
+  }
+  startWatch();
 }
 
 // ---------------------------------------------------------------- boot
@@ -2347,6 +2574,7 @@ async function boot() {
   state.hoursSlug = slug;
   state.hoursTerm = table;
   useOrigin(located.origin, located.note);
+  follow(located.origin);
 
   const now = clockNow();
   state.situation = resolveState({ now, current, index: rooms });
@@ -2432,7 +2660,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // certainly stale: the walk happened, the class started, and it may not even
   // be the same day.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return;
+    if (document.visibilityState !== 'visible') return stopWatch();
+    startWatch();
     // The question screen is in this list because the night gate's heading is a
     // live minute. Left out, a card booted at 11:40pm on a Monday still read
     // "Monday, 11:40pm" at 10:00am on the Tuesday, on a minute the app ranks.

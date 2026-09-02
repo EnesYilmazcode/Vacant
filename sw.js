@@ -15,7 +15,7 @@
 // the tolerance spent on nothing. An earlier draft of this line quoted that form
 // and then explained the gap as two gzip versions disagreeing; there was no
 // disagreement to explain. Through the pipe, GNU gzip 1.12 and node's zlib --
-// the tool sw.test.mjs actually measures with -- agree to 0.009%, and the one
+// the tool sw.test.mjs actually measures with -- agree to 0.0033%, and the one
 // percent window is there for the day they do not.
 //
 // The shell read 84,201 before the ranking started reading the Registrar's
@@ -81,9 +81,18 @@ const SHELL_DOC = SCOPE + 'index.html';
 // argued half: the four are 23,296 of the 121,542 gzipped bytes here, so
 // install does 23.7% more work before it resolves, and a strict tier that fails
 // fails the whole install. It is still right. A best-effort tier is for things
-// the app is better with; js/app.js cannot evaluate without js/state.js. A half
-// cached shell is not a smaller app, it is an icon that opens a blank screen,
-// and a rejected install is retried where a resolved lie is not.
+// the app is better with; js/app.js cannot evaluate without js/state.js. And a
+// rejected install is retried where a resolved lie is not.
+//
+// What the half-cached shell actually does, driven in Chromium against a real
+// registered worker with the server stopped: index.html is static, so it PAINTS
+// -- the wordmark, all four duration buttons, "finding campus..." -- and then
+// js/app.js fails to evaluate on the missing imports. The buttons are dead,
+// because the handler that gives them meaning is in the module that did not
+// load. So is bootFailed(), the app's own "could not load the schedule, try
+// again" card. The student gets an app-shaped screen with no exit and nothing
+// to press, which is worse than a blank one: a blank screen is at least legibly
+// broken.
 //
 // js/dev.js is deliberately absent. js/app.js reaches it through import() only
 // when ?dev=1 asks for it, so a student who never asks never downloads it.

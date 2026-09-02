@@ -98,11 +98,27 @@ test('every precached shell asset is absolute under /Vacant/ and on disk', () =>
 // listed the four by name would have caught it once and then drifted the same
 // way on the next module.
 //
-// Static imports only. `import('./dev.js')` has no `from`, so it does not match
-// here, which is the intent: an on-demand module is fetched when it is asked
-// for and cacheFirst caches it then.
+// Static imports only. A dynamic `import('./dev.js')` is deliberately invisible
+// here: an on-demand module is fetched when it is asked for and cacheFirst
+// caches it then. Every STATIC form has to be visible, though, and the first
+// draft of this walk saw four of nine. The one that mattered was side-effect
+// `import './x.js'`, which has no `from`: a developer who added such a module
+// AND correctly precached it was told "js/x.js is precached and nothing on the
+// boot path imports it", i.e. instructed to delete a file the page needs, which
+// is the bug this whole test exists to stop. Double quotes, extra whitespace and
+// a newline before the specifier were missed the same way.
+//
+// Comments are stripped first, and that is not cosmetic. This walk READS the
+// path it then opens, so prose is executable here: a comment reading
+// "toGrid used to come from './grid.js'" made the suite die with ENOENT on a
+// file that does not exist, and one mentioning `from './dev.js'` made it demand
+// the dev panel be precached, against dev.test.mjs which forbids exactly that.
+// stripComments is the same routine the term-asset scan below uses, for the
+// same reason.
+const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
 function pageModules() {
-  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const html = stripComments(readFileSync(join(ROOT, 'index.html'), 'utf8').replace(/<!--[\s\S]*?-->/g, ''));
   const entries = [...html.matchAll(/<script[^>]*\ssrc="\/Vacant\/(js\/[\w.-]+\.js)"/g)].map((m) => m[1]);
   assert.ok(entries.length >= 2, `index.html loads ${entries.length} modules, the match is wrong`);
   const seen = new Set();
@@ -111,8 +127,12 @@ function pageModules() {
     const file = queue.shift();
     if (seen.has(file)) continue;
     seen.add(file);
-    const src = readFileSync(join(ROOT, file), 'utf8');
-    for (const found of src.matchAll(/\bfrom '\.\/([\w.-]+\.js)'/g)) queue.push(`js/${found[1]}`);
+    const src = stripComments(readFileSync(join(ROOT, file), 'utf8'));
+    // `from './x.js'` covers named, default, namespace and re-export forms.
+    for (const found of src.matchAll(/\bfrom\s*['"]\.\/([\w.-]+\.js)['"]/g)) queue.push(`js/${found[1]}`);
+    // And bare `import './x.js'`, which has no `from` at all. The negative
+    // lookahead keeps `import(` — the dynamic form — out of it.
+    for (const found of src.matchAll(/\bimport\s*['"]\.\/([\w.-]+\.js)['"]/g)) queue.push(`js/${found[1]}`);
   }
   return [...seen].sort();
 }
@@ -134,7 +154,7 @@ test('every module the page loads, and everything it imports, is precached', () 
   assert.deepEqual(
     missing,
     [],
-    `js/app.js and js/pwa.js import ${missing.join(', ')}, and install does not cache ${missing.length > 1 ? 'them' : 'it'}`,
+    `the boot path imports ${missing.join(', ')}, and install does not cache ${missing.length > 1 ? 'them' : 'it'}`,
   );
   // The other direction is waste rather than breakage, but a module that left
   // the graph and stayed in the list is bytes on a phone for nothing.

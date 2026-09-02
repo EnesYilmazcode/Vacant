@@ -82,9 +82,14 @@ test('js/dev.js is never downloaded by a student who did not ask for it', () => 
     .split(/\r?\n/)
     .filter((line) => !line.trim().startsWith('//'))
     .join('\n');
-  const list = sw.match(/const SHELL_ASSETS = \[([^\]]*)\]/);
-  assert.ok(list, 'no SHELL_ASSETS array in sw.js');
-  assert.equal(list[1].includes('dev.js'), false, "dev.js is in the service worker's cache list");
+  // The WHOLE stripped file, not just the SHELL_ASSETS array. Narrowing to the
+  // array was enough to stop the comment tripping it, and it quietly dropped two
+  // real cases: dev.js added to WARM_ALWAYS, and a second addAll() in install
+  // naming it. Both leave the module downloaded by a student who never asked for
+  // it, which is the whole claim in this test's title, and both passed the
+  // narrowed check. The comment strip alone fixes the false positive.
+  assert.ok(/const SHELL_ASSETS = \[/.test(sw), 'no SHELL_ASSETS array in sw.js');
+  assert.equal(sw.includes('dev.js'), false, 'sw.js downloads dev.js for a student who did not ask for it');
   assert.match(read('js/app.js'), /import\('\.\/dev\.js'\)/);
 });
 

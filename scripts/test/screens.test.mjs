@@ -552,7 +552,12 @@ test('every control answers a mouse before it has been clicked', () => {
   const block = css.slice(at, css.indexOf('\n  }', at));
   // .opt is :enabled-guarded: the four duration buttons ship disabled and a
   // hover that lit them would contradict the .45 opacity dimming them.
-  for (const sel of ['.opt:enabled:hover', '.row:hover', '.bar-btn:hover', '.chip:hover', '.dstep:hover', '#back:hover',
+  // No .chip. This block was written against a main that still had the duration
+  // chips, and #85 deletes them in the same batch as this change. A hover rule
+  // for a node nothing renders is CSS that outlives its control, which is
+  // exactly what #85's own guard forbids -- and the two branches were green
+  // apart and red together until this came out.
+  for (const sel of ['.opt:enabled:hover', '.row:hover', '.bar-btn:hover', '.dstep:hover', '#back:hover',
     '.b-row:hover', '.pick-row:hover']) {
     assert.ok(block.includes(sel), `${sel} has no hover state`);
   }
@@ -567,7 +572,6 @@ test('every control answers a mouse before it has been clicked', () => {
   // spelled out and the whole block sits below every one of them.
   for (const [plain, paired] of [
     ['.row.on {', '.row.on:hover'],
-    ['.chip[aria-checked="true"] {', '.chip[aria-checked="true"]:hover'],
     ['.opt.primary {', '.opt.primary:hover'],
   ]) {
     assert.ok(block.includes(paired), `${paired} is missing, so ${plain} wins on source order`);

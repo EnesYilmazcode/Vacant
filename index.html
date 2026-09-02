@@ -45,7 +45,7 @@
     --card-hi: #1a2230;
     --line-hi: #39434f;
     --accent-hi: #ff6555;
-    /* How wide the sheet's content may get. Why, at #sheet > * below. */
+    /* How wide the sheet may get. Why, on #sheet below. */
     --col: 32rem;
     --safe-b: env(safe-area-inset-bottom, 0px);
     --safe-t: env(safe-area-inset-top, 0px);
@@ -282,8 +282,8 @@
   @media (prefers-reduced-motion: reduce) {
     #sheet.snap { transition: none; }
   }
-  /* The sheet stays the full width of the window. Its CONTENT does not.
-     Everything in here is `flex: 1 1 auto` inside a box that is left:0 right:0
+  /* Why the sheet is capped, and what the cap is worth.
+     Everything in here is `flex: 1 1 auto` inside a box that was left:0 right:0
      with no cap: on a phone that flex is what makes a row fit, on a laptop it
      is what tears it apart. Three broken controls, one cause, so one cap rather
      than three rules. Measured in headless Chrome at 1900x1000 on the ranked
@@ -295,19 +295,29 @@
      clears it at x=1842.6 -> x=1148.6; that one also puts the ellipsis on
      #origin-where span back in reach, since the longest name in the index wants
      418px in a span that had 418 and now has 383.
-     Only the column narrows, not the sheet. The sheet's top border is a horizon
-     line across the map, and the install-rail rule near the bottom of this
-     sheet stands it on a rail that is the full width of the window; a card
-     floating over the map is a second design, which docs/BLUEPRINT.md rules out
-     for this app.
+     The SHEET carries that cap, not its children, and this paragraph used to
+     say the opposite: that only the column may narrow, because the sheet's top
+     border is a horizon line across the map and "a card floating over the map
+     is a second design, which docs/BLUEPRINT.md rules out for this app".
+     docs/BLUEPRINT.md rules out no such thing. It does not contain the word
+     sheet, or card, or panel, and it says of itself that where it disagrees
+     with the code the code is right. The rule was invented and then attributed.
+     What the full-width sheet actually looked like at 1920x1000 was a black
+     slab the width of the window with 512px of rows adrift in the middle of it
+     and two margins belonging to nothing.
      32rem is 512px at the default root, so it cannot bind on a phone: measured
-     at 320, 390 and 430px every box above came back to the pixel. In rem rather
-     than px so it grows with the reader's font size and keeps clear of the
-     large-text reflow, which is the container query below. */
-  /* Nothing here any more. The children used to carry the cap; the sheet does,
-     so a pane is simply the width of the sheet again. That also puts the four
-     `container-type: inline-size` panes back to their natural width, which is
-     what the @container (max-width: 18em) reflow measures against. */
+     at 390 and 430px the sheet comes back x=0 and full width, and at 1280 and
+     1920 it is 512px at x=384 and x=704. In rem rather than px so it grows with
+     the reader's font size and keeps clear of the large-text reflow, which is
+     the container query below.
+     Centred with margin-inline, never with a transform. `left: 50%` plus
+     translateX(-50%) centres just as well and at the 393px scripts/shoot.mjs
+     shoots at it translates by -196.5px, landing every glyph in the sheet on a
+     half pixel: all four frames with sheet content in them came back
+     re-antialiased, which is how that got caught.
+     The children carry nothing now, so a pane is the width of the sheet again,
+     which is the width the four `container-type: inline-size` panes measure
+     their @container (max-width: 18em) reflow against. */
   /* The grip was decorative for a whole release. It is the drag handle now, so
      it gets a 26px band around it rather than four pixels of hairline. */
   #sheet .handle {

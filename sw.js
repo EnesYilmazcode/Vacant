@@ -8,11 +8,17 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c` on gzip 1.14. Shell 84,201 bytes,
-// data 85,157. The data side more than doubled when the index started carrying
-// which class is in the room: 2,024 course labels and one integer per block, so
-// the room screen can draw a day instead of listing it. Running the same command over a Windows working tree gives a
-// different answer, because git checks the text files out with CRLF. The first
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 86,219 bytes, data 85,157.
+// The shell figure was taken on gzip 1.12 and the data figure on gzip 1.14; the
+// two disagree by about a tenth of a percent, which is why the test checks to
+// one percent rather than to the byte. The shell read 84,201 before the ranking
+// started reading the Registrar's general-assignment flag, which cost 1,862
+// gzipped bytes across js/engine.js and js/app.js, nearly all of it the comment
+// recording what was measured. The data side more than doubled when the index
+// started carrying which class is in the room: 2,024 course labels and one
+// integer per block, so the room screen can draw a day instead of listing it.
+// Running the same command over a Windows working tree gives a different
+// answer, because git checks the text files out with CRLF. The first
 // commit of this file guessed 32 and 30 KB without running anything, both were
 // wrong; the correction then went stale by 758 bytes, and integrating the
 // screens lane put it 34.3% out in one merge. scripts/test/sw.test.mjs
@@ -22,7 +28,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-74f888c';
+const SHELL_CACHE = 'vacant-shell-6ba45ca';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also

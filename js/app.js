@@ -657,6 +657,25 @@ function seatsOf(r) {
     : { html: 'seats unknown', say: 'seat count not published' };
 }
 
+// The one word docs/BACKLOG.md's parked decision asked for, and the reason the
+// row is where it is: the room is not on the Registrar's general-assignment
+// list, so a department holds the key. 98 of the 425 shipped rooms, and the
+// ranking now puts every one of them below a general-assignment room. Written
+// out for a screen reader, because "departmental" alone next to a seat count is
+// a word with no sentence around it.
+//
+// A room the index says nothing about is not labelled: `ga` is absent from
+// every room of an index built before the general-assignment pull, and a label
+// on all 425 rows would say nothing at all.
+//
+// It is a `<b>` inside the window line and carries no rule of its own, so the
+// existing `.r-win b` styles it and the row's grid is untouched.
+function deptOf(r) {
+  return r.ga === false
+    ? { html: ' &middot; <b class="r-dept">departmental</b>', say: ', departmental, not a general-assignment room' }
+    : { html: '', say: '' };
+}
+
 const WALK_ICON = '<svg class="ico" aria-hidden="true"><use href="#i-walk"/></svg>';
 const CHEV = '<svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg>';
 
@@ -760,15 +779,16 @@ function paintList() {
         const label = roomLabel(r);
         const win = windowOf(r);
         const seats = seatsOf(r);
+        const dept = deptOf(r);
         const walkSay = coarse ? `about ${r.walk} minutes walk` : `${r.walk} minute walk`;
         // The visible row is glyphs and an icon. The name a screen reader gets
         // is written out, because the computed name would be "Page Hall 110B 4
         // min": no unit, no window, no caveat.
-        const name = `${label}, ${walkSay}, ${win.say}, ${seats.say}. Class schedule only, the door may be locked.`;
+        const name = `${label}, ${walkSay}, ${win.say}, ${seats.say}${dept.say}. Class schedule only, the door may be locked.`;
         return `<button type="button" class="row" data-i="${i}" aria-label="${esc(name)}">
         <span class="r-name">${esc(label)}</span>
         <span class="r-walk">${WALK_ICON}${coarse ? '~' : ''}${r.walk} min</span>
-        <span class="r-win">${win.html} &middot; ${seats.html}</span>
+        <span class="r-win">${win.html} &middot; ${seats.html}${dept.html}</span>
         <span class="r-chev"></span>
       </button>`;
       })
@@ -1469,6 +1489,10 @@ function roomHtml(id) {
     walk == null ? '' : `<span class="w">${WALK_ICON}${walk} min walk</span>`,
     room.cap ? `<span>${room.cap} seats</span>` : '<span>seats unknown</span>',
     type ? `<span>${esc(type)}</span>` : '',
+    // The same word the row carries, on the screen a student lands on after
+    // tapping it. A row that is ranked down for a reason has to be able to say
+    // the reason once the reader asks for the room.
+    room.ga === false ? '<span>departmental</span>' : '',
   ].filter(Boolean);
 
   // The day, drawn. Every paragraph that used to sit here explained an absence

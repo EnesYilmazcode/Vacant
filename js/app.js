@@ -689,13 +689,24 @@ const CAVEAT = `<p class="foot">Class schedule only. Doors get locked and clubs 
 // It spends dur(state.needed), which is the same function and the same number
 // the strip and the empty screen already print two lines away. The chips said
 // "2h" and needed is minutes, so a second vocabulary for one figure on one
-// screen is how two lines end up disagreeing about the same ask. It is also
-// the only honest rendering of "rest of day", which is not a fixed length.
+// screen is how two lines end up disagreeing about the same ask.
+//
+// "rest of day" is the exception, and it has to be, because needed is not the
+// ask there. neededMinutes() returns Math.max(30, latestEnd - now), so inside
+// the last half hour of the index's day the clamp wins and dur() renders the
+// floor rather than what was pressed. Measured on the shipped index: Mon
+// 21:26-21:54, Tue 21:16-21:44, Wed 21:21-21:49, Thu 21:16-21:44, Fri
+// 20:06-20:34, Sat 15:31-15:59 all render "30 min" for a button that does not
+// say 30 min, and are indistinguishable from the button that does. Naming the
+// button instead is true at every minute of the day, including 08:00, where
+// dur() would have printed the 12h15 the app derived rather than the thing the
+// user actually chose.
 //
 // The empty screen above does not get this line. It is not a silent list: it
 // opens with an h2 that states the answer in words, and its last branch already
 // prints dur(state.needed) in a sentence of its own.
-const asked = () => `<p class="asked">You asked for <b>${dur(state.needed)}</b>.</p>`;
+const asked = () =>
+  `<p class="asked">You asked for <b>${state.duration === 'day' ? 'the rest of the day' : dur(state.needed)}</b>.</p>`;
 
 function paintList() {
   const list = $('list');

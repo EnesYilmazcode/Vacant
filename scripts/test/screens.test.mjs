@@ -1117,17 +1117,42 @@ test('the back button on the room screen names the pane back lands on', () => {
 // either one alone is a regression.
 test('the duration chips are gone from the page, not merely hidden on it', () => {
   const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-  assert.doesNotMatch(html, /id="chips"/, 'the chip bar is still in the DOM');
-  assert.doesNotMatch(html, /class="chip"/, 'a chip is still in the DOM');
-  assert.doesNotMatch(html, /role="radiogroup"/, 'the duration radiogroup is still in the DOM');
+  // Comments are prose, not markup and not style. scripts/test/sw.test.mjs
+  // strips them before counting for the same reason: the comment explaining
+  // why a thing is gone names the thing, and must not read as it coming back.
+  const live = html.replace(/<!--[\s\S]*?-->/g, '');
+  assert.doesNotMatch(live, /class="chip"/, 'a chip is still in the DOM');
+  assert.doesNotMatch(live, /role="radiogroup"/, 'the duration radiogroup is still in the DOM');
   // A hidden node still has CSS, and CSS for a node nothing renders is how the
-  // bar comes back by accident.
-  assert.doesNotMatch(html, /^\s*#chips\s*\{/m, 'the chip bar still has a rule');
-  assert.doesNotMatch(html, /\.chip[\s{[]/, 'a chip selector survives in the stylesheet');
+  // bar comes back by accident. \b rather than a character class: the rule this
+  // change actually deleted was `.row, .chip, .opt, .b-row, ... {`, and a comma
+  // is neither whitespace, a brace nor a bracket, so the old pattern would have
+  // walked straight past the shape it was written to catch.
+  assert.doesNotMatch(live, /^\s*#chips\b[^{]*\{/m, 'the chip bar still has a rule');
+  assert.doesNotMatch(live, /\.chip\b/, 'a chip selector survives in the stylesheet');
   // And nothing in the app is still wired to it, which is what the roving
   // tabindex handler and the paintChips sync would be.
   assert.doesNotMatch(APP, /['"#]chips['"]|\.chip\b/, 'js/app.js still reaches for the chips');
   assert.doesNotMatch(APP, /paintChips|attachChips/, 'the chip handlers are still here');
+});
+
+test('the #chips node left behind for the old shell is empty, and dated', () => {
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  // sw.js serves navigations network-first and assets cache-first, so the first
+  // load after this deploys runs the new index.html against the js/app.js still
+  // in the shell cache. That app.js calls attachChips() before it wires #back,
+  // popstate, the sheet or boot(), and its first line is
+  // $('chips').querySelectorAll('.chip') — a TypeError on a missing node, and a
+  // screen frozen on "finding campus..." with no way out. This node exists only
+  // so that forEach runs over nothing instead.
+  const node = html.match(/<div id="chips"[^>]*>([\s\S]*?)<\/div>/);
+  assert.ok(node, 'the shim the old shell needs is gone; see #85 before removing it');
+  assert.equal(node[1].trim(), '', 'the shim grew content, which makes it a control again');
+  assert.match(node[0], /\bhidden\b/, 'the shim is not hidden');
+  // It is scaffolding with an expiry, not a feature. Once a release has shipped
+  // carrying it, no cached app.js reaches for #chips and the node can go.
+  const why = html.slice(Math.max(0, html.indexOf('<div id="chips"') - 1400), html.indexOf('<div id="chips"'));
+  assert.match(why, /REMOVE AFTER ONE RELEASE/, 'the shim lost the note saying it is temporary');
 });
 
 test('the ranked list says which question it is answering', () => {

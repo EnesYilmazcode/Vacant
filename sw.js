@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c` on gzip 1.14. Shell 84,201 bytes,
+// `git show HEAD:<file> | gzip -9 -c | wc -c` on gzip 1.12. Shell 85,456 bytes,
 // data 85,157. The data side more than doubled when the index started carrying
 // which class is in the room: 2,024 course labels and one integer per block, so
 // the room screen can draw a day instead of listing it. Running the same command over a Windows working tree gives a

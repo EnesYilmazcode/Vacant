@@ -661,6 +661,24 @@
   <section id="near" class="pane" hidden></section>
   <section id="pick" class="pane" hidden></section>
   <section id="about" class="pane" hidden></section>
+  <!-- REMOVE AFTER ONE RELEASE. #85 deleted the duration chips, and this empty
+       node is the only thing standing between that deletion and a frozen app
+       for everyone who already has the site installed.
+       sw.js serves navigations network-first and everything else cache-first,
+       so the first load after this deploys pairs the NEW index.html with the
+       OLD js/app.js still in the shell cache. That app.js calls attachChips()
+       as the second statement of its DOMContentLoaded listener, and its first
+       line is $('chips').querySelectorAll('.chip') against getElementById.
+       Without a node here that is a TypeError, and it lands before
+       $('back').onclick, popstate, attachSheet() and boot() are wired: the
+       screen holds "finding campus..." over four disabled buttons with no back
+       arrow and no error. Re-stamping SHELL_CACHE does not save that load,
+       because the old worker is the one serving it, and js/pwa.js only
+       auto-reloads while the page is untouched - which a frozen screen will not
+       stay. An empty div costs 30 bytes and makes the old code's forEach run
+       over nothing instead. Once a release has shipped with it, no cached
+       app.js reaches for #chips any more and this can go. -->
+  <div id="chips" hidden></div>
   <form id="find" hidden>
     <input id="find-q" type="search" autocomplete="off" autocorrect="off" spellcheck="false"
       enterkeyhint="search" placeholder="Search buildings" aria-label="Search buildings by name or code">

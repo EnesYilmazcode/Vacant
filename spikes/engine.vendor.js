@@ -378,12 +378,23 @@ export function bestGap(room, opts) {
 // `ga` is the LAST of the three, inside the wait and the window, on purpose. A
 // departmental classroom that is open when you arrive still beats a general one
 // you would wait an hour for: who holds the key is a smaller fact than whether
-// the door is open at all. MEASURED by replaying rank() plus shape() from the
-// Oval, every half hour 08:00 to 20:00 on the 2026-09-14 to 18 weekdays at asks
-// of 30 and 60, 250 lists and 9,102 shown rows, this term and nothing else:
-// row one is a departmental room in 77 of those lists (30.8%) before and 0
-// (0.0%) after, and departmental rows in the top ten fall from 31.7% to 0.3%.
-// It never empties the list. Departmental rooms are still 15.5% of the rows
+// the door is open at all.
+//
+// MEASURED by replaying rank() plus shape() from the Oval, every half hour
+// 08:00 to 20:00 on the 2026-09-14 to 18 weekdays at asks of 30 and 60: 250
+// lists, 9,103 shown rows. The baseline is this file as it stood on main, and
+// the figures below are the whole of this commit against it -- the ga tier,
+// TYPE_ORDER and the seat flip together -- not any one term in isolation. One
+// run, one baseline, because the first draft of this comment quoted a top-ten
+// percentage in the row-one slot and nobody could tell from the text which
+// number came from which run.
+//
+//                              before    after
+//   row one is departmental    32 (12.8%)  0 (0.0%)
+//   top ten departmental       30.8%       0.3%
+//   all shown rows             30.4%      15.4%
+//
+// It never empties the list. Departmental rooms are still 15.4% of the rows
 // shown, further down, carrying the label.
 //
 // A row with no `ga` at all is treated as general assignment rather than
@@ -412,13 +423,19 @@ export function typeRank(type) {
 // sorts last, which is where the old `?? 0` put it too, because an unknown is
 // not evidence of a small room. 3 of the 425 rooms carry the cap 0 sentinel.
 //
-// MEASURED over the same 250 Oval lists, with this and the TYPE_ORDER change
-// and nothing else: the mean capacity of a shown row falls from 60.3 seats to
-// 47.9, rows of 100 seats or more from 8.3% to 4.6%, and row one from 36.4
-// seats to 22.3. It is a tiebreak and not a score term, so it only fires at an
-// equal walk and window: on the Saturday of issue #62 it does not move
-// Independence Hall 100 off row one, because that room is a 2 minute walk from
-// the Oval and the next free room is 6.
+// MEASURED over the same 250 Oval lists and against the same main baseline as
+// tierOf's table above, this whole commit rather than this term alone: the mean
+// capacity of a shown row falls from 60.7 seats to 52.7, rows of 100 seats or
+// more from 8.4% to 5.7%, and row one from 45.6 seats to 25.3.
+//
+// It is a tiebreak and not a score term, so it only fires at an equal walk and
+// window, and that bound is the honest limit of what it buys. On the Saturday
+// of issue #62 it does NOT move Independence Hall 100 off row one: measured at
+// 09:00, 12:00, 14:00 and 17:00 on 2026-09-19, IH0100 (727 seats) is a 5 minute
+// walk from the Oval and the next free room is 7, so no tiebreak can reach
+// across the gap. Moving that row needs a minute-priced capacity penalty in
+// scoreOf, and that price is a free parameter with nothing behind it until the
+// ground-truth walk in #26 supplies one.
 const seatRank = (seats) => (seats == null ? Number.MAX_SAFE_INTEGER : seats);
 
 // Distance and window in the same unit, so a big surplus can buy a short

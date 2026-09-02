@@ -8,13 +8,20 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 86,219 bytes, data 85,157.
-// The shell figure was taken on gzip 1.12 and the data figure on gzip 1.14; the
-// two disagree by about a tenth of a percent, which is why the test checks to
-// one percent rather than to the byte. The shell read 84,201 before the ranking
-// started reading the Registrar's general-assignment flag, which cost 1,862
-// gzipped bytes across js/engine.js and js/app.js, nearly all of it the comment
-// recording what was measured. The data side more than doubled when the index
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 86,783 bytes, data 85,157.
+// Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
+// name as an argument stores each basename in the gzip FNAME header and reads
+// 142 bytes higher across these twelve files, which is most of a percent of the
+// tolerance spent on nothing. An earlier draft of this line quoted that form
+// and then explained the gap as two gzip versions disagreeing; there was no
+// disagreement to explain. Through the pipe, GNU gzip 1.12 and node's zlib --
+// the tool sw.test.mjs actually measures with -- agree to 0.009%, and the one
+// percent window is there for the day they do not.
+//
+// The shell read 84,201 before the ranking started reading the Registrar's
+// general-assignment flag, which cost 2,582 gzipped bytes: 1,767 on
+// js/engine.js and 815 on js/app.js, nearly all of it the comment recording
+// what was measured. The data side more than doubled when the index
 // started carrying which class is in the room: 2,024 course labels and one
 // integer per block, so the room screen can draw a day instead of listing it.
 // Running the same command over a Windows working tree gives a different
@@ -28,7 +35,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-6ba45ca';
+const SHELL_CACHE = 'vacant-shell-74f888c';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also

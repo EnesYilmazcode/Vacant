@@ -1168,7 +1168,12 @@ test('a screen full of unknown-hours rooms is countable, not disguised', () => {
   });
   assert.equal(out.known, 0);
   assert.equal(out.unknown, 3);
-  assert.ok(out.rows.every((r) => r.usable === null && r.tier >= 3));
+  // 6, not 3. tierOf gained the ga term as its innermost decision, so the five
+  // tiers renumbered to 0,2,4,6,8 (+1 departmental) and unknown-hours moved from
+  // ">= 3" to ">= 6". The old bound still passes here, and that is the problem:
+  // it now also admits tiers 3, 4 and 5, every one of which is a room whose
+  // hours ARE known, so it stopped asserting the thing it was written for.
+  assert.ok(out.rows.every((r) => r.usable === null && r.tier >= 6));
 });
 
 // --- the calendar, where the schedule is wrong in two opposite directions ---
@@ -1716,8 +1721,10 @@ test('shape holds the committed index to a walk you would actually make', () => 
   assert.equal(new Set(near.rows.slice(0, 10).map((r) => r.building)).size, 10);
   assert.ok(near.rows.every((r) => r.walk <= MAX_WALK));
 
-  // Issue #60, the screenshot. Downtown at 14:10 rank() hands back Pomerene
-  // Hall at a 71 minute walk on row one, and the bound is what stops it.
+  // Issue #60, the screenshot. Downtown at 14:10 rank() hands back a 71 minute
+  // walk on row one, and the bound is what stops it. The room named on that row
+  // is Jennings Hall 50 since the seat tiebreak flipped to fit-first; see the
+  // note below the assertions, which is where the two rooms are pulled apart.
   const downtown = rank(rooms, { ...opts, origin: { lat: 39.9612, lon: -82.9988 }, now: at(14, 10) });
   const usable = downtown.filter((r) => r.wait <= 90);
   assert.equal(usable[0].walk, 71, 'the unbounded ranking still leads with a 71 minute walk');

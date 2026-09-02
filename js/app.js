@@ -668,11 +668,18 @@ function seatsOf(r) {
 // every room of an index built before the general-assignment pull, and a label
 // on all 425 rows would say nothing at all.
 //
-// It is a `<b>` inside the window line and carries no rule of its own, so the
-// existing `.r-win b` styles it and the row's grid is untouched.
+// Plain text in the window line, not a `<b>`. `.r-win b` is `--fg` at weight
+// 650 on a line that is otherwise `--dim`, and it exists for the free-window --
+// the promise the row is making. windowOf and seatsOf emit plain text, so a
+// bolded caveat would have been the ONLY emphasised token on the row: the
+// reason the room ranks low, shouting over the reason it is on screen at all. A
+// word among numbers, after the same middot the seat count uses, is already
+// distinct enough. No class either: the one it carried was never styled
+// anywhere in index.html, and a hook nothing reaches for is a hook that
+// misleads the next person who greps for it.
 function deptOf(r) {
   return r.ga === false
-    ? { html: ' &middot; <b class="r-dept">departmental</b>', say: ', departmental, not a general-assignment room' }
+    ? { html: ' &middot; departmental', say: ', departmental, not a general-assignment room' }
     : { html: '', say: '' };
 }
 
@@ -1492,7 +1499,15 @@ function roomHtml(id) {
     // The same word the row carries, on the screen a student lands on after
     // tapping it. A row that is ranked down for a reason has to be able to say
     // the reason once the reader asks for the room.
-    room.ga === false ? '<span>departmental</span>' : '',
+    //
+    // It carries the sentence too. deptOf writes the word out for the list's
+    // spoken name because "departmental" alone next to a seat count is a word
+    // with no sentence around it; that argument does not stop being true one tap
+    // later, and this line read as the bare word while the row it came from read
+    // as the sentence.
+    room.ga === false
+      ? '<span>departmental<span class="sr">, not a general-assignment room</span></span>'
+      : '',
   ].filter(Boolean);
 
   // The day, drawn. Every paragraph that used to sit here explained an absence

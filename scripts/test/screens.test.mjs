@@ -1958,3 +1958,29 @@ test('the gesture asks js/sheet.js instead of deriving the rule again', () => {
   assert.match(src, /sheetAfterDrag\(drag\.h0, dy, drag\.from, window\.innerHeight\)/);
   assert.equal(src.includes('DISMISS_PX'), false, 'app.js names the dismiss distance a second time');
 });
+
+test('the departmental label is a caveat, not the loudest thing on the row', () => {
+  const dept = APP.slice(APP.indexOf('function deptOf('), APP.indexOf('const WALK_ICON'));
+  assert.ok(dept.length > 0, 'deptOf is gone');
+  // `.r-win b` is --fg at weight 650 and it belongs to the free-window: the
+  // promise the row makes. windowOf and seatsOf emit plain text, so bolding the
+  // reason a room ranks LOW would make it the only emphasised token on the row.
+  assert.doesNotMatch(dept, /<b[\s>]/, 'the label is bold, and it outshouts the window it sits beside');
+  assert.match(dept, /&middot; departmental/, 'the label lost the separator the seat count uses');
+  // It carried a class nothing ever styled.
+  assert.doesNotMatch(APP, /r-dept/, 'the dead style hook is back');
+  assert.equal(readFileSync(join(ROOT, 'index.html'), 'utf8').includes('r-dept'), false);
+  // Spoken, because "departmental" next to a seat count is a word with no
+  // sentence around it. deptOf says so in as many words.
+  assert.match(dept, /not a general-assignment room/, 'the row stopped writing the label out');
+});
+
+test('the room screen says the label as fully as the row it came from', () => {
+  // The row's spoken name expands the word; landing on the room is not a reason
+  // for a reader to hear less than the list already told them.
+  const at = APP.indexOf("room.ga === false");
+  assert.ok(at > 0, 'the room screen no longer carries the label');
+  const line = APP.slice(at, at + 220);
+  assert.match(line, /class="sr"/, 'the room screen prints the bare word with no sentence around it');
+  assert.match(line, /not a general-assignment room/, 'and the sentence is not the one the row uses');
+});

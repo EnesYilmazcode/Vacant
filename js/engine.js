@@ -120,10 +120,18 @@ export const PREFERRED_TYPES = ['1B', '1C', '1A', 'LCTR', 'SMNR'];
 // offer them once the preferred ones run out, and it says so when it does.
 export const SECONDARY_TYPES = ['2P', '2Q', '5K', '6L', '2J', '5C'];
 
-// Within the preferred set, ordered by how likely the room is to be an ordinary
-// classroom rather than something held for an event. 1B is the confident
-// general classroom, 1C the lecture hall, 1A the seminar room.
-const TYPE_ORDER = { '1B': 0, LCTR: 1, '1C': 1, SMNR: 2, '1A': 2 };
+// Within the preferred set, ordered by how likely the room is to be a room one
+// person can sit down in for an hour. 1B is the confident general classroom,
+// 1A the seminar room, and 1C the lecture hall LAST.
+//
+// The lecture hall used to sit second, above the seminar room. It is not a
+// dishonest row: MEASURED on the committed index, all 55 of the 1C rooms are on
+// the Registrar's general-assignment list, so every one of them is centrally
+// scheduled and open. It is a badly sized one. The 55 lecture halls run 48 to
+// 727 seats, median 100, against 0 to 271 and a median of 34 for the 309
+// classrooms, and issue #62 caught the top of that range in the wild: from the
+// Oval on a Saturday, Independence Hall 100 and its 727 seats ranked first.
+const TYPE_ORDER = { '1B': 0, SMNR: 1, '1A': 1, LCTR: 2, '1C': 2 };
 const PREFERRED = new Set(PREFERRED_TYPES);
 
 // Everything the ladder is allowed to reach, in any rung. The 250 rooms of the
@@ -369,7 +377,7 @@ export function bestGap(room, opts) {
 
 // ------------------------------------------------------------------ ranking
 
-// Which tier a row sits in. Lower is better, and the order encodes two
+// Which tier a row sits in. Lower is better, and the order encodes three
 // decisions the project already made rather than a preference:
 //
 //   published hours beat unknown hours, always. 565 of 612 buildings have no
@@ -377,19 +385,79 @@ export function bestGap(room, opts) {
 //   the honesty rather than leaving it to a label the eye skips.
 //
 //   a room open when you arrive beats one you would wait for, even a longer one.
+//
+//   a general-assignment room beats a departmental one. `ga` is the Registrar's
+//   general-assignment pool, pulled 2026-08-27: centrally scheduled rooms, as
+//   opposed to rooms a department controls and locks. MEASURED on the committed
+//   index, 98 of 425 rooms are not in it, and 56 of those 98 are types the
+//   first rung already offers by default (41 type-1B classrooms and 15 type-1A
+//   seminar rooms), so they were ranking indistinguishably from a room anybody
+//   can walk into. This is docs/BACKLOG.md's parked decision, which asked for
+//   them "ranked below general-assignment rooms, with a one-word label on the
+//   row": the flag has shipped in every room since then and nothing read it.
+//
+// `ga` is the LAST of the three, inside the wait and the window, on purpose. A
+// departmental classroom that is open when you arrive still beats a general one
+// you would wait an hour for: who holds the key is a smaller fact than whether
+// the door is open at all.
+//
+// MEASURED by replaying rank() plus shape() from the Oval, every half hour
+// 08:00 to 20:00 on the 2026-09-14 to 18 weekdays at asks of 30 and 60: 250
+// lists, 9,103 shown rows. The baseline is this file as it stood on main, and
+// the figures below are the whole of this commit against it -- the ga tier,
+// TYPE_ORDER and the seat flip together -- not any one term in isolation. One
+// run, one baseline, because the first draft of this comment quoted a top-ten
+// percentage in the row-one slot and nobody could tell from the text which
+// number came from which run.
+//
+//                              before    after
+//   row one is departmental    32 (12.8%)  0 (0.0%)
+//   top ten departmental       30.8%       0.3%
+//   all shown rows             30.4%      15.4%
+//
+// It never empties the list. Departmental rooms are still 15.4% of the rows
+// shown, further down, carrying the label.
+//
+// A row with no `ga` at all is treated as general assignment rather than
+// departmental. An index built before the general-assignment pull carries the
+// field on nothing, and demoting every room in it would be a worse answer than
+// the one this replaces.
 export function tierOf(row) {
+  const dept = row.ga === false ? 1 : 0;
   if (row.hoursKnown) {
-    if (row.wait === 0) return row.meetsNeed ? 0 : 1;
-    return 2;
+    if (row.wait === 0) return (row.meetsNeed ? 0 : 2) + dept;
+    return 4 + dept;
   }
-  return row.wait === 0 ? 3 : 4;
+  return (row.wait === 0 ? 6 : 8) + dept;
 }
 
-// Classroom before lecture hall before seminar room before everything else.
+// Classroom before seminar room before lecture hall before everything else.
 export function typeRank(type) {
   const t = TYPE_ORDER[type];
   return t === undefined ? 3 : t;
 }
+
+// Seats, as a tiebreak, ordered toward the room one person asked for rather
+// than the largest one on offer: at an equal walk a 26 seat classroom is a
+// better answer than a 727 seat hall, and the old descending order made that
+// exact swap the wrong way round. A room the index publishes no capacity for
+// sorts last, which is where the old `?? 0` put it too, because an unknown is
+// not evidence of a small room. 3 of the 425 rooms carry the cap 0 sentinel.
+//
+// MEASURED over the same 250 Oval lists and against the same main baseline as
+// tierOf's table above, this whole commit rather than this term alone: the mean
+// capacity of a shown row falls from 60.7 seats to 52.7, rows of 100 seats or
+// more from 8.4% to 5.7%, and row one from 45.6 seats to 25.3.
+//
+// It is a tiebreak and not a score term, so it only fires at an equal walk and
+// window, and that bound is the honest limit of what it buys. On the Saturday
+// of issue #62 it does NOT move Independence Hall 100 off row one: measured at
+// 09:00, 12:00, 14:00 and 17:00 on 2026-09-19, IH0100 (727 seats) is a 5 minute
+// walk from the Oval and the next free room is 7, so no tiebreak can reach
+// across the gap. Moving that row needs a minute-priced capacity penalty in
+// scoreOf, and that price is a free parameter with nothing behind it until the
+// ground-truth walk in #26 supplies one.
+const seatRank = (seats) => (seats == null ? Number.MAX_SAFE_INTEGER : seats);
 
 // Distance and window in the same unit, so a big surplus can buy a short
 // detour. Lower is better. Pure distance ranks a 3 minute walk giving exactly
@@ -414,7 +482,7 @@ function compareRows(a, b) {
     a.score - b.score ||
     (b.usable ?? 0) - (a.usable ?? 0) ||
     typeRank(a.type) - typeRank(b.type) ||
-    (b.seats ?? 0) - (a.seats ?? 0) ||
+    seatRank(a.seats) - seatRank(b.seats) ||
     (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
   );
 }
@@ -670,6 +738,12 @@ function rowFrom(c, { now, need, packup, dst, mode, lookahead }) {
     // 44 of 871 rooms carry it. `?? null` passes 0 straight through, so those
     // rooms would render a confident "0 seats".
     seats: c.room.cap === 0 || c.room.cap == null ? null : c.room.cap,
+    // On the Registrar's general-assignment list, or a room a department holds
+    // the key to. `tierOf` ranks on it and the row renders the one-word label
+    // off it, so it has to survive the trip out of the index. `?? null` and not
+    // `?? false`: an index built before the general-assignment pull says
+    // nothing about the room, which is not the same as saying no.
+    ga: c.room.ga ?? null,
     metres: Math.round(c.metres),
     walk: c.walk,
     // Minutes you actually get, once you have walked there and left the packup

@@ -89,6 +89,69 @@ test('every precached shell asset is absolute under /Vacant/ and on disk', () =>
   assert.ok(assets.includes(`${SCOPE}index.html`));
 });
 
+// The modules the page loads, plus everything those modules import, followed
+// transitively. Derived rather than restated: SHELL_ASSETS is a second copy of
+// this set, and the copy drifted -- js/claim.js, js/day.js, js/sheet.js and
+// js/state.js were imported by js/app.js and named in no version of that list:
+// `git log -S'js/state.js' -- sw.js` is empty. That is 23,296 gzipped bytes at
+// this commit, so install cached a js/app.js it could not evaluate. A test that
+// listed the four by name would have caught it once and then drifted the same
+// way on the next module.
+//
+// Static imports only. `import('./dev.js')` has no `from`, so it does not match
+// here, which is the intent: an on-demand module is fetched when it is asked
+// for and cacheFirst caches it then.
+function pageModules() {
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const entries = [...html.matchAll(/<script[^>]*\ssrc="\/Vacant\/(js\/[\w.-]+\.js)"/g)].map((m) => m[1]);
+  assert.ok(entries.length >= 2, `index.html loads ${entries.length} modules, the match is wrong`);
+  const seen = new Set();
+  const queue = [...entries];
+  while (queue.length) {
+    const file = queue.shift();
+    if (seen.has(file)) continue;
+    seen.add(file);
+    const src = readFileSync(join(ROOT, file), 'utf8');
+    for (const found of src.matchAll(/\bfrom '\.\/([\w.-]+\.js)'/g)) queue.push(`js/${found[1]}`);
+  }
+  return [...seen].sort();
+}
+
+test('every module the page loads, and everything it imports, is precached', () => {
+  const wanted = pageModules();
+  // A guard on the walk itself: if the entry match or the import match silently
+  // stopped finding anything, the comparison below would pass on two empty sets.
+  assert.ok(wanted.includes('js/app.js'), 'the walk did not reach js/app.js');
+  assert.ok(wanted.includes('js/state.js'), 'the walk did not follow app.js into state.js');
+  assert.ok(wanted.length >= 9, `only ${wanted.length} modules reached, the walk is broken`);
+
+  const precached = shellAssets()
+    .filter((asset) => asset.startsWith(`${SCOPE}js/`))
+    .map((asset) => asset.slice(SCOPE.length))
+    .sort();
+  const missing = wanted.filter((file) => !precached.includes(file));
+  const extra = precached.filter((file) => !wanted.includes(file));
+  assert.deepEqual(
+    missing,
+    [],
+    `js/app.js and js/pwa.js import ${missing.join(', ')}, and install does not cache ${missing.length > 1 ? 'them' : 'it'}`,
+  );
+  // The other direction is waste rather than breakage, but a module that left
+  // the graph and stayed in the list is bytes on a phone for nothing.
+  assert.deepEqual(extra, [], `${extra.join(', ')} is precached and nothing on the boot path imports it`);
+});
+
+test('js/dev.js is reached through import(), which is what keeps it out of the graph', () => {
+  // The walk above follows `from` and so cannot see js/dev.js, and that is only
+  // correct while js/app.js asks for it with import(). A static import would put
+  // it on the boot path, where 5,024 gzipped bytes would then have to be
+  // precached for a panel almost nobody opens. scripts/test/dev.test.mjs holds
+  // the other half: that it is not in the shell list.
+  const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  assert.match(app, /import\('\.\/dev\.js'\)/);
+  assert.equal(/\bfrom '\.\/dev\.js'/.test(app), false, 'js/dev.js is imported statically now, so the walk misses a boot module');
+});
+
 test('install precaches and does not skip waiting', () => {
   const install = sw.slice(sw.indexOf("addEventListener('install'"), sw.indexOf("addEventListener('activate'"));
   assert.ok(install.includes('addAll(SHELL_ASSETS)'));

@@ -12,7 +12,9 @@ import {
   MAX_WALK,
   MIN_RELAXED_USABLE,
   PACKUP,
+  PREFERRED_TYPES,
   RELAX_LADDER,
+  RUNGS,
   SCREEN_ROWS,
   SILENT_SHARE,
   SURPLUS_CAP,
@@ -36,6 +38,10 @@ import {
   usableMinutes,
   walkMinutes,
 } from '../../js/engine.js';
+// The rung sentences live in js/state.js: js/app.js touches the DOM at import
+// and cannot be loaded here, and js/state.js is already the file that holds the
+// row phrasing for exactly that reason.
+import { rungPhrase } from '../../js/state.js';
 import { haversineMetres } from '../lib/geo.mjs';
 
 const at = (h, m = 0) => h * 60 + m;
@@ -385,16 +391,30 @@ test('a day arriving as a string still matches its blocks', () => {
   ]);
 });
 
-test('the tier order encodes both decisions the project already made', () => {
-  const t = (hoursKnown, wait, meetsNeed) => tierOf({ hoursKnown, wait, meetsNeed });
+test('the tier order encodes all three decisions the project already made', () => {
+  const t = (hoursKnown, wait, meetsNeed, ga = true) => tierOf({ hoursKnown, wait, meetsNeed, ga });
   assert.equal(t(true, 0, true), 0);
-  assert.equal(t(true, 0, false), 1);
-  assert.equal(t(true, 60, true), 2);
-  assert.equal(t(false, 0, null), 3);
-  assert.equal(t(false, 60, null), 4);
+  assert.equal(t(true, 0, false), 2);
+  assert.equal(t(true, 60, true), 4);
+  assert.equal(t(false, 0, null), 6);
+  assert.equal(t(false, 60, null), 8);
   // Published hours beat unknown hours even when the unknown room is free now
   // and the published one is not.
   assert.ok(t(true, 60, true) < t(false, 0, null));
+
+  // A departmental room sits one step below its own general-assignment twin and
+  // nowhere else. It is the innermost term, so it never crosses the window or
+  // the wait: a departmental room that is free when you arrive still beats a
+  // general-assignment one you would wait an hour for.
+  assert.equal(t(true, 0, true, false), 1);
+  assert.ok(t(true, 0, true, false) < t(true, 0, false, true));
+  assert.ok(t(true, 0, true, false) < t(true, 60, true, true));
+  assert.ok(t(true, 60, true, false) < t(false, 0, null, true));
+
+  // An index built before the general-assignment pull carries `ga` on nothing,
+  // and a missing flag is not a departmental room.
+  assert.equal(tierOf({ hoursKnown: true, wait: 0, meetsNeed: true }), 0);
+  assert.equal(tierOf({ hoursKnown: true, wait: 0, meetsNeed: true, ga: null }), 0);
 });
 
 // --- regressions found by the PR #38 review ---
@@ -657,7 +677,7 @@ test('before the building opens the room is offered with the wait, not as free n
   });
   assert.equal(row.availableAt, at(8));
   assert.ok(row.wait > 0);
-  assert.equal(row.tier, 2, 'known hours, but you would be waiting');
+  assert.equal(row.tier, 4, 'known hours, but you would be waiting');
 });
 
 // --- hours: published, published closed, and not published at all ---
@@ -829,11 +849,16 @@ test('an unknown-hours room scores on distance alone, because it has no window t
   assert.equal(scoreOf({ walk: 7, usable: null }, 60), 7);
 });
 
-test('the type tie-break is classroom, then lecture hall, then seminar room', () => {
-  assert.ok(typeRank('1B') < typeRank('1C'));
-  assert.ok(typeRank('1C') < typeRank('1A'));
-  assert.ok(typeRank('1A') < typeRank('2A'), 'a wet lab is not a study room');
+test('the type tie-break is classroom, then seminar room, then lecture hall', () => {
+  assert.ok(typeRank('1B') < typeRank('1A'));
+  // The lecture hall moved below the seminar room. Every one of the committed
+  // index's 55 of them is general assignment, so the row is not a lie, but they
+  // run 48 to 727 seats against a median of 34 for a classroom and one person
+  // asking for an hour is not who they are for.
+  assert.ok(typeRank('1A') < typeRank('1C'));
+  assert.ok(typeRank('1C') < typeRank('2A'), 'a wet lab is not a study room');
   assert.equal(typeRank('LCTR'), typeRank('1C'));
+  assert.equal(typeRank('SMNR'), typeRank('1A'));
   assert.equal(typeRank(null), typeRank('2A'), 'no type is treated like an unpreferred one');
 });
 
@@ -848,7 +873,10 @@ test('rows tie-break down to the room id, so two identical queries cannot reshuf
   assert.deepEqual(first.map((r) => r.id), second.map((r) => r.id), 'input order cannot leak into output order');
 });
 
-test('capacity breaks a tie the type cannot, and it breaks it weakly', () => {
+test('capacity breaks a tie the type cannot, toward the room one person asked for', () => {
+  // This used to run the other way, largest first. Issue #62 caught what that
+  // costs on the real index: from the Oval on a Saturday, Independence Hall 100
+  // and its 727 seats on row one.
   const rooms = [
     { id: 'DL0101', b: '279', cap: 20, type: '1B', busy: [] },
     { id: 'DL0102', b: '279', cap: 90, type: '1B', busy: [] },
@@ -856,7 +884,17 @@ test('capacity breaks a tie the type cannot, and it breaks it weakly', () => {
   const out = rank(rooms, {
     origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
   });
-  assert.deepEqual(out.map((r) => r.id), ['DL0102', 'DL0101']);
+  assert.deepEqual(out.map((r) => r.id), ['DL0101', 'DL0102']);
+
+  // A room the index publishes no capacity for still sorts last, where the old
+  // descending order also put it: an unknown is not evidence of a small room.
+  const unknown = rank([
+    { id: 'DL0111', b: '279', cap: 0, type: '1B', busy: [] },
+    { id: 'DL0112', b: '279', cap: 90, type: '1B', busy: [] },
+  ], {
+    origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  });
+  assert.deepEqual(unknown.map((r) => r.id), ['DL0112', 'DL0111']);
   // But a preferred type outranks any number of seats, because a 727 seat
   // lecture hall is likelier to be locked or held for an event than a 34 seat
   // classroom.
@@ -867,6 +905,56 @@ test('capacity breaks a tie the type cannot, and it breaks it weakly', () => {
     origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
   });
   assert.equal(mixed[0].id, 'DL0202');
+});
+
+// --- the Registrar's general-assignment pool ---
+
+test('a general-assignment room outranks a departmental one at the same walk', () => {
+  // The case docs/BACKLOG.md's parked decision is about, and the one issue #89
+  // asks for by name: same building, same window, same type, same seats, one on
+  // the Registrar's general-assignment list and one not.
+  const rooms = [
+    { id: 'DL0101', b: '279', cap: 40, type: '1B', busy: [], ga: false },
+    { id: 'DL0102', b: '279', cap: 40, type: '1B', busy: [], ga: true },
+  ];
+  const opts = {
+    origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  };
+  const out = rank(rooms, opts);
+  assert.deepEqual(out.map((r) => r.id), ['DL0102', 'DL0101']);
+  assert.deepEqual(out.map((r) => r.ga), [true, false], 'the flag reaches the row the screen renders');
+  // Not the id tiebreak doing it: DL0101 sorts first on every other key.
+  assert.deepEqual(rank([...rooms].reverse(), opts).map((r) => r.id), ['DL0102', 'DL0101']);
+  assert.ok(out[0].tier < out[1].tier, 'it is a tier, decided before walk and window');
+});
+
+test('the general-assignment tier never crosses the window or the wait', () => {
+  const opts = {
+    origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  };
+  // A departmental room free for the full hour beats a general-assignment room
+  // that does not open until 10:00. Who holds the key is a smaller fact than
+  // whether the door is open at all.
+  const out = rank([
+    { id: 'DL0101', b: '279', cap: 40, type: '1B', busy: [], ga: false },
+    { id: 'DL0102', b: '279', cap: 40, type: '1B', busy: [[1, at(9), at(10)]], ga: true },
+  ], opts);
+  assert.equal(out[0].id, 'DL0101');
+  assert.equal(out[0].wait, 0);
+  assert.ok(out[1].wait > 0);
+});
+
+test('a room the index says nothing about is not treated as departmental', () => {
+  // Every room of an index built before the 2026-08-27 general-assignment pull
+  // carries no `ga` at all, and demoting all of them would be a worse answer
+  // than the one this replaces.
+  const opts = {
+    origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS, hoursFor: () => [at(8), at(18)],
+  };
+  const [silent] = rank([{ id: 'DL0101', b: '279', cap: 40, type: '1B', busy: [] }], opts);
+  const [named] = rank([{ id: 'DL0101', b: '279', cap: 40, type: '1B', busy: [], ga: true }], opts);
+  assert.equal(silent.ga, null, 'silence is reported as silence, not as false');
+  assert.equal(silent.tier, named.tier);
 });
 
 // --- the fallback ladder ---
@@ -1085,7 +1173,185 @@ test('a screen full of unknown-hours rooms is countable, not disguised', () => {
   });
   assert.equal(out.known, 0);
   assert.equal(out.unknown, 3);
-  assert.ok(out.rows.every((r) => r.usable === null && r.tier >= 3));
+  // 6, not 3. tierOf gained the ga term as its innermost decision, so the five
+  // tiers renumbered to 0,2,4,6,8 (+1 departmental) and unknown-hours moved from
+  // ">= 3" to ">= 6". The old bound still passes here, and that is the problem:
+  // it now also admits tiers 3, 4 and 5, every one of which is a room whose
+  // hours ARE known, so it stopped asserting the thing it was written for.
+  assert.ok(out.rows.every((r) => r.usable === null && r.tier >= 6));
+});
+
+// --- the rung reaches the screen ---
+//
+// The ladder computed `rung` and `relaxed` from the day it shipped and js/app.js
+// read neither, so a list built by dropping the room-type filter was headed by
+// the same words as a list of ordinary classrooms: 20 computer labs, 12
+// conference rooms and a dental clinic under no sentence at all. That is issue
+// #90, and these are the tests that stop it coming back.
+//
+// The sentences live in js/state.js rather than in js/app.js because js/app.js
+// touches the DOM at import and cannot be loaded under node. js/state.js is the
+// file that already holds the row phrasing, for the same reason.
+
+test('every rung the ladder can return has a sentence, and a new rung fails until it does', () => {
+  // THE test this issue exists for. RUNGS is what `query` walks, so a rung
+  // added to the ladder is a rung added here, and it arrives with no sentence
+  // and fails this until somebody writes one. Without it the next rung is
+  // silent the way `any-type` was silent.
+  for (const rung of RUNGS) {
+    if (rung === 'asked') continue;
+    const phrase = rungPhrase(rung, { needed: 60, maxWalk: MAX_WALK });
+    assert.ok(phrase, `the ladder can answer with rung "${rung}" and the app has no sentence for it`);
+    assert.ok(phrase.text.length > 20, `the sentence for "${rung}" is too short to say anything`);
+    assert.ok(phrase.say.length > 20, `the spoken sentence for "${rung}" is too short to say anything`);
+    assert.doesNotMatch(phrase.text, /undefined|NaN|\[object/, `the sentence for "${rung}" prints a hole`);
+    assert.doesNotMatch(phrase.say, /undefined|NaN|\[object/, `the spoken sentence for "${rung}" prints a hole`);
+  }
+
+  // The exact-answer rung gave nothing up and so has nothing to admit, and a
+  // name the ladder does not have is not a licence to invent a sentence.
+  assert.equal(rungPhrase('asked', { needed: 60 }), null);
+  assert.equal(rungPhrase('rooftop', { needed: 60 }), null);
+  assert.equal(rungPhrase(null, { needed: 60 }), null);
+});
+
+test('the ladder walks the names in RUNGS and keeps no second copy of them', () => {
+  // RUNGS is the order `query` iterates, so the list the screen is tested
+  // against and the list the ladder walks are one list. A rung added to the
+  // runner object and not to RUNGS would never run at all, and this is what
+  // says so rather than leaving it to a silent behaviour change.
+  const src = readFileSync(new URL('../../js/engine.js', import.meta.url), 'utf8');
+  const block = src.slice(src.indexOf('  const runs = {'), src.indexOf('  const rungs = RUNGS'));
+  assert.ok(block.length > 200, 'the ladder no longer builds its rungs from a `runs` object');
+  // Any key at any indentation, any characters a JS identifier or a quoted key
+  // can hold. The first version of this line was /^ {4}'?([a-z-]+...)'?:/ and it
+  // captured six literal names: the `shorter:${n}` entry sits deeper, inside
+  // Object.fromEntries, so it never matched and the branch below that handles it
+  // was dead code. Worse, [a-z-] rejects digits, so a rung called `roof2` could
+  // be added to the runner and never to RUNGS and this test stayed green while
+  // the rung never ran -- the exact failure it exists to catch.
+  // Two shapes, because the ladder holds two. Most rungs are plain object keys;
+  // the `shorter` family is a template literal spread in through
+  // Object.fromEntries, which is a different line entirely and is why the first
+  // version of this scan missed it.
+  // Four spaces exactly: a rung key is a top-level property of `runs`, and
+  // anything deeper is the options object being handed to rung() -- `mode:
+  // 'soon'` inside the opens-at runner is not a rung. \s+ here captured it.
+  const keys = [...block.matchAll(/^ {4}'?([A-Za-z0-9_$-]+)'?:\s/gm)].map((m) => m[1]);
+  const built = [...block.matchAll(/`([A-Za-z0-9_$-]+):\$\{n\}`/g)].map((m) => `${m[1]}:\${n}`);
+  const named = [...keys, ...built];
+  assert.ok(keys.length >= 6, `only found ${keys.length} rung runners`);
+  assert.ok(built.length >= 1, 'the shorter family is not being captured');
+  for (const name of named) {
+    const inRungs = name === 'shorter:${n}'
+      ? RUNGS.some((r) => r.startsWith('shorter:'))
+      : RUNGS.includes(name);
+    assert.ok(inRungs, `the ladder can run "${name}" and RUNGS does not list it, so it never runs`);
+  }
+});
+
+test('every relaxed answer the ladder actually produces has words for it', () => {
+  // The names, run through the ladder rather than read off the constant. Each
+  // scenario is one already covered above, kept here for the sentence rather
+  // than for the rung.
+  const cases = [
+    campus([['A', 300, 2], ['B', 300, 1, { type: '2P' }]]), // any-type
+    campus([['A', 300, 3, { busy: [[TUE, DAY_START, DAY_END]] }], ['F', 1200, 4]]), // further
+    campus([['Z', 1800, 4]]), // anywhere
+    campus([['Z', 1800, 2, { busy: [[TUE, DAY_START, at(14)], [TUE, at(14, 40), DAY_END]] }]]), // longest
+  ];
+  const seen = new Set();
+  for (const spec of cases) {
+    for (const needed of [60, 120]) {
+      const out = askFor(needed, spec);
+      if (!out.relaxed) continue;
+      seen.add(out.rung);
+      const phrase = rungPhrase(out.rung, { needed: out.askedNeed, maxWalk: out.maxWalk });
+      assert.ok(phrase, `the ladder answered with "${out.rung}" and the app would print nothing`);
+    }
+  }
+  assert.ok(seen.size >= 3, `only reached ${seen.size} relaxed rungs`);
+});
+
+test('the sentences count to the quorum, because a rung wins by finding three rooms', () => {
+  // The wording is not decoration and it is not free to change. A rung is taken
+  // when it finds LADDER_QUORUM rooms, so `further` does NOT mean nothing near
+  // you is free: it means the ladder preferred three rooms further out to the
+  // one or two close by. Replaying the shipped app's own rank() and shape()
+  // beside query() over the committed index, 99 origins around the Oval, Mon to
+  // Fri 2026-09-14 to 18, hourly 08:00 to 20:00, at a 30 and a 60 minute ask:
+  // of 12,870 answers the ladder relaxed on 9,486 and the list still had rows
+  // on 510, and on those the rooms a reader could count as free and long enough
+  // inside the walk bound were 0, 1 or 2 and never three. "Nothing is free"
+  // printed over a list showing two free rooms is the one way this disclosure
+  // can lie.
+  assert.equal(LADDER_QUORUM, 3, 'the sentences say "fewer than three" in words');
+  for (const rung of RUNGS) {
+    if (rung === 'asked' || rung === 'longest') continue;
+    const { text } = rungPhrase(rung, { needed: 60, maxWalk: MAX_WALK });
+    assert.match(text, /^Fewer than three /, `"${rung}" claims more than the quorum allows: ${text}`);
+  }
+  // `longest` is the exception because it is the only rung that can claim it:
+  // it is reached only when every rung above it found nothing at all.
+  assert.match(rungPhrase('longest', { needed: 60 }).text, /^Nothing Vacant can offer/);
+});
+
+test('the walk bound in the sentence is the bound the rows were cut to', () => {
+  // The number a reader can check against the walk times in front of them. A
+  // sentence naming 12 minutes over rows shaped to a different bound would be
+  // the disclosure lying about the one fact it is easiest to check.
+  const at12 = rungPhrase('further', { needed: 60, maxWalk: 12 });
+  assert.match(at12.text, /within a 12 minute walk/);
+  assert.match(rungPhrase('further', { needed: 60, maxWalk: 20 }).text, /within a 20 minute walk/);
+  // `anywhere` quotes maxWalk too, not maxWalk * 2. 24 is where the LADDER
+  // looked; 12 is where the rows were cut. js/app.js ranks with rank() +
+  // shape(), shape() keeps only rows inside maxWalk, and these two rungs are by
+  // definition the ones whose answer is outside it -- so a reader checking 24
+  // against the walk times in front of them finds nothing above 12, every time.
+  assert.match(rungPhrase('anywhere', { needed: 60, maxWalk: 12 }).text, /within a 12 minute walk/);
+  assert.doesNotMatch(rungPhrase('anywhere', { needed: 60, maxWalk: 12 }).text, /24/);
+  // And neither promises a search the list cannot show. These clauses shipped
+  // over 108 of 108 such lists in the replay and were refuted by the rows on
+  // every one of them.
+  for (const rung of ['further', 'anywhere', 'opens-at']) {
+    const said = rungPhrase(rung, { needed: 60, maxWalk: 12 });
+    assert.doesNotMatch(said.text, /looked twice that far|across the whole campus|rooms that open later/,
+      `${rung} still describes the ladder's search instead of the list under it`);
+    assert.doesNotMatch(said.say, /looked twice that far|across the whole campus|rooms that open later/);
+  }
+  // Default is the engine's own bound, so a caller that passes nothing does not
+  // get a sentence about a radius nobody used.
+  assert.equal(rungPhrase('further', { needed: 60 }).text, rungPhrase('further', { needed: 60, maxWalk: MAX_WALK }).text);
+});
+
+test('the duration in the sentence is the one that was asked for, printed and spoken', () => {
+  const seen = rungPhrase('shorter:45', { needed: 60 });
+  assert.match(seen.text, /free for 1h00/, 'the strip gets the glyphs the rest of the list uses');
+  assert.match(seen.text, /fell back to 45 min/);
+  assert.match(seen.say, /free for 1 hour/, 'a screen reader gets words, not "1h00"');
+  assert.match(seen.say, /fell back to 45 minutes/);
+});
+
+test('js/app.js reads the rung, and the live region says it out loud', () => {
+  // The half of #90 that no import can reach: js/app.js touches the DOM at load
+  // and cannot be required under node, so the wiring is checked as text. The
+  // grep in the issue was `grep -n "relaxed\|rung" js/app.js` returning nothing.
+  const app = readFileSync(new URL('../../js/app.js', import.meta.url), 'utf8');
+  assert.match(app, /state\.rung = /, 'js/app.js never stores the rung the ladder returned');
+  assert.match(app, /state\.relaxed = /, 'js/app.js never stores whether the answer was relaxed');
+  assert.match(app, /rungPhrase\(state\.rung/, 'js/app.js never turns the rung into a sentence');
+
+  // One strip, and the rung wins it. The row counts describe the rows; the rung
+  // describes which question the whole list is answering, so it replaces the
+  // row sentence rather than stacking a fourth paragraph over the list.
+  const paint = app.slice(app.indexOf('function paintList('));
+  const rowStrip = paint.indexOf('Nothing near you is free for');
+  const rungStrip = paint.indexOf('if (relaxed) strip =');
+  assert.ok(rowStrip > 0 && rungStrip > 0, 'paintList no longer builds both strips');
+  assert.ok(rungStrip > rowStrip, 'the rung strip does not take precedence over the row counts');
+
+  // And it is not a visual-only disclosure.
+  assert.match(app, /const admitted = state\.results\.length \? relaxedLine\(\)\?\.say : null;/);
 });
 
 // --- the calendar, where the schedule is wrong in two opposite directions ---
@@ -1134,6 +1400,24 @@ test('on a no-class day the busy grid is ignored, and the doors still are not', 
 
 const readData = (file) => JSON.parse(readFileSync(new URL(`../../data/${file}`, import.meta.url), 'utf8'));
 
+test('every room of the committed index carries the flag the ranking now reads', () => {
+  // The build has written `ga` since 2026-08-27 and nothing read it. If a term
+  // ever ships without it the ranking silently loses its strongest signal, so
+  // the count is asserted rather than assumed: 327 general assignment, 98 not.
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const rooms = Object.values(index.rooms);
+  assert.equal(rooms.length, 425);
+  assert.equal(rooms.filter((r) => r.ga === undefined).length, 0);
+  assert.equal(rooms.filter((r) => r.ga === true).length, 327);
+  assert.equal(rooms.filter((r) => r.ga === false).length, 98);
+  // 56 of the 98 are types the first rung offers by default, which is why the
+  // tier is worth anything: without it they rank as ordinary classrooms.
+  const preferred = rooms.filter((r) => PREFERRED_TYPES.includes(r.type));
+  assert.equal(preferred.length, 382);
+  assert.equal(preferred.filter((r) => r.ga === false).length, 56);
+});
+
 test('equirectangular distance matches haversine within a metre for every building on file', () => {
   const buildings = Object.values(readData('buildings.json').buildings);
   let worst = 0;
@@ -1179,6 +1463,67 @@ test('a query against the committed index answers, and answers the same way twic
     assert.ok(row.leaveBy >= at(14));
     assert.ok(row.usableUntil === null || row.usableUntil === row.nextClassAt - PACKUP);
   }
+});
+
+test('no rung sentence is contradicted by the rows the shipped list shows under it', () => {
+  // The disclosure sits over rows the ladder did not choose. js/app.js builds
+  // its list from rank() and shape(), which have no ladder in them, so the
+  // strip and the rows are two answers to one question and the strip is only
+  // honest while the rows cannot be counted against it.
+  //
+  // Every sentence says "fewer than three", because a rung is taken when it
+  // finds LADDER_QUORUM rooms. So the thing that must never happen is a screen
+  // holding three or more rooms a reader would count as free and long enough
+  // inside the walk bound while the strip above says fewer than three are.
+  //
+  // This replays the app: rank() with the whole day in view, the 90 minute wait
+  // filter js/app.js applies, then shape() for the radius and the fold.
+  const term = readData('current.json').term;
+  const index = readData(`rooms-${term}.json`);
+  const buildings = readData(`buildings-${term}.json`).buildings;
+  const hours = readData('buildings-hours.json').terms['autumn-2026-classroom-pool-building-schedule'];
+  const rooms = Object.entries(index.rooms).map(([id, r]) => ({ id, ...r }));
+  const type = new Map(rooms.map((r) => [r.id, r.type]));
+  const preferred = new Set(PREFERRED_TYPES);
+  const hoursFor = (code, day) => hours.buildings[code]?.hours[day];
+
+  // A grid around the Oval, because from the Oval itself the ladder never
+  // relaxes: over 250 answers there every one came back on `asked`. The rungs
+  // only appear once the walk starts to bite.
+  const origins = [];
+  for (let dlat = -0.02; dlat <= 0.0201; dlat += 0.008) {
+    for (let dlon = -0.02; dlon <= 0.0201; dlon += 0.01) origins.push({ lat: 39.9995 + dlat, lon: -83.013 + dlon });
+  }
+
+  let relaxed = 0;
+  let withRows = 0;
+  for (const origin of origins) {
+    for (const [date, day] of [['2026-09-14', 1], ['2026-09-16', 3], ['2026-09-18', 5]]) {
+      for (let m = 9 * 60; m <= 19 * 60; m += 120) {
+        const opts = { origin, now: m, day, date, needed: 60, buildings, hoursFor, sessions: index.sessions };
+        const out = query(rooms, opts);
+        if (out.refused || !out.relaxed) continue;
+        relaxed++;
+        const shown = shape(rank(rooms, opts).filter((r) => r.wait <= 90)).rows;
+        if (!shown.length) continue;
+        withRows++;
+        // What a reader counts: on screen, no wait, and long enough, or a room
+        // whose hours nobody publishes, which the rows never call short.
+        const fits = shown.filter((r) => r.walk <= MAX_WALK && r.wait === 0 && (r.hoursKnown ? r.meetsNeed : true));
+        const countable = out.rung === 'any-type' ? fits.filter((r) => preferred.has(type.get(r.id))) : fits;
+        const where = `${date} ${m} from ${origin.lat.toFixed(4)}, ${origin.lon.toFixed(4)}`;
+        assert.ok(
+          countable.length < LADDER_QUORUM,
+          `"${rungPhrase(out.rung, { needed: 60 }).text}" printed over ${countable.length} rooms that answer it, at ${where}`,
+        );
+      }
+    }
+  }
+  assert.ok(relaxed > 50, `only ${relaxed} relaxed answers in the probe, which is not enough to prove anything`);
+  // 420 relaxed answers in this probe and 19 of them over a list with rows,
+  // which is the whole of what there is to check: the other 401 print the
+  // empty screen, which says the same thing in its own words.
+  assert.ok(withRows > 0, 'the probe never once put a relaxed answer over a list with rows in it');
 });
 
 test('a Saturday on the real index is honest about what it does not know', () => {
@@ -1615,8 +1960,10 @@ test('shape holds the committed index to a walk you would actually make', () => 
   assert.equal(new Set(near.rows.slice(0, 10).map((r) => r.building)).size, 10);
   assert.ok(near.rows.every((r) => r.walk <= MAX_WALK));
 
-  // Issue #60, the screenshot. Downtown at 14:10 rank() hands back Pomerene
-  // Hall at a 71 minute walk on row one, and the bound is what stops it.
+  // Issue #60, the screenshot. Downtown at 14:10 rank() hands back a 71 minute
+  // walk on row one, and the bound is what stops it. The room named on that row
+  // is Jennings Hall 50 since the seat tiebreak flipped to fit-first; see the
+  // note below the assertions, which is where the two rooms are pulled apart.
   const downtown = rank(rooms, { ...opts, origin: { lat: 39.9612, lon: -82.9988 }, now: at(14, 10) });
   const usable = downtown.filter((r) => r.wait <= 90);
   assert.equal(usable[0].walk, 71, 'the unbounded ranking still leads with a 71 minute walk');
@@ -1625,7 +1972,13 @@ test('shape holds the committed index to a walk you would actually make', () => 
   assert.equal(far.beyond.count + far.beyond.waiting.count, 306, 'every usable row is past the bound');
   assert.equal(far.beyond.count, 173, 'and only these are free right now');
   assert.equal(far.beyond.nearest.walk, 71);
-  assert.match(far.beyond.nearest.name, /Pomerene/);
+  // The screenshot named Pomerene Hall. 8 rooms tie at exactly 71 minutes,
+  // across Pomerene Hall and Jennings Hall, and `nearest` keeps the first one
+  // the ranking hands it, so the seat tiebreak decides which of the two gets
+  // named: Jennings Hall 50 has 35 seats and Pomerene Hall 150 has 62. The
+  // walk, which is the number the sentence is about, is the same either way.
+  assert.match(far.beyond.nearest.name, /Jennings/);
+  assert.ok(usable.some((r) => r.walk === 71 && /Pomerene/.test(r.name)));
   // The count the screen prints is only rooms that are free, on the real index
   // and not just on a fixture.
   for (const r of usable) {
@@ -1633,4 +1986,23 @@ test('shape holds the committed index to a walk you would actually make', () => 
     assert.notEqual(r.id, far.beyond.nearest.id, 'the named room is not free');
   }
   assert.equal(far.beyond.waiting.count, 133);
+});
+
+test('a rest-of-day ask is named, not priced, in the strip too', () => {
+  // neededMinutes() renders "rest of day" as Math.max(30, latestEnd - now), so
+  // dur() prints a figure nobody chose: 12h15 in the morning, and a flat
+  // "30 min" in the last half hour of the index's day, which is the other
+  // button's answer exactly. The list states the ask in words directly above
+  // this strip, and two renderings of one ask on adjacent lines is the thing
+  // that line exists to stop.
+  const day = rungPhrase('any-type', { needed: 735, restOfDay: true });
+  assert.match(day.text, /free for the rest of the day/);
+  assert.match(day.say, /free for the rest of the day/);
+  assert.doesNotMatch(day.text, /12h15|735/, 'the strip priced an ask the app only derived');
+  // Clamped to the floor, where dur() and the 30 min button agree and the
+  // reader cannot tell which one they pressed.
+  assert.doesNotMatch(rungPhrase('any-type', { needed: 30, restOfDay: true }).text, /30 min/);
+  // The three fixed lengths still print as lengths.
+  assert.match(rungPhrase('any-type', { needed: 60 }).text, /free for 1h00/);
+  assert.match(rungPhrase('any-type', { needed: 60 }).say, /free for 1 hour/);
 });

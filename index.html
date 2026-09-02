@@ -256,8 +256,23 @@
   }
 
   /* --- the answer --- */
+  /* The sheet carries the column width itself, rather than running the full
+     width with a narrow strip of content floating in it.
+     Capping only the children was the first attempt and it looked broken at a
+     laptop size: a 1900px black slab with 512px of rows in the middle of it and
+     two dead margins that belonged to nothing. The sheet IS the card, so the
+     card is what narrows, and the map it sits over shows on both sides.
+     Centred with margin-inline against left:0/right:0, NOT with a translate.
+     `left: 50%; transform: translateX(-50%)` centres just as well and at 393px
+     it translates by -196.5px, so every glyph in the sheet lands on a half
+     pixel and re-antialiases: scripts/shoot.mjs shoots at 393x852 and all four
+     frames came back changed on a diff that was supposed to be desktop-only.
+     Below 32rem the max-width never binds and the margins collapse to nothing,
+     so a phone gets back exactly the full-bleed sheet it had. */
   #sheet {
-    position: fixed; left: 0; right: 0; bottom: 0; height: 38%;
+    position: fixed; left: 0; right: 0; margin-inline: auto;
+    max-width: var(--col);
+    bottom: 0; height: 38%;
     display: flex; flex-direction: column; z-index: 2;
     background: linear-gradient(180deg, rgba(11,13,16,.82), var(--bg) 22%);
     border-top: 1px solid var(--line); border-radius: 18px 18px 0 0;
@@ -289,9 +304,10 @@
      at 320, 390 and 430px every box above came back to the pixel. In rem rather
      than px so it grows with the reader's font size and keeps clear of the
      large-text reflow, which is the container query below. */
-  #sheet > * {
-    width: 100%; max-width: var(--col); margin-inline: auto;
-  }
+  /* Nothing here any more. The children used to carry the cap; the sheet does,
+     so a pane is simply the width of the sheet again. That also puts the four
+     `container-type: inline-size` panes back to their natural width, which is
+     what the @container (max-width: 18em) reflow measures against. */
   /* The grip was decorative for a whole release. It is the drag handle now, so
      it gets a 26px band around it rather than four pixels of hairline. */
   #sheet .handle {

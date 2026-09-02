@@ -528,17 +528,29 @@ test('the sheet holds a capped column instead of stretching to the window', () =
   // In rem, so it grows with the reader's font size, and wide enough that no
   // phone can reach it: 32rem is 512px against the 430px of the widest one.
   assert.ok(Number(col[1]) * 16 > 430, `${col[1]}rem is ${Number(col[1]) * 16}px and binds on a phone`);
-  const cap = css.match(/#sheet > \* \{[^}]*\}/);
-  assert.ok(cap, 'nothing caps the sheet content');
-  assert.match(cap[0], /max-width: var\(--col\)/);
-  assert.match(cap[0], /margin-inline: auto/, 'the column is capped but not centred');
-  // One rule for all three controls. Giving each its own number is how they
-  // drift apart, and #chips and #origin are siblings of the pane, not children.
-  assert.equal(css.split('max-width: var(--col)').length - 1, 1, 'the column is capped twice');
-  // The SHEET keeps the window's width. Its border is a horizon line across the
-  // map and it stands on an install rail that runs the whole way.
+  // The SHEET carries the width, not its children.
+  //
+  // This assertion used to be the other way round -- the children capped, the
+  // sheet full-bleed, on the argument that its border is a horizon line across
+  // the map. Rendered at 1920x1000 that was a black slab the width of the
+  // window with 512px of rows adrift in the middle of it and two dead margins
+  // belonging to nothing. The sheet IS the card, so the card is what narrows.
+  // Measured after the change: 390 -> x=0 w=390, 430 -> x=0 w=430, both
+  // unchanged; 1280 -> x=384 w=512 and 1920 -> x=704 w=512, centred.
   const sheet = css.slice(css.indexOf('\n  #sheet {'), css.indexOf('#sheet.snap'));
-  assert.doesNotMatch(sheet, /max-width/, 'the sheet narrowed, which is a second design');
+  assert.match(sheet, /max-width: var\(--col\)/, 'the sheet does not carry the column width');
+  assert.match(sheet, /margin-inline: auto/, 'the sheet is not centred');
+  // Centred by margin, never by a transform. `left: 50%` with
+  // translateX(-50%) centres just as well and at the 393px scripts/shoot.mjs
+  // shoots at it translates by -196.5px, landing every glyph in the sheet on a
+  // half pixel. All four frames came back re-antialiased on a diff that was
+  // supposed to touch nothing below a laptop.
+  assert.doesNotMatch(sheet, /translateX/, 'the sheet is centred with a transform, which blurs it on a phone');
+  // And the children do NOT, because a cap inside a capped sheet is a second
+  // number to keep in step, and it changed the width the four
+  // container-type: inline-size panes measure their 18em reflow against.
+  assert.doesNotMatch(css, /#sheet > \* \{[^}]*max-width/, 'the children are capped as well as the sheet');
+  assert.equal(css.split('max-width: var(--col)').length - 1, 1, 'the column width is set twice');
   // And the back arrow rides the same column rather than the window corner.
   assert.match(css, /#back \{ left: max\(.+, calc\(50% - var\(--col\) \/ 2\)\); \}/);
 });

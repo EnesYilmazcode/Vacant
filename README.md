@@ -138,7 +138,7 @@ the same two things without leaving the screen you are on.
 
 It is not a preview. It moves the same clock every screen reads and the same
 origin the ranking measures from, then repaints through the same code path a
-duration chip uses, so the answer on screen is the answer a student would get.
+duration button uses, so the answer on screen is the answer a student would get.
 The readout at the bottom of the panel says whether the clock is live or
 simulated, and it says which rooms came back and why the app refused if it did.
 

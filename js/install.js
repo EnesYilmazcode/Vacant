@@ -199,10 +199,10 @@ function rail(doc) {
   return holder;
 }
 
-// A fixed rail sits over the bottom of the sheet, duration chips and all. The
-// sheet is raised by that height rather than losing it, measured off the rail
-// itself: the copy wraps differently at different text sizes, and two bars are
-// twice the debt of one.
+// A fixed rail sits over the bottom of the sheet, whatever the sheet is
+// showing. The sheet is raised by that height rather than losing it, measured
+// off the rail itself: the copy wraps differently at different text sizes, and
+// two bars are twice the debt of one.
 function measure(doc) {
   const holder = doc.getElementById(RAIL);
   if (!holder) {

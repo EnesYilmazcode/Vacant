@@ -266,13 +266,16 @@ test('a bar has no fixed position of its own', () => {
 // ---- the rail and the sheet
 
 test('the rail raises the sheet rather than being paid for out of it', () => {
-  // The duration chips sit below the pane, so padding #list moved them nowhere:
-  // with both bars up, elementFromPoint at all four chip centres returned an
-  // element inside #bars in every one of the 36 rail cases measured. Padding
-  // #sheet moves them but spends the answer, because the box is border-box with
-  // a pixel height, so the pane pays: 375x667 with both bars took #list from
-  // 165px to 18px and left no whole room on the ranked list at all. Raised, the
-  // pane keeps its size and the chips are hittable in 33 of the 36.
+  // Measured when the duration chips still sat below the pane. Padding #list
+  // moved them nowhere: with both bars up, elementFromPoint at all four chip
+  // centres returned an element inside #bars in every one of the 36 rail cases
+  // measured. Padding #sheet moves them but spends the answer, because the box
+  // is border-box with a pixel height, so the pane pays: 375x667 with both bars
+  // took #list from 165px to 18px and left no whole room on the ranked list at
+  // all. Raised, the pane keeps its size and the chips were hittable in 33 of
+  // the 36. The chips went with #85 and the rule outlived them: the bottom of
+  // the pane is now the last rows of the answer, and the rail still has to be
+  // given its height back rather than taken out of them.
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
   const at = css.indexOf('body.has-bar');
   assert.ok(at > 0, 'nothing gives the rail height back');

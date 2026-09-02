@@ -2539,3 +2539,69 @@ student in a standalone window, or lands them on a web page instead of an app.
 Then #86's option 4 wins, the button goes, and #78 closes as "removed" with #52
 restored intact rather than struck. Nothing else reopens it: the in-app line
 answering "where is it" offline was always true and was never the argument.
+
+
+---
+
+## 2026-09-02  The duration chips come off the list, and the list says what it was asked
+
+**Decided.** `#chips` is deleted from `index.html`, not hidden. The ranked list
+gains one quiet non-interactive line above the rows, `You asked for 2h00.`, and
+`#back` is the only way to change the duration.
+[#85](https://github.com/EnesYilmazcode/Vacant/issues/85).
+
+**What the bar cost, read off the rule that shipped.** `#chips` was
+`min-height: 44px` on the chip plus `.5rem` padding top and bottom plus a 1px
+`border-top`: 61 px at a 16 px root. A `.row` is `min-height: 56px` plus a 1px
+separator, 57 px. `PEEK` is `0.38` (`js/sheet.js:10`), so a peeked sheet on a
+390x844 phone is 321 px and the bar was 19% of it. The bar was worth slightly
+more than one whole answer, on the screen whose only job is answers. The room
+screen had already stopped showing it, in the `showPane` line this change
+deletes.
+
+**Hidden was the cheaper option and it was rejected.** `$('chips').hidden = true`
+is one character of diff and leaves a four-button radiogroup, its roving-tabindex
+handler, its arrow-key handler and its 22 lines of CSS in a shell every phone
+downloads, all wired to a node nothing renders. `scripts/check-dead-code.mjs`
+cannot see any of it: the handlers are reachable from `DOMContentLoaded`, so
+they are live code by every measure the checker has, pointed at nothing. That is
+the shape of thing this repo has removed twice already, and it is worse the
+second time because the next person to read `attachChips` has no way to tell it
+is dead.
+
+**The second half is the half that mattered.** The chip bar was the ONLY place
+the list stated the duration. `paintList` renders `note + strip + caveat + rows`
+and the strip is empty as soon as one row meets the ask, which is the ordinary
+case, so deleting the chips alone would have left a column of room names that
+says nothing about the question it answers.
+
+**The line says what was ASKED, not what is offered.** "Free for 2h00" over
+these rows would be a promise the list does not keep: `strip` goes empty on the
+first row that meets the ask and the rows under it can be shorter. "You asked
+for 2h00." is true in all four of `paintList`'s states, including the one whose
+strip says nothing near you is free for that long.
+
+**It spends `dur(state.needed)`,** the same call the strip and the empty screen
+already make two lines away, rather than the chips' own "30m / 1h / 2h / rest of
+day". One figure on one screen gets one vocabulary. It is also the only honest
+rendering of "rest of day", which is minutes to the last minute the schedule
+covers and not a fixed length.
+
+**Cost, measured with `gzip -9` on the two shell files.** `index.html` 36,329 to
+35,397 raw and 11,365 to 11,270 gzipped. `js/app.js` 95,137 to 96,034 raw and
+32,494 to 32,841 gzipped, almost all of it the comments explaining the two
+decisions above. Net **+252 bytes gzipped** on the shell: markup and CSS came
+off, prose went on.
+
+**Not measured, and it is the one to check.** No browser ran here. The 61 px and
+the 19% are arithmetic on the shipped CSS and on `PEEK`, not a rendered
+measurement, and `docs/media/list.webp` and `list-full.webp` still show the chip
+bar because `scripts/shoot.mjs` needs a Chrome this environment does not have.
+No test reads the chips out of those frames, so the suite is green on a stale
+picture. They have to be reshot before the README is believed again.
+
+**The trade.** Changing duration is two taps now, back then the choice, instead
+of one. `docs/research/result-screen-v2.md` section 2, "Where duration
+lives", argued the same trade and reached the same answer. If a cheaper duration
+change turns out to matter, the answer is a compact affordance on the back bar,
+not the 61 px bar coming back.

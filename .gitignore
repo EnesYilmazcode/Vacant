@@ -13,3 +13,7 @@ data/harvest-*.json.gz
 
 # Claude Code worktrees and session state
 .claude/
+
+# The Roomix cross-check files for #26 are 2.7 MB and refetchable in a second.
+# docs/research/ground-truth-walk.md carries the command and the numbers.
+rx/

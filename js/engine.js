@@ -26,6 +26,25 @@ export const WALK_MPM = 78;
 // grid, inside the 1.15 to 1.45 pedestrian circuity range.
 export const DETOUR = 1.3;
 
+// Neither of the two has been fitted, and the ground-truth walk in #26 is the
+// measurement that would fit them. Two things to know before anyone does.
+//
+// The pair is exactly one metre to one second right now: 1.3 / 78 of a minute
+// IS a second. So a stopwatch fits their RATIO and nothing else, and a fit that
+// keeps that identity has changed nothing. Splitting them needs a measured path
+// length as well as a time, from a phone track or a route drawn on a map.
+//
+// And the measurement is biased before the stopwatch starts. distanceMetres
+// stops at the building's published point and the room's own door is somewhere
+// else inside the footprint, so measured time runs above predicted for reasons
+// that are not pace. MEASURED over the 46 shipped buildings by decoding
+// data/campus.json against that point, which scripts/test/walk-bias.test.mjs
+// recomputes: the far corner of a building sits a median 44 m from it, 62 m at
+// the 90th percentile, and 85 m at PAES, which at these constants is 44, 62 and
+// 85 SECONDS of walking the engine never priced. Subtract that before moving
+// either number. The 38 s and 1 min 45 s in #26 are both low, and the stadium
+// the second one names is dropped by the safety filter and never quoted at all.
+
 // Minutes reserved at the end so you are not packing up while the next class
 // files in. POLICY, and it is doing real work: OSU's passing period is 15
 // minutes and 69.3% of all 2711 measured inter-class gaps are exactly that, so

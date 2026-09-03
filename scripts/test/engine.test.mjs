@@ -16,6 +16,7 @@ import {
   RELAX_LADDER,
   RUNGS,
   SCREEN_ROWS,
+  SECONDARY_TYPES,
   SILENT_SHARE,
   SURPLUS_CAP,
   SURPLUS_WEIGHT,
@@ -1001,11 +1002,13 @@ test('the ladder stops at the first rung with three rooms and does not keep walk
 });
 
 test('two rooms is not a quorum, so the ladder keeps looking and takes the better rung', () => {
-  // Two classrooms and a computer lab, all free. The type filter answers with
-  // two, which is under quorum, so the next rung offers the lab as well.
+  // Two classrooms and a conference room, all free. The type filter answers with
+  // two, which is under quorum, so the next rung offers the third as well.
+  // 5K rather than 2P: the computer labs left the offerable set entirely, so a
+  // 2P fixture now tests a room that can never appear rather than the rung.
   const out = askFor(60, campus([
     ['A', 300, 2],
-    ['B', 300, 1, { type: '2P' }],
+    ['B', 300, 1, { type: '5K' }],
   ]));
   assert.equal(out.rung, 'any-type');
   assert.equal(out.rows.length, 3);
@@ -1013,7 +1016,7 @@ test('two rooms is not a quorum, so the ladder keeps looking and takes the bette
 });
 
 test('the room-type filter comes off before the duration does', () => {
-  const out = askFor(60, campus([['B', 300, 4, { type: '2P' }]]));
+  const out = askFor(60, campus([['B', 300, 4, { type: '5K' }]]));
   assert.equal(out.rung, 'any-type');
   assert.equal(out.need, 60, 'still the duration that was asked for');
   assert.equal(out.askedNeed, 60);
@@ -1027,7 +1030,7 @@ test('an answer made of departmental rooms is labelled relaxed on every rung tha
     const out = askFor(needed, spec, extra);
     if (!out.rows.length) continue;
     assert.notEqual(out.rung, 'asked');
-    assert.equal(out.relaxed, true, `rung ${out.rung} handed back a clinic without saying so`);
+    assert.equal(out.relaxed, true, `rung ${out.rung} handed back a departmental room without saying so`);
   }
 });
 
@@ -1189,6 +1192,13 @@ test('a screen full of unknown-hours rooms is countable, not disguised', () => {
 // conference rooms and a dental clinic under no sentence at all. That is issue
 // #90, and these are the tests that stop it coming back.
 //
+// Two things in that sentence are history now. The labs left OFFERABLE, so the
+// rung reaches conference rooms, a meeting room, a TV and radio facility and
+// two rooms of a type nothing decodes. And the dental clinic was never on this
+// index at all: PH3089A is real, it is in docs/research/facility-types.md, and
+// zero PH rooms ship. It got repeated here from that document twice before
+// anyone checked it against data/rooms-1268.json.
+//
 // The sentences live in js/state.js rather than in js/app.js because js/app.js
 // touches the DOM at import and cannot be loaded under node. js/state.js is the
 // file that already holds the row phrasing, for the same reason.
@@ -1255,7 +1265,7 @@ test('every relaxed answer the ladder actually produces has words for it', () =>
   // scenario is one already covered above, kept here for the sentence rather
   // than for the rung.
   const cases = [
-    campus([['A', 300, 2], ['B', 300, 1, { type: '2P' }]]), // any-type
+    campus([['A', 300, 2], ['B', 300, 1, { type: '5K' }]]), // any-type
     campus([['A', 300, 3, { busy: [[TUE, DAY_START, DAY_END]] }], ['F', 1200, 4]]), // further
     campus([['Z', 1800, 4]]), // anywhere
     campus([['Z', 1800, 2, { busy: [[TUE, DAY_START, at(14)], [TUE, at(14, 40), DAY_END]] }]]), // longest
@@ -1270,7 +1280,14 @@ test('every relaxed answer the ladder actually produces has words for it', () =>
       assert.ok(phrase, `the ladder answered with "${out.rung}" and the app would print nothing`);
     }
   }
-  assert.ok(seen.size >= 3, `only reached ${seen.size} relaxed rungs`);
+  // Four, not three. This was `>= 3` and the any-type fixture above was typed
+  // 2P, so when the labs left OFFERABLE that case stopped relaxing at all --
+  // the loop's `if (!out.relaxed) continue` skipped it, the count fell from 4
+  // to 3, and the assertion passed on the threshold. The rung this file exists
+  // to word was silently no longer being reached. The floor is the real count
+  // now, so losing one is a failure rather than a shrug.
+  assert.ok(seen.has('any-type'), 'the any-type rung is no longer exercised at all');
+  assert.ok(seen.size >= 4, `only reached ${seen.size} relaxed rungs: ${[...seen].join(', ')}`);
 });
 
 test('the sentences count to the quorum, because a rung wins by finding three rooms', () => {
@@ -1606,6 +1623,24 @@ test('not knowing where you are is a different answer from nothing being free', 
   assert.equal(lost.refused, 'location');
   assert.match(lost.reason, /where you are/);
   assert.deepEqual(lost.rows, []);
+
+  // The same, on an index that also holds a room nothing offers. This is the
+  // case the fixture above CANNOT reach: campus() types every room 1B, so a
+  // filter that skipped unofferable rooms before the origin was tested left
+  // this test green while the refusal was gone. query() reads
+  // `dropped.badOrigin === rooms.length`, and a room dropped earlier never
+  // reaches that count, so on the committed index -- which carries 27 computer
+  // labs -- the refusal changed from "Vacant does not know where you are" to
+  // "Nothing on campus is free for long enough today". A student whose fix had
+  // simply not resolved was told to go home.
+  const withLab = campus([['A', 300, 3]]);
+  withLab.rooms.push({ ...withLab.rooms[0], id: 'A9999', type: '2P' });
+  const stillLost = query(withLab.rooms, {
+    origin: { lat: NaN, lon: NaN }, now: at(12), day: TUE, needed: 60,
+    buildings: withLab.buildings, hoursFor: OPEN_ALL_DAY,
+  });
+  assert.equal(stillLost.refused, 'location', 'an unofferable room hid the geolocation refusal');
+  assert.match(stillLost.reason, /where you are/);
 
   // A campus that is genuinely booked solid says something else entirely.
   const busy = campus([['A', 300, 3, { busy: [[TUE, DAY_START, DAY_END]] }]]);
@@ -1969,8 +2004,13 @@ test('shape holds the committed index to a walk you would actually make', () => 
   assert.equal(usable[0].walk, 71, 'the unbounded ranking still leads with a 71 minute walk');
   const far = shape(usable);
   assert.equal(far.rows.length, 0);
-  assert.equal(far.beyond.count + far.beyond.waiting.count, 306, 'every usable row is past the bound');
-  assert.equal(far.beyond.count, 173, 'and only these are free right now');
+  // 280, 162 and 118, down from 306, 173 and 133. The difference is exactly the
+  // computer labs leaving OFFERABLE: 26 of them ranked from this origin, 11 free
+  // at this minute and 15 waiting. 306 - 26 = 280, 173 - 11 = 162,
+  // 133 - 15 = 118, and 162 + 118 = 280 as it did before. The walk bound this
+  // test is about did not move, and neither did the room it names.
+  assert.equal(far.beyond.count + far.beyond.waiting.count, 280, 'every usable row is past the bound');
+  assert.equal(far.beyond.count, 162, 'and only these are free right now');
   assert.equal(far.beyond.nearest.walk, 71);
   // The screenshot named Pomerene Hall. 8 rooms tie at exactly 71 minutes,
   // across Pomerene Hall and Jennings Hall, and `nearest` keeps the first one
@@ -1985,7 +2025,7 @@ test('shape holds the committed index to a walk you would actually make', () => 
     if (r.wait === 0) continue;
     assert.notEqual(r.id, far.beyond.nearest.id, 'the named room is not free');
   }
-  assert.equal(far.beyond.waiting.count, 133);
+  assert.equal(far.beyond.waiting.count, 118);
 });
 
 test('a rest-of-day ask is named, not priced, in the strip too', () => {
@@ -2005,4 +2045,23 @@ test('a rest-of-day ask is named, not priced, in the strip too', () => {
   // The three fixed lengths still print as lengths.
   assert.match(rungPhrase('any-type', { needed: 60 }).text, /free for 1h00/);
   assert.match(rungPhrase('any-type', { needed: 60 }).say, /free for 1 hour/);
+});
+
+test('a computer lab is never offered, on any rung', () => {
+  // 26 of the 27 shipped labs are absent from the Registrar's general-assignment
+  // list -- 96%, against 13% for ordinary classrooms -- so a lab is the room
+  // most likely to be a locked door at the end of a walk. They left OFFERABLE
+  // rather than being ranked low, because ranking low still shows them.
+  assert.equal(SECONDARY_TYPES.includes('2P'), false, 'the computer labs are offerable again');
+  assert.equal(SECONDARY_TYPES.includes('2Q'), false, 'the computer labs are offerable again');
+  // A campus made of nothing but labs answers with nothing, rather than with
+  // labs. The ladder runs out instead of reaching for them.
+  const only = askFor(60, campus([['B', 300, 6, { type: '2P' }]]));
+  assert.equal(only.rows.length, 0, 'the ladder still reaches a computer lab');
+  // And a lab beside real classrooms does not appear once the rung relaxes.
+  const mixed = askFor(60, campus([
+    ['A', 300, 1],
+    ['B', 300, 4, { type: '2Q' }],
+  ]));
+  assert.equal(mixed.rows.every((r) => !/^B/.test(r.id)), true, 'a lab came back on a relaxed rung');
 });

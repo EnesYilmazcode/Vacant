@@ -113,12 +113,55 @@ export const RUNGS = [
 // can sit down in with a laptop.
 export const PREFERRED_TYPES = ['1B', '1C', '1A', 'LCTR', 'SMNR'];
 
-// Rooms the note puts behind a toggle: computer labs and departmental seminar
-// rooms, real rooms with chairs and tables but access controlled or socially
-// awkward, and 5K holds at least one working dental clinic. MEASURED on the
-// committed index: 101 of 871 rooms (11.6%) carry one of these. The ladder may
-// offer them once the preferred ones run out, and it says so when it does.
-export const SECONDARY_TYPES = ['2P', '2Q', '5K', '6L', '2J', '5C'];
+// Rooms the ladder may fall back to once the preferred ones run out, saying so
+// when it does: real rooms with chairs and tables, but access controlled or
+// socially awkward. 5K holds a working dental clinic and a law clinic at Ohio
+// State -- PH3089A and DI0455, both in docs/research/facility-types.md -- and
+// NEITHER SHIPS: zero PH and zero DI rooms are in the committed index. The
+// twelve 5K rooms here are in Ag Engineering, Derby, Denney, Hagerty, Knowlton,
+// PAES, Stillman, Smith and Townshend. The clinics are why the type is not
+// preferred; they are not a thing this index can put on a screen.
+//
+// The computer labs, 2P and 2Q, USED TO BE HERE and are not any more.
+//
+// NOT because they are the worst of this set by `ga`. A first draft said that
+// and it is false: every type still listed here is 100% absent from the
+// Registrar's general-assignment list -- 5K twelve of twelve, 6L, 2J and 5C all
+// of theirs -- against 26 of 27 for the labs, and 1A sits in PREFERRED_TYPES at
+// 15 of 18. By that measure the labs were the LEAST bad room here, and the
+// sentence would have been precedent for deleting the rest.
+//
+// They are gone because of WHY their door is locked. A departmental classroom
+// is locked by preference and opens when someone is around; a computer lab is
+// locked by a lab monitor around fixed equipment, and there is nobody to ask.
+// docs/research/facility-types.md is where that distinction is written down.
+// The 96% is corroboration, not the criterion.
+//
+// Ranking them lower was tried first and did not work, which is the other half
+// of the argument. Issue #89 put `ga` in tierOf and departmental rooms fell
+// from 12.8% of row one to 0.0%, top ten 30.8% to 0.3%. They were already at
+// the bottom of every list, and the report from actually using the app was
+// still that lab rooms never work. A room ranked last is a room still shown.
+//
+// Removing them is free, and not merely on a sample. Every lab shares a
+// building with at least two ordinary classrooms, so a lab and its neighbours
+// are always at the SAME walk, and a list can only empty if every row inside
+// MAX_WALK was a lab. Enumerated over all 19 lab-holding buildings x every walk
+// 0 to 12 x 7 days x every 5 minutes x 5 asks -- 2,394,665 moments -- the count
+// of lab-only moments is ZERO. Not "we sampled and found none": there is no
+// origin, minute or ask on this index that can empty a list by this removal.
+// Replayed as answers over 149 origins -- all 96 index buildings plus a 7x7
+// lattice padded 25% past the bounding box and the four far corners -- seven
+// days including the weekend, hourly 06:10 to 22:10, at asks of 30, 60, 120 and
+// rest of day: 38,928 lists had rows before and 38,928 after, with a lab on row
+// one 133 times. Those 133 are the walks this removes. The grid is written down
+// because the first version of this comment gave the counts without it, and a
+// figure nobody else can reproduce is worth about as much as a wrong one.
+//
+// They stay in TYPE_VISIBILITY for now, so the index still carries them and the
+// bytes are still spent; the harvest is where that gets fixed, and it runs
+// weekly. This is the half that takes effect on deploy.
+export const SECONDARY_TYPES = ['5K', '6L', '2J', '5C'];
 
 // Within the preferred set, ordered by how likely the room is to be a room one
 // person can sit down in for an hour. 1B is the confident general classroom,
@@ -134,11 +177,24 @@ export const SECONDARY_TYPES = ['2P', '2Q', '5K', '6L', '2J', '5C'];
 const TYPE_ORDER = { '1B': 0, SMNR: 1, '1A': 1, LCTR: 2, '1C': 2 };
 const PREFERRED = new Set(PREFERRED_TYPES);
 
-// Everything the ladder is allowed to reach, in any rung. The 250 rooms of the
-// committed index that are in neither list are wet labs, dissection labs, gyms,
-// studios, kitchens and the online pseudo-room, and an unrecognised code lands
-// here too: the type space is not closed, and the cost of guessing wrong is
-// sending someone into a cadaver lab. A caller that wants them has to say so.
+// Everything the app is allowed to offer, on any rung and in any list.
+//
+// Two things about this set are no longer what an older comment here said.
+//
+// It is not only the ladder's. sweep() reads it too, so a room outside it never
+// enters rank() either, and "a caller that wants them has to say so" is no
+// longer true of anything: there is no argument that reaches a room this set
+// excludes. That is deliberate -- rank() plus shape() is what js/app.js paints,
+// and a type filter that only rung() honoured is how labs stayed on screen
+// under a sentence that had stopped naming them.
+//
+// And the rooms outside it are not what they were. Wet labs, dissection labs,
+// gyms, studios, kitchens and the online pseudo-room never reach here at all:
+// TYPE_VISIBILITY in scripts/lib/room-safety.mjs drops them at harvest, so the
+// committed index carries none. On that index the rooms this set excludes are
+// exactly the 27 computer labs. The wider guard stays because the type space is
+// not closed -- an unrecognised code lands outside too, and the cost of
+// guessing wrong is sending someone into a cadaver lab.
 const OFFERABLE = new Set([...PREFERRED_TYPES, ...SECONDARY_TYPES]);
 
 const R = 6371008.8;
@@ -646,7 +702,7 @@ function sweep(rooms, opts) {
   } = opts;
   const walkCache = new Map();
   const out = [];
-  const dropped = { noBuilding: 0, noCoordinate: 0, badOrigin: 0, closed: 0, noWindow: 0 };
+  const dropped = { notOfferable: 0, noBuilding: 0, noCoordinate: 0, badOrigin: 0, closed: 0, noWindow: 0 };
 
   for (const room of rooms) {
     const building = buildings[room.b];
@@ -675,6 +731,34 @@ function sweep(rooms, opts) {
     }
     if (!cached) {
       dropped.badOrigin++;
+      continue;
+    }
+
+    // A room type nothing offers never enters the ranking. This has to happen
+    // in sweep() and not only in rung(): js/app.js builds the list from rank()
+    // plus shape(), and rank() had no type filter at all, so dropping the
+    // computer labs from OFFERABLE alone changed which rung the ladder
+    // REPORTED and left the labs sitting in the rows underneath it. That is the
+    // same rank()/rung() split that let a strip describe a search the list
+    // could not show.
+    //
+    // BELOW the origin check, and that placement is load-bearing. query()
+    // decides "Vacant does not know where you are" with
+    // `dropped.badOrigin === rooms.length`, so a filter that skips rooms before
+    // the origin is tested makes that count unreachable on any index holding
+    // one unofferable room. Measured with a NaN origin on the committed index:
+    // above the check the refusal went from 'location' to none at all, and the
+    // screen told a student nothing on campus was free when the truth was that
+    // the fix had not resolved. js/engine.js's own comment forbids exactly that
+    // collapse. Here, badOrigin still counts every room, as it did before.
+    //
+    // An absent type is trusted rather than dropped: an index built before
+    // types were recorded must still rank. null and '' are absent in the same
+    // way undefined is, so they are trusted too -- the old guard let undefined
+    // through and failed closed on the other two, which is more trust for less
+    // information and the wrong way round.
+    if (room.type != null && room.type !== '' && !OFFERABLE.has(room.type)) {
+      dropped.notOfferable++;
       continue;
     }
 
@@ -1069,9 +1153,14 @@ export function query(rooms, opts) {
   const runs = {
     asked: [needed, false, () => rung(needed, { types: PREFERRED, radius: maxWalk, openNow: true })],
     // Dropping the room-type preference is a relaxation like any other. The
-    // rows it adds are computer labs, departmental seminar rooms and, in one
-    // building, a dental clinic, so an answer built from them is not the
-    // question the student asked and has to admit it.
+    // rows it adds are SECONDARY_TYPES: conference rooms, one meeting room, a
+    // TV and radio facility and two rooms of a type nothing decodes -- every
+    // one of them departmental, none of them a computer lab any more -- so an
+    // answer built from them is not the question the student asked and has to
+    // admit it. js/state.js holds the sentence that admits it; this is the
+    // other half of the "twice", and it went stale when the labs left
+    // OFFERABLE. It said "departmental seminar rooms", which is 1A: a preferred
+    // type, already in the asked rung, and not a room this rung can add.
     'any-type': [needed, true, () => rung(needed, { radius: maxWalk, openNow: true })],
     ...Object.fromEntries(shorter.map((n) => [
       `shorter:${n}`,

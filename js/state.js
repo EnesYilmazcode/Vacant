@@ -747,10 +747,19 @@ export function unscheduledGate({ now, current, index, busyDay, opening, openNow
 // rooms is the one way this disclosure can lie, and counting to three is what
 // stops it.
 //
-// The room words in the `any-type` sentence are measured too: over those 166
-// answers, every room on screen that was free, long enough and not an ordinary
-// classroom carried a secondary type, 2P computer teaching lab 130 and 5K
-// departmental seminar room 120 of 272.
+// The room words in the `any-type` sentence were measured over those same 166
+// answers, and that measurement is now HISTORY rather than a description: it
+// counted 130 rows of 2P computer teaching lab among 272, and a 2P can no
+// longer reach a screen. Re-measured on the paint path after the labs left
+// OFFERABLE, the rows this rung ADDS are 5K conference rooms and 2J TV and
+// radio facilities, all of them departmental and none of them a lab.
+//
+// Which is why the sentence says "departmental rooms" rather than naming the
+// types. Every type this rung can add is 100% absent from the general
+// assignment list, so the one word is true of all of them, and it is the word
+// the row already carries beside its seats. A draft naming "conference and
+// meeting rooms" was narrower than the rung reaches and a TV and radio
+// facility appeared under it, described by neither.
 //
 // `longest` never fired once in the 12,870, so its sentence is the only one
 // here with no measurement behind it. It says the least for that reason.
@@ -766,12 +775,29 @@ export function rungPhrase(rung, { needed = 0, maxWalk = MAX_WALK, restOfDay = f
   const spoken = restOfDay ? 'the rest of the day' : spokenDur(needed);
   const line = (text, say) => ({ text, say: say ?? text });
 
-  // The rung the engine comments on twice: the rows it adds are computer labs,
-  // departmental seminar rooms and, in one building, a dental clinic.
+  // The rung the engine comments on twice. It used to say "computer labs and
+  // departmental rooms" and the labs left OFFERABLE, so that named rooms the
+  // list can no longer contain.
+  //
+  // "departmental rooms" is doing the work the room words cannot. Replayed as
+  // the app paints -- rows from rank() plus shape(), strip from query().rung --
+  // the rows this rung adds are conference rooms, an unlabelled type, TV and
+  // radio facilities and one meeting room, and zero labs. A draft that named
+  // only "conference and meeting rooms" was narrower than the rung reaches: a
+  // TV and radio facility appeared under it, described by neither word. Every
+  // one of these rows is departmental, and every one renders " . departmental"
+  // beside its seats, so the phrase is the true one and it is the one the row
+  // already carries.
+  //
+  // No clinic. A draft of this comment said one of the conference rooms is a
+  // working dental clinic; PH3089A is a real room and a real clinic and it is
+  // NOT IN THE INDEX -- zero PH rooms ship, and neither does the law clinic
+  // DI0455. Both are named in docs/research/facility-types.md, which is where
+  // the claim came from and where it should have stayed.
   if (rung === 'any-type') {
     return line(
-      `Fewer than three ordinary classrooms near you are free for ${asked}. Vacant reached into computer labs and departmental rooms.`,
-      `Fewer than three ordinary classrooms near you are free for ${spoken}. Vacant reached into computer labs and departmental rooms.`,
+      `Fewer than three ordinary classrooms near you are free for ${asked}. Vacant reached into departmental rooms.`,
+      `Fewer than three ordinary classrooms near you are free for ${spoken}. Vacant reached into departmental rooms.`,
     );
   }
 

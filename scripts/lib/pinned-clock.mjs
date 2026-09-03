@@ -18,8 +18,14 @@
 // This is a string because it is injected before the page's own scripts run,
 // and it lives here rather than inside the shooter so it can be checked
 // without a browser.
+//
+// `animation: false` pins the wall clock and leaves performance.now() and the
+// frame timestamp alone. scripts/launch-desktop.mjs needs that half: it has to
+// fix the date, because the app refuses to rank outside scheduled hours and a
+// run started at 9pm measures a boot that answers nothing, but pinning
+// performance.now() there would pin the thing it is measuring.
 
-export function pinnedClockSource(ms) {
+export function pinnedClockSource(ms, { animation = true } = {}) {
   if (!Number.isFinite(ms)) throw new TypeError('pinnedClockSource needs a timestamp in ms');
   return `(() => {
   const Real = Date;
@@ -33,6 +39,9 @@ export function pinnedClockSource(ms) {
   Frozen.UTC = Real.UTC;
   globalThis.Date = Frozen;
 
+${
+    animation
+      ? `
   // The flyover reads (frame timestamp - performance.now() at boot), so the
   // two have to agree or the camera drifts. Zero for both is the one value
   // that makes the difference zero however long the boot took.
@@ -40,6 +49,8 @@ export function pinnedClockSource(ms) {
   const real = globalThis.requestAnimationFrame;
   if (real) {
     globalThis.requestAnimationFrame = (fn) => real.call(globalThis, () => fn(0));
+  }`
+      : ''
   }
 })();`;
 }

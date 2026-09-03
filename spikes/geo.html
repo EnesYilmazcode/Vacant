@@ -6,6 +6,17 @@
 <meta name="color-scheme" content="light">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>geo spike, Vacant #5</title>
+
+<!-- This page is the thing added to the home screen, not the app. The app icon
+     opens /Vacant/ in a window with no address bar, and nothing in index.html
+     or js/ links to a spike page, so from the app this page cannot be reached
+     at all. So it needs its own icon: without one iOS uses a screenshot of the
+     page, and with the app's own one the home screen carries two Vacant icons
+     that look identical. The ring is drawn by scripts/make-icons.mjs beside the
+     app's filled dot. Relative, not /Vacant/, so the page installs the same way
+     off a local server as off Pages. -->
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="geo spike">
 <style>
   /* Light, not the app's dark. This page is read outdoors at arm's length in
      sunlight, where a bright panel beats a dark one. */

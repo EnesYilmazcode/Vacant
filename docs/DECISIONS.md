@@ -3046,3 +3046,34 @@ rewritten to the index that exists.
 
 **No phone has been involved in any of this.** Both instruments emit the exact
 DECISIONS block to paste back here.
+
+---
+
+## 2026-09-03  Club occupancy prototype; production remains class-only (#110)
+
+The source investigation is in `docs/research/club-occupancy.md`. Student Life's
+calendar guidelines exclude regular organization meetings, and both calendar
+hosts disallow automated crawling of `/events.aspx`. The Student Life reservation
+tool advertises recurring classroom bookings. Its guest location grid returned
+no buildings. An authenticated account exposed five non-classroom location areas
+and four matching request templates, but no classroom area or classroom request
+template. The account holder reports that classrooms remain closed until the
+University finishes scheduling midterms and exams. The Registrar's room matrix
+returned 403. None of the 425 classroom IDs has a verified event-source mapping.
+
+Keep production unchanged until an approved source and representative real
+fixtures exist. Prefer an approved Student Life booking export, then other
+university booking sources, then organization feeds for documented gaps. Hourly
+refresh and a 24-hour expiry are proposed starting limits, not measured source
+guarantees or approval to run a harvester.
+
+Do not turn an individual's EMS login into a production credential or commit
+cookies, authenticated URLs, or account data. Re-check the authenticated
+classroom UI after requests open to learn the record shape; operator-approved
+access and reuse still gate any adapter.
+
+The isolated `scripts/lib/club-occupancy.mjs` prototype demonstrates date-bounded
+busy intervals, immutable merging, rejection of uncertain records, and partial
+coverage disclosure. Its tests use synthetic examples and the real gap engine.
+It is not connected to the app and does not settle #110. See the research note's
+acceptance checklist and rollout gates for the remaining work.

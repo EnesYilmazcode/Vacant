@@ -34,6 +34,7 @@ import {
   scheduleCoverage,
   scoreOf,
   shape,
+  tally,
   tierOf,
   typeRank,
   usableMinutes,
@@ -251,6 +252,61 @@ test('unknown hours never outrank a known-open building on the same walk', () =>
   assert.equal(out[0].building, '279', 'the building we know is open comes first');
   assert.equal(out[0].hoursKnown, true);
   assert.equal(out[1].hoursKnown, false);
+});
+
+// The screen built to say "we do not know" must not also announce a count of
+// free rooms. This is reason 2 of the audit on
+// github.com/EnesYilmazcode/Vacant/issues/45, which was never filed anywhere
+// and never fixed: the printed strip counted `hoursKnown && wait === 0` and the
+// live region, three hundred lines away in js/app.js, counted `wait === 0`
+// alone. Two rules for one word.
+//
+// Reproduced at 216ba00 by driving the real app with data/buildings-hours.json
+// blocked at the network, so every building reads as unpublished: the strip
+// printed "Every building we have hours for is closed." over 34 of 38 rows
+// reading "hours not published", and #say announced "103 rooms free, 38 shown."
+//
+// The fixture carries an unknown-hours room because otherwise this test is
+// dead. The room safety filter cut every unpublished building out of the
+// shipped index: measured over data/rooms-1268.json against the autumn table in
+// data/buildings-hours.json, all 46 buildings the index names publish hours, so
+// no arrangement of the committed data reaches the branch under test.
+const FREE_ROOMS = [
+  { id: 'DL0357', b: '279', busy: [] }, // published open, free now
+  { id: 'CL0177', b: '26', busy: [] }, // published open, free now
+  { id: 'NW0100', b: '999', busy: [] }, // nobody publishes this door
+];
+const freeAsk = {
+  origin: ORIGIN, now: at(9), day: 1, needed: 60, buildings: BUILDINGS,
+  hoursFor: (code) => (code === '999' ? undefined : [at(7), at(22)]),
+};
+
+test('print and speech count free by one rule, and it never counts an unpublished door', () => {
+  const rows = rank(FREE_ROOMS, freeAsk);
+  assert.equal(rows.length, 3, 'all three rooms are offered');
+  assert.equal(rows.filter((r) => !r.hoursKnown).length, 1, 'the fixture carries an unknown-hours room');
+  assert.equal(rows.every((r) => r.wait === 0), true, 'and all three are free this minute');
+
+  // Over ONE set of rows, the number the strip prints and the number the live
+  // region speaks have to be the same number. Give either of them back its own
+  // predicate and this line goes red.
+  const t = tally(rows, rows);
+  assert.equal(t.free, t.shorter, 'print and speech disagree about how many rooms are free');
+  assert.equal(t.free, 2, 'a door nobody publishes is not a free room');
+  assert.equal(t.meets, 2);
+  assert.equal(t.waiting, 0);
+});
+
+test('the spoken count is wider than the printed one, and that is the only difference', () => {
+  // The sets differ on purpose. The strip describes the rows on screen and the
+  // spoken line describes the whole answer, which is how it can honestly read
+  // "297 rooms free, 0 shown" under a heading saying nothing was close enough.
+  // What may never differ is the rule.
+  const rows = rank(FREE_ROOMS, freeAsk);
+  const t = tally(rows.slice(0, 1), rows);
+  assert.equal(t.shorter, 1, 'the strip counts the one row it is printing');
+  assert.equal(t.free, 2, 'the live region counts every room inside the wait bound');
+  assert.equal(tally(rows).free, tally(rows).shorter, 'one set, one answer');
 });
 
 test('rooms meeting the requested duration outrank closer rooms that do not', () => {

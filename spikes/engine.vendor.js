@@ -487,6 +487,34 @@ export function tierOf(row) {
   return (row.wait === 0 ? 6 : 8) + dept;
 }
 
+// Free means the door is published open AND the room is empty right now. Both
+// halves, because a room in a building nobody publishes hours for is a room we
+// cannot say anything about, which is the one claim this app exists to refuse.
+const isFree = (row) => Boolean(row.hoursKnown) && row.wait === 0;
+
+// Everything a ranked list has to count, counted once.
+//
+// It is a function rather than four filters at the call sites because it WAS
+// four filters at the call sites, three hundred lines apart, and only the
+// printed ones carried the hoursKnown half. Driven at 216ba00 with
+// data/buildings-hours.json blocked at the network, so every building reads as
+// unpublished: the strip printed "Every building we have hours for is closed."
+// over 34 rows reading "hours not published", and the live region announced
+// "103 rooms free, 38 shown." Print and speech spent the same word on two
+// different rules. github.com/EnesYilmazcode/Vacant/issues/45
+//
+// `shown` is the rows on screen and `reachable` is every room inside the wait
+// bound, which is wider on purpose: the spoken count has always been about the
+// whole answer, which is how it can honestly read "297 rooms free, 0 shown".
+export function tally(shown, reachable = shown) {
+  return {
+    meets: shown.filter((r) => isFree(r) && r.meetsNeed).length,
+    shorter: shown.filter(isFree).length,
+    waiting: shown.filter((r) => r.hoursKnown && r.wait > 0).length,
+    free: reachable.filter(isFree).length,
+  };
+}
+
 // Classroom before seminar room before lecture hall before everything else.
 export function typeRank(type) {
   const t = TYPE_ORDER[type];

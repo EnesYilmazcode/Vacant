@@ -2755,3 +2755,190 @@ phone in landscape 118px of column, 23%.
 **What would reverse this.** A phone-first argument that the map either side of the card
 is worth less than the horizon line the full-width top border drew. Nobody has made it
 with a measurement. Make it here if you make it.
+
+## 2026-09-02  campus.json is 39,039 gzipped bytes, and the map entry says 50.1 KB twice
+
+**Corrects two figures in `## 2026-08-26  The map is vector, drawn from OSU's own GIS,
+with no tiles`.** That entry states the file as **50.1 KB gzipped** in its opening
+sentence, and again in the footer of its layer table, `50.1 KB gzipped, against a 140 KB
+budget`. Both overstate it. This file is append-only, so neither line is touched; this
+entry is what a reader who finds one of them is meant to land on.
+
+**The real number is 39,039 bytes**, measured with the recipe `sw.js` documents and the
+rest of the repo uses:
+
+```
+git show HEAD:data/campus.json | gzip -9 -c | wc -c
+39039
+```
+
+50.1 KB is 51,302 bytes at 1024 to the KB, so that entry claims 12,263 bytes more than
+the file has, 31.4% over. Nothing else in it moves. The 140 KB budget it was measured
+against is unaffected, the file was well inside it either way, and the layer and point
+counts in the same table were never in doubt.
+
+**`## 2026-08-27  The installable shell: manifest, two caches, and the cold launch`
+already had it right.** It records `campus.json 38.1` in its size block and `campus.json
+alone is 38.1 KB gzipped` in the paragraph under it, and 39,039 bytes is 38.12 KB. So
+the two entries have disagreed with each other by 31% since the day the second one was
+written, and the later one was the correct one all along.
+
+**Three ways to weigh this file, and only one of them is the transfer size.** Piped, over
+the committed blob: 39,039. Piped, over a Windows working tree: 39,042, because git
+checks it out with CRLF and it holds exactly one line ending. With the name passed as an
+argument rather than piped: 39,054, because GNU gzip stores `campus.json\0` in the FNAME
+header, twelve bytes nobody ever downloads. The audit comment on
+[#45](https://github.com/EnesYilmazcode/Vacant/issues/45) quotes 39,054, which is that
+last form on a Windows checkout and 15 bytes high. Use the piped blob.
+
+## 2026-09-02  #45 closes: the flow is built, the audit's three reasons are dead, one spike is left
+
+**Decided:** [#45](https://github.com/EnesYilmazcode/Vacant/issues/45) closes.
+
+It is the epic recording the app Enes described on 2026-08-26, written so the individual
+UI issues had one thing to agree with. Open the site, campus from above, dark, drifting,
+slightly blurred. One question, four durations, a default that is right most of the time.
+The map settles, you are a dot, a line runs to the nearest room that is actually open and
+actually free for that long. A list underneath, and tapping a row moves the line. Mobile
+first rather than merely responsive, dark by default, the map as the answer and not as
+decoration, and no tiles, no account and no network on the critical path.
+
+All of that shipped. The flow, the flyover, the four durations, the dot, the walk line,
+the rows, the room screen and the geolocation fallback are built and driven every time
+`scripts/shoot.mjs` runs. What kept the issue open was an audit comment giving three
+reasons. All three are now dead, and the evidence below was taken by driving the real app
+at 216ba00 in headless Chrome at 393x852, with the clock pinned and the origin pinned to
+the Thompson Library steps, the way `scripts/shoot.mjs` does it.
+
+**Reason 1, the honesty rule breaks on a holiday, is dead.** It read 450 rooms free on
+Thanksgiving with the top row saying "till 10:20pm" and no warning anywhere. Frozen to
+2026-11-26 10:20 the app now paints the gate: **"Thanksgiving Day, campus is closed"**
+over "University offices are closed and most buildings are locked, so a room the schedule
+shows as empty is still a room you cannot get into", and asking for 30 minutes returns
+**0 rows**. [#11](https://github.com/EnesYilmazcode/Vacant/issues/11) and
+[#19](https://github.com/EnesYilmazcode/Vacant/issues/19) did that.
+
+**Reason 3, the basement promise is architectural only, is dead.** There was no manifest
+link, no worker, and `navigator.serviceWorker.controller` was null. Now the worker takes
+control on the first load, `caches.keys()` returns `["vacant-shell-216ba00",
+"vacant-data-v1"]`, and with the local server **stopped** and the tab put offline over
+CDP, a full reload boots the app and answers a 30 minute ask with **38 rows**, the first
+of them "University Hall 043, 3 min, free till 12:30pm, 35 seats".
+[#21](https://github.com/EnesYilmazcode/Vacant/issues/21),
+[#22](https://github.com/EnesYilmazcode/Vacant/issues/22) and
+[#23](https://github.com/EnesYilmazcode/Vacant/issues/23) did that.
+
+**Reason 2, the screen reader is told 245 rooms free on the screen built to say we do not
+know, was never fixed. It was buried, and this commit is the fix.** The printed strip
+counted `hoursKnown && wait === 0`; the spoken sentence, three hundred lines earlier in
+`js/app.js`, counted `wait === 0` alone. Two rules for one word, and only the printed one
+knew about doors. It stopped being reachable because the room safety filter of
+[#9](https://github.com/EnesYilmazcode/Vacant/issues/9) cut every unpublished building
+out of the index: measured over `data/rooms-1268.json` against the autumn table in
+`data/buildings-hours.json`, the index names 46 buildings and all 46 publish hours, so
+`!row.hoursKnown` is dead against shipped data and no row anywhere reads "hours not
+published". Reachable again the day a term reintroduces such a building, with no issue
+describing it.
+
+Reproduced by taking the door times away rather than by waiting for that term. With
+`data/buildings-hours.json` blocked at the network every building reads as unpublished,
+and at 216ba00 the screen printed "Every building we have hours for is closed." over 34
+of 38 rows reading "hours not published", while `#say` announced **"103 rooms free, 38
+shown."** After: **"0 rooms free, 38 shown."** on the same screen, and "103 rooms free,
+38 shown." unchanged on an ordinary Wednesday, because with hours published every free
+room is a room whose door we know about.
+
+**Decided: one function counts, both readers read it.** `tally()` in `js/engine.js`
+returns `meets`, `shorter`, `waiting` and `free` off one predicate,
+`hoursKnown && wait === 0`. `answer()` computes it once into `state.tally` and
+`paintList()` prints from the same object it speaks from. The counts are still taken over
+different sets on purpose, the strip over the rows on screen and the spoken line over
+everything inside the 90 minute wait bound, which is how it can honestly read "297 rooms
+free, 0 shown". The set may differ. The rule may not.
+
+**Decided against:** leaving the two filters in place and adding `hoursKnown` to the
+spoken one. That fixes today's screen and leaves the next divergence exactly as cheap to
+write. `scripts/test/engine.test.mjs` now ranks a fixture that carries an unknown-hours
+room and fails if the two numbers come apart, and `scripts/test/screens.test.mjs` fails
+if `js/app.js` spells a free count out by hand again.
+
+### The two other things the audit found, both fixed here
+
+**The chosen duration was colour only.** `Accessibility.getFullAXTree` at 216ba00 returned
+`button "30 min" {}`, `button "1 hour" {}`, `button "2 hours" {}`, `button "rest of day"
+{}`, four identical nodes with nothing saying which one the app is answering. That got
+worse rather than academic with
+[#76](https://github.com/EnesYilmazcode/Vacant/issues/76): the duration is remembered
+now, so with `vacant.duration` set to `"120"` the accent fill lands on "2 hours" for a
+returning user and the tree still said nothing. The four now carry `aria-pressed`, and
+the same dump reads `"30 min" {"pressed":"true"}` against three `"pressed":"false"`, and
+`"2 hours" {"pressed":"true"}` for the returning user.
+
+**Decided against `role="radio"` and `aria-checked`.** A radio group is a promise about
+the keyboard: the APG pattern is one tab stop for the whole group, entered on the checked
+radio, with the arrow keys moving focus and selection together. This group has none of
+that and deliberately has none of it, because
+[#85](https://github.com/EnesYilmazcode/Vacant/issues/85) deleted the roving tabindex and
+the arrow keys along with the chip bar, leaving four plain tab stops. Announcing a
+keyboard model the app does not implement is a worse answer than announcing nothing. A
+radio also reads as a choice you confirm later, and these four re-rank campus on the
+press, which is what `aria-pressed` on a button means.
+
+**A missing basemap was a silent black rectangle.**
+[#53](https://github.com/EnesYilmazcode/Vacant/issues/53) asked for a strip reading "No
+campus map on this phone yet." above row one and the string was nowhere in `js/` or
+`index.html`. With `data/campus.json` blocked over CDP the important half already worked,
+the list answered with all 38 rows, but the catch hides the canvas and the sheet rests
+where it always rests: measured at 393x852, its top edge is at **y=528**, so **62.0%** of
+the phone was black with nothing on it to explain why. The sentence is now a `.strip`, the
+same idiom the situation note uses, printed above row one, and it rides the one live
+region the contract allows rather than getting a second one. Driven with the file blocked,
+`#list` opens "No campus map on this phone yet. You asked for 30 min. University Hall
+043..." and `#say` reads "103 rooms free, 38 shown. No campus map on this phone yet."
+
+The map line goes **last** in the spoken sentence where the relaxed-rung line goes first.
+The rung changes what the rows mean; a missing picture changes nothing about them, and a
+reader who cannot see the black rectangle is the reader least served by hearing about it
+first.
+
+### What is left, and it is one thing
+
+[#5](https://github.com/EnesYilmazcode/Vacant/issues/5), the 30 minute geolocation spike
+on a real iPhone. It is the one item #45 itself named as able to force a redesign of the
+flow: two open Apple reports say an installed home-screen web app may not get a fix, and
+if it comes back FAIL then "you are a dot on the map" becomes "pick your building and
+then you are a dot", and the flow gains a step before the map settles. Everything else in
+the epic survives either answer.
+
+It is not blocked on code. The instrument is built and committed at `spikes/geo.html`,
+from [#58](https://github.com/EnesYilmazcode/Vacant/issues/58): one screenful, no
+scrolling, readable in daylight, printing `permissions.query` state before any prompt,
+the wall-clock elapsed time to a fix, the reported accuracy, and whether
+`navigator.standalone` proves it ran in the installed window rather than a Safari tab. It
+is blocked on somebody holding a phone, outdoors, for half an hour, and writing the
+result into this file under the template in #5.
+
+Closing #45 with #5 open is deliberate. The epic is a description of a built app and the
+app is built; #5 is a measurement that might amend one paragraph of it, and it is a live
+issue of its own with a template waiting for numbers.
+
+### What this entry does not fix
+
+`boot()` still awaits `current.json` before requesting the room index, which is the round
+trip [#53](https://github.com/EnesYilmazcode/Vacant/issues/53) wanted collapsed into one
+`Promise.all`. That is the one finding from the audit's smaller list still standing here.
+It is not an honesty defect and it was not a reason #45 stayed open.
+
+Two others on that list turned out to be gone already, checked rather than assumed. The
+walk-time pill the audit saw painted on the map is not drawn any more: `fillText` appears
+zero times across `js/map.js`, `js/app.js` and `js/campus.js`, and `drawTarget` carries a
+paragraph saying why it stopped taking a label, under
+[#75](https://github.com/EnesYilmazcode/Vacant/issues/75). And the remembered duration is
+honoured on the next visit now, which is what #76 landed and what makes the ARIA gap
+above worth fixing rather than academic.
+
+The map notice is on the ranked list only. The buildings screen, which is what an
+ordinary night gets instead of rows, has a black rectangle over it for the same reason
+and does not say so. `paintNear()` builds its own markup rather than sharing
+`paintList()`'s note slot, so putting it there is a second change with a second
+verification pass behind it, not a shared line.

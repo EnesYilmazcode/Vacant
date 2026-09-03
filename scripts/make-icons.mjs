@@ -31,6 +31,19 @@ const MASKABLE_DOT = 0.34;
 // smudge in a tab strip.
 const FAVICON_DOT = 0.5;
 
+// The spike pages get a ring, not the app's filled dot.
+//
+// #5 is run by adding spikes/geo.html ITSELF to the home screen, because the
+// app icon opens /Vacant/ in a window with no address bar and nothing in the
+// app links to a spike page. So the phone ends up carrying two Vacant icons
+// side by side, and two identical ones would be a coin toss on every launch of
+// a spike whose whole point is that the launch is the measurement. Without any
+// icon at all iOS uses a screenshot of the page, which at 60 px is a grey
+// smear. Same ground, same accent, hollow centre: the same family, told apart
+// at a glance.
+const SPIKE_OUTER = 0.62;
+const SPIKE_INNER = 0.36;
+
 const SAMPLES = 4;
 
 function crc32(buf) {
@@ -69,8 +82,13 @@ function coverage(x, y, size, radius) {
 // `alpha` false writes colour type 2. iOS composites any alpha onto black and
 // applies its own mask, so an apple-touch-icon with a channel it never uses is
 // bytes the phone downloads to throw away.
-export function dotPng(size, dotFraction, alpha = false) {
+//
+// `holeFraction` above zero punches the middle back out, which is the spike
+// ring. It is the same disc coverage twice and a subtraction rather than a
+// second drawing routine, so the antialiased edge is identical on both sides.
+export function dotPng(size, dotFraction, alpha = false, holeFraction = 0) {
   const radius = (size * dotFraction) / 2;
+  const hole = (size * holeFraction) / 2;
   const bpp = alpha ? 4 : 3;
   const stride = size * bpp + 1;
   const raw = Buffer.alloc(stride * size);
@@ -78,7 +96,9 @@ export function dotPng(size, dotFraction, alpha = false) {
     const row = y * stride;
     raw[row] = 0;
     for (let x = 0; x < size; x++) {
-      const a = coverage(x, y, size, radius);
+      const a = hole > 0
+        ? Math.max(0, coverage(x, y, size, radius) - coverage(x, y, size, hole))
+        : coverage(x, y, size, radius);
       const o = row + 1 + x * bpp;
       for (let ch = 0; ch < 3; ch++) {
         raw[o + ch] = Math.round(GROUND[ch] + (ACCENT[ch] - GROUND[ch]) * a);
@@ -128,6 +148,7 @@ export function iconSet() {
     'icons/icon-192-maskable.png': dotPng(192, MASKABLE_DOT),
     'icons/icon-512-maskable.png': dotPng(512, MASKABLE_DOT),
     'apple-touch-icon.png': dotPng(180, PLAIN_DOT),
+    'spikes/apple-touch-icon.png': dotPng(180, SPIKE_OUTER, false, SPIKE_INNER),
     'favicon.ico': ico([16, 32, 48]),
   };
 }

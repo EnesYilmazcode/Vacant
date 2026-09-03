@@ -2942,3 +2942,107 @@ ordinary night gets instead of rows, has a black rectangle over it for the same 
 and does not say so. `paintNear()` builds its own markup rather than sharing
 `paintList()`'s note slot, so putting it there is a second change with a second
 verification pass behind it, not a shared line.
+
+## 2026-09-02  The desk half of the cold-launch spike, and what is still owed to a phone
+
+Issues [#29](https://github.com/EnesYilmazcode/Vacant/issues/29) and
+[#5](https://github.com/EnesYilmazcode/Vacant/issues/5). Both are spikes, both are
+blocked on a handset, and both had a body describing an app that no longer exists.
+This entry takes every question off them that a desk can answer, so the phone sitting
+confirms a number rather than producing one from nothing.
+
+**Measured with `node scripts/launch-desktop.mjs`**, which drives the SHIPPED app in
+headless Chrome, reads its own `performance.mark` calls, throttles the renderer with
+`Emulation.setCPUThrottlingRate`, and starts a fresh browser process per run so no run
+reuses V8's code cache. 15 runs, 5 per rate, HTTP cache disabled. Medians with the
+range beside them:
+
+```
+rate  ready ms                parse ms             parse/ready  pointer ms             idle rAF
+1x    139   (125.8 to 185.4)  2.5  (2 to 3)        1.8%         8.4  (6.5 to 59.3)     0
+4x    404.4 (388.9 to 415.4)  8.1  (7.2 to 8.9)    2.0%         88.3 (67.9 to 106.8)   0
+6x    607.9 (592.6 to 639.1)  13.4 (12.2 to 17.6)  2.2%         101.6 (93.6 to 118.4)  0
+```
+
+### The packed binary is dead on arithmetic, not on a threshold
+
+#29 says to decide on the median cold `answered-boot`: under 300 ms close both
+optimisations, 300 to 800 ms defer the typed index build, over 800 ms file the packed
+binary. That rule reads the wrong number.
+
+**`JSON.parse` is 1.8% to 2.2% of the boot budget at every throttle level, and the
+packed binary only touches parse.** The share does not grow as the core slows: 2.5 ms
+of 139, 8.1 of 404, 13.4 of 608. So a phone landing at 800 ms would be a phone
+spending roughly 18 ms parsing, and replacing all of it buys 2%. Whatever pushes a
+real handset past 300 ms is not `JSON.parse`, and no phone reading can rescue the
+packed binary from that ratio. **File it closed unless the phone shows parse taking a
+share it has never taken here.**
+
+The research it rests on measured an index that never shipped. `docs/research/query-engine.md`
+projects 242 to 382 ms cold on a desktop rising to 1 to 3 s on a phone, against an
+1800-room index. 425 rooms ship.
+
+### The lever neither #29 nor its revision comment names
+
+`boot()` cannot ask for the room index until `data/current.json` arrives, because
+`current.json` is the file that names the index across a term rollover. That wait is
+the `pointer` column: **8.4 ms at 1x, 88.3 ms at 4x, 101.6 ms at 6x**, of which only
+1 to 3 ms is network on localhost.
+
+On a phone on cellular the network half of that is a whole extra round trip sitting in
+front of the largest file the first answer needs, with nothing hiding it. It is a
+bigger cold-launch lever than either optimisation #29 is arguing about, and it is the
+one number no desktop run can stand in for. **Not fixed here.** Fixing it means
+changing how a term rollover addresses the index, which is a real decision and not a
+one-line change, and it should be measured on the phone first.
+
+`campus.json` does NOT gate anything, contrary to the revision comment on #29: it is
+asked for at 98.6 ms and `current.json` at 98.8 ms, in parallel, and the index at
+104.3 ms. The comment also quotes `campus.json` at 51,946 gzipped bytes against a
+measured 38,865, quotes 871 rooms against 425 shipped, and 1,697 paths against 1,543
+features.
+
+### No frame counter, and there will not be one
+
+The revision comment asks for one. The loop it wanted counted was replaced by the
+wake-driven `createFrameLoop` in `js/map.js` in
+[#94](https://github.com/EnesYilmazcode/Vacant/issues/94), and a settled list asks for
+**0 frames in three seconds at 1x, 4x and 6x, five runs at each**. An instrument that
+can only print zero teaches its reader that the panel is decoration.
+
+### What #5 was actually blocked on, and it was not the phone
+
+The instrument `spikes/geo.html` has been built and live for days. The run procedure
+in `spikes/README.md` could not be carried out: it said add the site to the home
+screen and then open this page. The app icon opens `/Vacant/` in a standalone window
+with no address bar, and nothing in `index.html` or `js/` links to a spike page, so
+from inside the installed app the spike is unreachable. `grep -rn "spikes/" index.html js/`
+returns nothing.
+
+Corrected: **add `/Vacant/spikes/geo.html` itself to the home screen.** The page now
+carries its own `apple-touch-icon`, a ring rather than the app's filled dot, because
+two Vacant icons will sit side by side and an identical pair is a coin toss every time.
+
+`?debug=1`, which both issue bodies instruct you to use, was never built. The work
+shipped as standalone pages under `spikes/` instead.
+
+### The acceptance bar #29 wrote cannot be met
+
+It requires the measured index to hold at least 900 rooms, "real campus is 1,067".
+425 ship on purpose after five filters: facility type, restricted building, distance
+from the Oval, weekly teaching evidence, and published building hours. The bar is
+rewritten to the index that exists.
+
+### What is still owed, and only a phone can pay it
+
+- **#5.** Whether an installed home-screen PWA on current iOS gets a fix at all, how
+  long it takes, the accuracy on the Oval, indoors on a middle floor and at the campus
+  edge, and whether the grant survives close and reopen.
+  Instrument: https://enesyilmazcode.github.io/Vacant/spikes/geo.html
+- **#29.** The first blit on real GPU-backed canvas, and the "cold everything" state,
+  the first launch after install, which on iOS gets its own storage jar and is what a
+  real first user sees. Neither has a desk equivalent.
+  Instrument: https://enesyilmazcode.github.io/Vacant/spikes/launch.html
+
+**No phone has been involved in any of this.** Both instruments emit the exact
+DECISIONS block to paste back here.

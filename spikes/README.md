@@ -16,8 +16,19 @@ rather than dark because they get read outdoors.
 
 Does geolocation work in an installed PWA on current iOS.
 
-Add the site to the home screen, open it from the icon, open this page, tap
-**Get a fix**. It runs two calls: `maximumAge: 0`, the configuration #5 asks
+**Add THIS PAGE to the home screen, not the app.** In Safari, open
+`/Vacant/spikes/geo.html`, then `...`, Share, Add to Home Screen. Open the icon
+it makes and tap **Get a fix**.
+
+The obvious version of that instruction, add the site and then open this page
+from it, cannot be carried out. The app icon opens `/Vacant/` in a standalone
+window with no address bar, and nothing in `index.html` or `js/` links to a
+spike page, so from inside the installed app this page is unreachable. That is
+also why the page carries its own home screen icon, a ring rather than the app's
+filled dot: two Vacant icons will be sitting side by side and an identical pair
+would be a coin toss every time.
+
+The page runs two calls: `maximumAge: 0`, the configuration #5 asks
 for, then `maximumAge: 60000`, the one `js/app.js` ships. The elapsed times are
 wall clock, measured in the page around the call, not read off the API, because
 iOS documents its own `timeout` option as unreliable in a standalone window and
@@ -35,11 +46,24 @@ the most useful thing the page can catch.
 
 Cold launch, and the packed-binary decision behind it.
 
-Run it on the laptop first and press **Save as desktop baseline**. Then run it
-on the phone. The 4x to 8x multiplier in #29 becomes a measured ratio.
+The laptop half is already done and it is not done with this page. Run
+`node scripts/launch-desktop.mjs`, which drives the shipped app in headless
+Chrome at 1x, 4x and 6x CPU throttling and reads the app's own
+`performance.mark` calls. The numbers, and what they already settle, are in the
+`2026-09-02` entry in `docs/DECISIONS.md`. This page is the phone half: run it on
+the phone, and it confirms or refutes a desk number rather than producing one
+from nothing. Press **Save as desktop baseline** on the laptop as well if you
+want the page's own fetch-to-answer ratio beside the app's.
 
 Network and parse are timed separately, because they scale differently and the
-packed binary only cares about the parse. Each run parses the string seven times
+packed binary only cares about the parse.
+
+`data/current.json` is fetched first, alone, because `js/app.js` `boot()` cannot
+ask for the index until it arrives: the pointer is the file that names the
+index. That wait gets its own column, `ptr`. On a desk it is single-digit
+milliseconds. On a phone link it is a whole round trip in front of the biggest
+file the first answer needs, and it is the only number on the page that no
+desktop run can stand in for. Each run parses the string seven times
 and reports the median, since one sample on a phone is noise, and keeps the
 first parse separately because that is the only one paying a cold JIT.
 
@@ -53,6 +77,25 @@ Outside the term the page still times the fetch and the parse, because those
 cost the same on any date. It does not print a room count: the app refuses to
 rank at all out of term, so the rows `rank()` returns are a timing sample and
 the page says so where the count used to be.
+
+**The map panel is the one place in `spikes/` that loads app code.** It answers
+the four questions the revision comment on #29 adds: whether the canvas
+allocation succeeds, whether it is GPU backed, what the first blit costs against
+every later one, and how big the raster is, plus `buildBasemap`'s wall clock.
+The vendoring rule below exists so a broken app cannot break the instrument, and
+it is the wrong rule here, because `buildBasemap`'s own wall clock is the
+measurement and a copy that had drifted would report a confident number for code
+the app does not run. So it is a dynamic `import()` inside a `try`, taken last,
+after every timing number is already recorded: a missing or broken `js/map.js`
+costs that panel and nothing else on the page.
+
+**There is no frame counter, and there will not be one.** The revision comment
+asks for one. The loop it wanted counted was replaced by the wake-driven
+`createFrameLoop` in `js/map.js` in
+[#94](https://github.com/EnesYilmazcode/Vacant/issues/94), and a settled list
+asks for **0** frames in three seconds at 1x, 4x and 6x CPU throttling, five
+runs at each, measured with `node scripts/launch-desktop.mjs`. An instrument
+that can only ever print zero teaches its reader that the panel is decoration.
 
 ## walk.html, for [#26](https://github.com/EnesYilmazcode/Vacant/issues/26)
 
@@ -114,6 +157,9 @@ can drive them:
   much of a sample the product would ever have shown.
 - `drift.js`, the three-state engine comparison.
 - `verdict.js`, the #29 decision from recorded runs.
+- `raster.js`, what the map panel's three verdicts say: whether the raster was
+  really allocated, whether the first blit paid for an upload, and whether the
+  canvas is on the GPU.
 
 A copy nobody checks is a second definition of "free", so every one of them has a
 test, and the three copies also have a tripwire on the app source they came from:
@@ -129,6 +175,8 @@ test, and the three copies also have a tripwire on the app source they came from
   never as drift.
 - `test/verdict.test.mjs` fails if the launch states the page offers and the
   states the verdict counts drift apart.
+- `test/raster.test.mjs` pins which readings mean allocated, uploaded and GPU
+  backed, and fails if `launch.html` stops asking `raster.js` at all.
 
 `walk.html` also re-fetches `js/engine.js` at load and says on screen whether the
 copy still matches. It is a fetch, not an import, and it checks the status before

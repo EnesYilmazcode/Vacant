@@ -14,6 +14,18 @@ data/harvest-*.json.gz
 # Claude Code worktrees and session state
 .claude/
 
+# The Learning Spaces classroom pages fetch-room-features.mjs reads: 321 files,
+# 12 MB, and refetchable in about six minutes. data/cache/registrar/ is ten
+# small pages and stays committed; two of them are this script own. A clean
+# checkout rebuilds the Learning Spaces cache on the first run.
+data/cache/learningspaces/
+
 # The Roomix cross-check files for #26 are 2.7 MB and refetchable in a second.
 # docs/research/ground-truth-walk.md carries the command and the numbers.
 rx/
+
+# The SIS room matrix sweep caches one gzipped page per room: 425 files, 5.2 MB
+# a week, and the whole sweep refetches in four minutes. data/cache/registrar/
+# is 10 files and stays committed. scripts/test/room-events.test.mjs carries the
+# grid markup inline so a parser change is still testable without refetching.
+data/cache/sis-room-matrix/

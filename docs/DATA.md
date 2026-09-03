@@ -31,7 +31,7 @@ is pressing the on switch.
    content.osu.edu ----------------------------------> a laptop
    registrar.osu.edu                                        |
    gissvc.osu.edu                                           | writes JSON,
-                                                            | commits it
+   courses.erppub.osu.edu                                   | commits it
                                                             v
    a student's phone <------------------------------- GitHub Pages
                         every day, all term, zero
@@ -65,7 +65,7 @@ free with a class sitting in them.
 | --- | --- |
 | Cadence | Run by hand, about once a week. **No scheduled workflow exists in the repository.** The planned cron is `'25 7 * * 0'`, Sunday 07:25 UTC, which is 3:25am Eastern |
 | Requests per run | **545**, measured on term 1268 over 4 passes |
-| Advertised ceiling | **1,100 a week**. `MAX_PASSES` x 8 buckets x 17 pages is 1,089, and the `User-Agent` states the ceiling rather than the typical run |
+| Advertised ceiling | **1,900 a week**, for everything in this repository together. `MAX_PASSES` x 8 buckets x 17 pages is 1,089 for the harvest, plus 323 for room features and 427 for room events, all cold. The `User-Agent` states that ceiling rather than the typical run |
 | Hard stop | `MAX_REQUESTS` is 4,000 and throws rather than fetches |
 | Concurrency | 2, with a 500 ms delay, about 2.9 requests a second |
 | Bytes per page | **37,460 on the wire, gzipped**, measured 2026-08-27 with one request |
@@ -77,7 +77,7 @@ The `User-Agent` says who is calling and how much:
 
 ```
 Vacant/0.1 (+https://github.com/EnesYilmazcode/Vacant; contact via repo issues)
-weekly classroom-schedule index, <=1100 requests/week
+weekly classroom-schedule index, <=1900 requests/week
 ```
 
 That string is hardcoded in `scripts/lib/fetch.mjs`, and while the harvest is run
@@ -96,7 +96,36 @@ that makes Vacant different from every other room finder: it is the only public
 statement of when a building's doors are actually open. Cached under
 `data/cache/registrar/` so a parser change does not cost a refetch.
 
-### 3. The building and campus geometry
+### 3. The room feature sources
+
+```
+https://registrar.osu.edu/staff-resources/class-catalog-and-space/general-assignment-rooms/
+https://learningspaces.osu.edu/classrooms
+```
+
+Two published sources, merged by `scripts/fetch-room-features.mjs` into
+`data/room-features.json`. The Registrar's general assignment list is one index
+request plus one term page and covers 327 rooms with capacity and 13 coded
+characteristics. OTDI's Learning Spaces Directory is one index plus one page per
+classroom, 321 requests, and joins to 311 rooms. **323 requests on a cold cache,
+0 on a warm one.**
+
+The two are merged rather than concatenated because they use the word "moveable"
+on different axes. The Registrar means not bolted to the floor; Learning Spaces
+means on casters. Held together they support a bolted / freestanding / casters
+scale that neither source publishes alone, and every room records which sources
+decided it.
+
+Registrar pages are cached under `data/cache/registrar/`, shared with
+`fetch-ga-rooms.mjs`, and committed. The 321 Learning Spaces pages are 12 MB and
+are **not** committed: `.gitignore` excludes `data/cache/learningspaces/` and a
+clean checkout refetches them once.
+
+Photos and 360 tours are **linked, never copied**. Nothing under
+`rooms.app.it.osu.edu` is mirrored into this repository, so the images stay on
+Ohio State's own server and remain Ohio State's.
+
+### 4. The building and campus geometry
 
 ```
 https://gissvc.osu.edu/arcgis/rest/services/Data/FacilitiesStreets_RO/MapServer/11/query
@@ -115,6 +144,33 @@ Credit, per the FITS grant on the OSU GIS Hub:
 `docs/outreach/gismaps-email.md` is the note to `gismaps@osu.edu` asking whether
 they want that worded differently. No answer is not permission, and that is
 recorded in `docs/DECISIONS.md` rather than assumed away.
+
+### 5. The Registrar's SIS room matrix
+
+```
+https://courses.erppub.osu.edu/psc/ps/EMPLOYEE/PUB/c/OSR_CUSTOM_MENU.OSR_ROOM_MATRIX.GBL
+```
+
+The public room matrix, read by `scripts/fetch-room-events.mjs` into
+`data/room-events-<term>.json`. One GET to open the session, one 302 hop, then one
+POST per room: **427 requests for a 425-room sweep, 232 seconds, one at a time**.
+It is the only sweep here that is not a fresh anonymous GET per URL, because
+PeopleSoft hands out its session cookies on a redirect and expects them echoed
+back on every hop. That is also why this one script keeps its own HTTP client
+instead of `scripts/lib/fetch.mjs`: Node's redirect following drops the cookie
+jar and lands on a "you must have cookies enabled" page that returns a healthy
+200 and parses as a campus with no bookings at all.
+
+This is the occupancy the class harvest cannot see: registered events (student
+org meetings, tours, info sessions) and Registrar ROOM BLOCK holds. On the week
+of 08/31/2026 that was 327 events and 347 block cells, and 323 of the events and
+343 of the block cells land in a window `rooms-1268.json` calls entirely free.
+Blocks alone cover 10.7% of every weeknight 5-10pm free room-minute and 8.95% of
+Saturday 8am-10pm.
+
+The 8,288 class cells in the same grids are counted and thrown away. The 425
+gzipped pages are cached under `data/cache/sis-room-matrix/` and are **not**
+committed: 5.2 MB a week that refetches in four minutes.
 
 ---
 
@@ -142,6 +198,14 @@ email addresses                    0
 lastName / firstName / emplid      0
 ```
 
+**The room matrix's free-text booking labels are dropped the same way.** Every
+event and room block in the SIS room matrix carries a Registrar-typed label, and
+23 of the 189 distinct labels on the week of 08/31/2026 name a real person. No
+heuristic separates those from the student org names reliably, so the whole
+string is discarded inside `parseRoom()` before a record is built. Only the type
+code survives: MTG, TOUR, INFO, WRKS, SMNR, or null for a block.
+`scripts/test/room-events.test.mjs` asserts that against the shipped bytes.
+
 Vacant also stores no enrolment numbers, no student data of any kind, and no
 course descriptions in the shipped index. The room table is room, weekday, start
 minute, end minute, and the date range the meeting runs over. That is all.
@@ -164,6 +228,25 @@ Stated once, plainly, so nobody has to reconstruct it.
 - There are no terms of service on the endpoint. Nothing was clicked, no key was
   issued, no agreement exists. No authentication was bypassed and no access
   control was circumvented.
+
+The two sources added on 2026-09-03 were checked the same way before anything
+was written.
+
+- `learningspaces.osu.edu/robots.txt` is the stock Drupal file. It disallows
+  `/admin/`, `/user/login`, `/core/`, `/profiles/` and the other machinery paths.
+  `/classrooms` and `/classroom/*` are allowed, and those are the only paths read.
+- `courses.erppub.osu.edu/robots.txt` returns **HTTP 404**, so again there is no
+  file and no rule.
+- The room matrix is **not a private page reached sideways**. It sits on
+  PeopleSoft's `PUB` portal node, the Registrar links it publicly from the Event
+  Space Request page, and Ohio State publishes a how-to for it at
+  `it.osu.edu/student-information-system-sis/sis-room-class-scheduling/11-use-the-room-matrix`.
+  It serves the grid to an anonymous session. No credential is sent, none is
+  held, and nothing is bypassed: the cookie jar the scraper keeps is the same
+  anonymous session cookie a browser is handed on first load, and the only
+  reason it is handled by hand is that Node's redirect following drops it.
+- Neither host publishes terms of service, and the free-text field that could
+  carry a person's name is discarded before a record is built.
 
 So: nothing was agreed to and nothing was breached. The clause that does apply is
 the Responsible Use policy's I.D, which asks users to "limit use so as not to
@@ -209,6 +292,10 @@ node scripts/fetch-campus.mjs
 #    data/cache/registrar/. Writes buildings-hours.json: 47 buildings a term.
 node scripts/fetch-building-hours.mjs
 
+# 3b. Room features. 323 requests cold, 0 warm. Writes room-features.json:
+#     328 rooms, from the Registrar's list and OTDI's Learning Spaces Directory.
+node scripts/fetch-room-features.mjs
+
 # 4. The class harvest. This is the expensive one: 545 requests, about fifteen
 #    minutes, about 19.5 MB. Writes data/harvest-<term>.json.gz, which is NOT
 #    committed, plus the manifest beside it, which is.
@@ -217,6 +304,11 @@ node scripts/fetch-rooms.mjs
 # 5. Invert the harvest into the room index. No network.
 #    Writes rooms-<term>.json, buildings-<term>.json and current.json.
 node scripts/build-index.mjs
+
+# 6. Non-class room occupancy. Reads the index step 5 wrote, so it runs last.
+#    427 requests, about four minutes. Writes room-events-<term>.json: 674
+#    records over 425 rooms for the current week.
+node scripts/fetch-room-events.mjs
 ```
 
 Add `--dry-run` to any of the fetch scripts to see what it would request without

@@ -3046,3 +3046,167 @@ rewritten to the index that exists.
 
 **No phone has been involved in any of this.** Both instruments emit the exact
 DECISIONS block to paste back here.
+
+---
+
+## 2026-09-03  What is in the room, and the bookings the class schedule cannot see
+
+Two questions were asked together: how to know a room's furniture without
+searching for each room by hand, and how to stop offering a room a student
+organisation has booked. They turned out to share an answer, because both are
+already published and neither needed a new idea.
+
+### Room features come from two pages, not 327
+
+**Decided.** `scripts/fetch-room-features.mjs` merges two sources into
+`data/room-features.json`.
+
+The Registrar's general assignment **term list** page carries capacity and 13
+coded characteristics for all 327 general assignment rooms in **one request**.
+OTDI's Learning Spaces Directory carries seats, furniture type, air
+conditioning, carpet, darkening, lectern, best affordance, display inputs,
+microphones, AV kit, two photographs and a 360 tour, at one page per room, and
+joins to 311 of them. Together they cover **328 of the 425 rooms in the index**
+for 322 requests a term.
+
+**Decided against** the Registrar's per-room pages, which is the surface a
+search engine hands you first. They carry capacity and photographs and no
+characteristics at all, they cost 327 requests instead of one, and the sampled
+pages are stamped "last updated July 2022" and "November 1, 2022".
+
+**Decided against** reading the furniture out of photographs for the 97 rooms
+neither source covers. Every one of the 97 is departmental rather than general
+assignment, and a sweep of 523 HEAD requests over every plausible filename on
+`rooms.app.it.osu.edu` returned **zero images**. The photo host is pool rooms
+only, so there is no picture to look at. Departmental pages fill 7 of the 97 one
+page at a time and do not generalise. The remaining 90 stay unknown, which the
+app already knows how to say.
+
+### The two sources contradict each other, and that is what makes the merge worth doing
+
+**Measured.** Both sources use the word "moveable" about seating and they
+disagree on 94 rooms. They are not in conflict; they are describing different
+axes. Checked against the OTDI photographs for nine rooms, six disagreeing and
+three agreeing, the rule held every time:
+
+- The Registrar's "Moveable" (codes 30, 32) means **not bolted to the floor**,
+  and its "Stationary" (31, 33) means bolted.
+- Learning Spaces' "Moveable Tablet Arms" means **on casters**, and its "Fixed
+  Tablet Arms" means no casters. It does **not** mean bolted.
+
+Holding both gives a three-level mobility scale that neither source publishes:
+**62 bolted, 185 freestanding without wheels, 80 on casters, 98 unknown.**
+
+`derived.mobilityBasis` names the sources behind each verdict, because only two
+Learning Spaces values speak to wheels at all. "Movable Tables and Chairs",
+"Fixed Table and Chairs" and "Group Seating" describe the furniture rather than
+how it moves, so a room carrying one of those is decided by the Registrar alone.
+An earlier draft treated any non-caster value as proof of no wheels and claimed
+two-source support on 68 rooms that only one source had an opinion about.
+
+`derived.mobilityContested` marks the 18 rooms where the two sources describe
+furniture that cannot both be right. All four of the table-on-casters rooms are
+of that kind, so the flag is on the room rather than in a footnote.
+
+### Only six of the published fields are worth a filter
+
+**Measured** across all 425 rooms. A field is a filter only if rooms differ on
+it, and half of these do not.
+
+| Worth shipping | yes / no / unknown |
+| --- | --- |
+| whiteboard rather than only chalk | 85 / 239 / 101 |
+| windows | 214 / 112 / 99 |
+| tables rather than tablet-arm chairs | 114 / 213 / 98 |
+| chairs on casters | 80 / 247 / 98 |
+| tiered or sloped floor | 60 / 267 / 98 |
+| built for group work | 49 / 241 / 135 |
+
+| Not worth shipping | why |
+| --- | --- |
+| air conditioning | 98% yes |
+| classroom computer | 99% yes |
+| darkening quality | 100% "High" |
+| height adjustable lectern | 94% no |
+
+### The club bookings are in the Registrar's own system
+
+**Decided.** `scripts/fetch-room-events.mjs` sweeps the SIS Room Matrix on the
+public portal node and writes `data/room-events-1268.json`.
+
+```
+https://courses.erppub.osu.edu/psc/ps/EMPLOYEE/PUB/c/OSR_CUSTOM_MENU.OSR_ROOM_MATRIX.GBL
+```
+
+No login. One session cookie, one GET, one POST per room. Measured over all 425
+rooms for the week of 08/31/2026: 427 round trips, 229 seconds, zero errors,
+**327 non-class bookings across 174 rooms**, 209 distinct reservation ids, typed
+MTG 236 / TOUR 76 / INFO 8 / WRKS 6 / SMNR 1. Ninety of them start at 5pm or
+later. **The shipped index calls the room entirely free for 323 of the 327.**
+
+**Decided against** scraping student organisation sites, which was the obvious
+route and is the wrong one. The official directory at `activities.osu.edu`
+publishes all 1,764 Columbus organisations as JSON with a meeting time and
+place, but the place is a **postal address field**, so organisations type a
+street. Over all 1,764 records, 16 name a room and **5 land on a room in this
+index**. The records are refreshed once a year at registration and carry no
+cancellation signal. 25Live, where the bookings are actually made, refuses every
+data endpoint anonymously (space list 403, event search 401, calendar 403). The
+Student Life events calendar is the one path its `robots.txt` disallows, and its
+own guidelines say it "may not be used to publish general student organization
+meetings".
+
+Department calendars are a real secondary source, roughly 23 room-level events a
+week inside indexed buildings for about 50 requests. Not built. The Room Matrix
+covers the same ground first.
+
+### ROOM BLOCK is measured but NOT decided
+
+The matrix carries a second entry type. **347 block cells across 56 rooms,
+2,665 hours a week**, and the shipped index calls the room entirely free for 343
+of them. Enarson Classroom Building holds 34 of its rooms from 5:30pm to 11pm on
+weekdays and 7am to 11pm on both weekend days, while its published building
+hours say open until 11pm every day, so the app ranks them. Blocks cover
+**10.7%** of every weeknight 5-10pm room-minute the app currently offers and
+**8.95%** of Saturday 8am-10pm. The pattern is standing rather than one-off,
+confirmed in the weeks of 09/07, 09/28 and 10/26.
+
+What it means is not settled, and the data is shipped without acting on it.
+Across the whole sweep **zero of the 327 events fall inside a block window**,
+which proves a block stops anything else being scheduled there. It does not
+prove a person is in the room. The honest next step is the same instrument
+issue #26 used: stand outside two or three held Enarson rooms on a weeknight and
+record whether the door opens and whether anyone is inside. If they are empty
+and unlocked a block is a label; if they are locked or in use a block is busy
+time. Until then `room-events-1268.json` carries blocks as their own `kind` so
+the decision can be made without refetching.
+
+### The Registrar's booking labels are dropped at the parse boundary
+
+**Decided.** Only `type` survives: MTG, TOUR, INFO, WRKS, SMNR, and null for a
+block. The free text the Registrar types is read, counted and discarded.
+
+**Measured.** 23 of the 189 distinct labels in a single week name a real person,
+in forms like "MTG - Dr X Training Mtg" and "MTG - Office Hours/<name>". No
+heuristic separates those from organisation names reliably: a first pass at one
+flagged 105 of 189, most of them clubs. Issue #7 already settled the same
+question for instructors on class meetings and this is that rule applied to
+events. Nothing downstream wants the words, because a busy interval needs a
+room, a day and two clock times. The file got 61% smaller.
+
+### The request ceiling in the User-Agent moved, because it is a promise
+
+`scripts/lib/fetch.mjs` told every server it spoke to that Vacant sends
+"<=1100 requests/week". These two scrapers add 322 and 427. The string now says
+1,900 and names the parts. The comment above it records that two earlier drafts
+understated the number, which is exactly the failure being avoided here.
+
+### A free side effect: the matrix is a better rot detector than the one we have
+
+8,104 of the 8,288 class cells in the sweep match the shipped index exactly,
+which is 97.8% and is what validates the parser. The 182 that the matrix has and
+the index does not are scattered across 40 subjects rather than concentrated in
+one, and the index was harvested on 08-27 against a term that began 08-25. That
+is ordinary one-week drift, and it means the matrix is an independent oracle for
+the weekly harvest, keyed by the same facility ids. Not wired up. Recorded so it
+is not rediscovered.

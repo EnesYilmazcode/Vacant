@@ -2708,3 +2708,50 @@ installed iOS window that cannot hold one. Then the watch goes, #87 closes on
 option 2 — a fresh fix folded into the foreground-return `refresh()` — and this
 entry gets a successor saying so. `followAction()` survives either way: option 2
 lands on the same gates.
+
+## 2026-09-02  The sheet carries the column width, not its children, and #93's reason is struck
+
+**Reverses the layout half of [#93](https://github.com/EnesYilmazcode/Vacant/issues/93),
+landed the same day in [#98](https://github.com/EnesYilmazcode/Vacant/pull/98).** The
+measurements #98 made all stand; one property moved. This entry exists because #93
+and #98 recorded nothing here, so the decision lived only in a CSS comment and a test
+assertion, which is exactly what the next PR overwrites.
+
+**Decided:** `#sheet` carries `max-width: var(--col)` and `margin-inline: auto` against
+`left: 0; right: 0`. The children carry nothing.
+
+**Decided against:** `#sheet > * { width: 100%; max-width: var(--col); margin-inline: auto }`,
+which is what #98 shipped, leaving the sheet full width.
+
+**What settled it.** At 1920x1000 the full-width sheet is a 1920px black slab of which
+1408px, 73%, is featureless and belongs to nothing, with 512px of rows adrift in the
+middle and the map squeezed to a 220px strip. Every row, name, walk time, back arrow
+and list sits at identical coordinates either way at every width from 320 to 1920, so
+the only thing in dispute was whether the box carrying that column is 512px or the width
+of the window. Measured in Chromium against the running app: 390 gives x=0 w=390 and 430
+gives x=0 w=430, both unchanged; 1280 gives x=384 w=512 and 1920 gives x=704 w=512.
+Below 32rem the cap never binds, so a phone in portrait is untouched.
+
+**#98's stated reason was fabricated.** It said a card floating over the map is "a second
+design, which docs/BLUEPRINT.md rules out for this app". BLUEPRINT.md contains the word
+sheet zero times, card zero times and panel zero times, and says at line 9 that where it
+disagrees with the code the code is right. The rule was invented and then attributed.
+That is the part worth remembering: a citation is not evidence until someone opens the file.
+
+**Centred by margin, never by a transform.** `left: 50%` plus `translateX(-50%)` centres
+just as well, and at the 393px `scripts/shoot.mjs` shoots at it translates by -196.5px,
+landing every glyph in the sheet on a half pixel. All four frames with sheet content came
+back re-antialiased on a diff that was supposed to touch nothing below a laptop. With
+`margin-inline: auto` the five frames are byte-identical to main's, confirmed by shooting
+both trees on one machine and diffing all 3,013,524 pixels of each pair: zero differ.
+`scripts/test/screens.test.mjs` now forbids the transform.
+
+**What this entry does not fix, and both are filed.** The install and refresh rail
+(`#bars`) is still `left: 0; right: 0`, so on a laptop with a bar up a 512px card stands
+on a full-window rail. And `#sheet` keeps unconditional `padding-inline: env(safe-area-inset-*)`,
+which now comes out of the 512px cap rather than out of the window, costing a notched
+phone in landscape 118px of column, 23%.
+
+**What would reverse this.** A phone-first argument that the map either side of the card
+is worth less than the horizon line the full-width top border drew. Nobody has made it
+with a measurement. Make it here if you make it.

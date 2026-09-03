@@ -23,7 +23,7 @@ import { roomClaim } from './claim.js';
 import { blocksOn, classesOn, dayClaim } from './day.js';
 // `query` arrives as `ladder` because js/app.js already holds a `state.query`,
 // which is the buildings search box and has nothing to do with the engine.
-import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, query as ladder, rank, shape, walkMinutes } from './engine.js';
+import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, query as ladder, rank, shape, tally, walkMinutes } from './engine.js';
 // The deadline every request on the path to a first answer shares. It lives in
 // js/firstrun.js because that is the module holding the rule it comes from.
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
@@ -180,6 +180,15 @@ const state = {
   needed: 30,
   results: [],
   total: 0,
+  // How many rooms are free, and free for long enough, counted once by
+  // engine.js so the printed strip and the spoken sentence cannot disagree.
+  // Written by answer() before it paints, and answer() is paintList()'s only
+  // caller, so it is never read stale.
+  tally: null,
+  // The basemap fetch failed, so the canvas is gone and the list has to say so.
+  // A missing map costs the map and nothing else, which is only true if the
+  // black rectangle it leaves is explained.
+  mapless: false,
   // Which constraint the fallback ladder gave up to reach an answer, and
   // whether it gave up anything at all. The engine has computed both since the
   // ladder shipped and nothing read them, so a list built by dropping the
@@ -683,6 +692,10 @@ function answer() {
   state.bounds = shape(usable);
   state.total = usable.length;
   state.results = state.bounds.rows;
+  // One count of the word free for both readers of it. paintList() prints the
+  // strip off this and the live region below speaks off the same object, so the
+  // two cannot answer "how many are free" differently again.
+  state.tally = tally(state.results, usable);
 
   // Nothing walkable from here, and rooms out there that are. OFF_CAMPUS_KM
   // draws a circle around this question and gets it wrong on both sides: Wed
@@ -738,10 +751,12 @@ function answer() {
   state.relaxed = answered.relaxed;
   if (answered.relaxed) paintList();
   settle();
-  // Free is wait === 0, the word the rows and settle() spend. state.total holds
-  // everything that cleared the 90 minute wait, so this line read "297 rooms
-  // free, 0 shown" over a heading saying nothing was close enough.
-  const free = usable.reduce((n, r) => n + (r.wait === 0 ? 1 : 0), 0);
+  // Free counts everything inside the 90 minute wait, not the shown rows, so
+  // this line can honestly read "297 rooms free, 0 shown" over a heading saying
+  // nothing was close enough. It used to count its own way as well, testing
+  // wait alone where the strip tested published hours too; tally() is now the
+  // only place either of them gets the word from.
+  const free = state.tally.free;
   // What the strip admits in print, the live region says out loud, and it leads
   // for the same reason: it is about the whole answer, and the counts behind it
   // are about the rows. A disclosure only sighted readers get is not one.
@@ -757,6 +772,13 @@ function answer() {
       state.results.length
         ? `${free} room${free === 1 ? '' : 's'} free, ${state.results.length} shown.`
         : `${$('list-h')?.textContent ?? ''} ${$('list').querySelector('.empty')?.textContent.replace(/\s+/g, ' ').trim() ?? ''}`.trim(),
+      // Last, and not first like the rung line above it. The rung is about the
+      // answer and changes what the rows mean; the missing map changes nothing
+      // about them. It is here at all because the same rule that puts the rung
+      // here applies: a strip only sighted readers get is not a disclosure. It
+      // rides the one live region rather than getting a second one, which
+      // docs/a11y-contract.md forbids.
+      state.mapless ? MAPLESS : null,
     ]
       .filter(Boolean)
       .join(' '),
@@ -886,11 +908,31 @@ const relaxedLine = () =>
     })
     : null);
 
+// #53's words, in one place because the live region says them too and a
+// sentence written twice ends up written two ways.
+const MAPLESS = 'No campus map on this phone yet.';
+
+// What the list has to admit before the rows start, in the order it admits it:
+// why campus is quiet first, because that is about the answer, then the missing
+// map, which is only about the picture.
+//
+// The map line is a `.strip` and not a component of its own, because it is the
+// same kind of sentence as the situation note and this list already has a place
+// for those. A banner would have to earn its own contrast, its own reflow rule
+// and its own slot in the reading order, for one sentence that appears when a
+// fetch fails.
+const notes = () =>
+  [
+    state.situation?.note ? esc(state.situation.note) : '',
+    state.mapless ? MAPLESS : '',
+  ]
+    .filter(Boolean)
+    .map((text) => `<p class="strip">${text}</p>`)
+    .join('');
+
 function paintList() {
   const list = $('list');
-  const note = state.situation?.note
-    ? `<p class="strip">${esc(state.situation.note)}</p>`
-    : '';
+  const note = notes();
 
   if (!state.results.length) {
     const next = state.soonest;
@@ -930,9 +972,7 @@ function paintList() {
   // nothing at all, so the strip is absent unless the answer is degraded.
   let strip = '';
   let caveat = '';
-  const meets = state.results.filter((r) => r.hoursKnown && r.wait === 0 && r.meetsNeed).length;
-  const shorter = state.results.filter((r) => r.hoursKnown && r.wait === 0).length;
-  const waiting = state.results.filter((r) => r.hoursKnown && r.wait > 0).length;
+  const { meets, shorter, waiting } = state.tally;
 
   if (meets) {
     strip = '';
@@ -1061,9 +1101,23 @@ function select(i) {
 // arrow keys; #85 took the bar off the list and the pair of them went with it.
 // What is left is one control, on one screen, and the list says in words which
 // of the four it was answered with.
+//
+// The choice is said twice, in the accent fill and in `aria-pressed`, because
+// colour is not a state. Accessibility.getFullAXTree at 216ba00 returned four
+// identical `button "30 min" {}` nodes with nothing marking the chosen one; #76
+// made that live rather than academic, since a returning user's remembered chip
+// can be "2 hours".
+//
+// aria-pressed and not role="radio". A radio group promises the keyboard model
+// the paragraph above says #85 deleted: one tab stop, entered on the checked
+// radio, arrow keys moving focus and selection together. Announcing a model the
+// app does not implement is worse than announcing nothing, and a radio reads as
+// a choice you confirm later where these four re-rank campus on the press.
 function paintDuration() {
   for (const el of document.querySelectorAll('#ask .opt[data-min]')) {
-    el.classList.toggle('primary', el.dataset.min === state.duration);
+    const on = el.dataset.min === state.duration;
+    el.classList.toggle('primary', on);
+    el.setAttribute('aria-pressed', String(on));
   }
 }
 
@@ -2553,6 +2607,17 @@ async function boot() {
     })
     .catch(() => {
       $('map').hidden = true;
+      // The canvas going away leaves the sheet resting where it always rests
+      // and nothing above it: measured at 393x852 with data/campus.json blocked
+      // over CDP, the sheet's top edge is y=528, so 62.0% of the phone is black
+      // with no explanation on it. state.mapless is what paintList() prints and
+      // what the live region reads out. #53
+      state.mapless = true;
+      // The fetch goes out in boot()'s first tick and the first answer needs a
+      // position and three more files, so in every run measured this lands long
+      // before any list exists. The repaint is for the run where it does not,
+      // which a 20 second AbortSignal timeout can produce.
+      if (state.results.length) paintList();
       console.warn('Vacant: no basemap. The list still answers.');
     });
 

@@ -1880,9 +1880,101 @@ test('nothing the empty screen calls free is a room that has not opened yet', ()
 
   // The live region stops announcing a count over a screen that has none. It
   // used to say "297 rooms free, 0 shown" under "Nothing close enough."
-  const spoken = src.slice(src.indexOf('  const free = usable.reduce'), src.indexOf('// A name over 24 characters'));
-  assert.match(spoken, /r\.wait === 0 \? 1 : 0/, 'the spoken count is not the free count');
+  //
+  // The count itself moved into engine.js tally() and is asserted below, in
+  // "print and speech count free by one rule". What is left here is the half
+  // this test is about: that the sentence is the free count and not state.total,
+  // and that a screen with no rows does not get one at all.
+  const spoken = src.slice(src.indexOf('  const free = state.tally'), src.indexOf('// A name over 24 characters'));
+  assert.match(spoken, /const free = state\.tally\.free;/, 'the spoken count is not the free count');
   assert.match(spoken, /state\.results\.length\s*\?/, 'a screen with no rows still announces a count');
+});
+
+// The rule itself is engine.js tally(), tested in engine.test.mjs over a
+// fixture that carries an unknown-hours room. This is the other half, and it
+// has to be a source test because there is no DOM here: that js/app.js still
+// asks for the rule instead of writing it out a third time. The two counts sat
+// three hundred lines apart and only the printed one tested published hours,
+// which is how a screen reader was told "103 rooms free" on the screen built to
+// say we do not know.
+test('js/app.js counts free rooms through tally() and nowhere else', () => {
+  const src = codeOnly(readFileSync(join(ROOT, 'js', 'app.js'), 'utf8'));
+  const byHand = src.split('\n').map((l) => l.trim()).filter((l) => l.includes('wait === 0'));
+  assert.deepEqual(byHand, [], 'a free count is spelled out again instead of reading state.tally');
+  for (const line of [
+    'state.tally = tally(state.results, usable);',
+    'const free = state.tally.free;',
+    'const { meets, shorter, waiting } = state.tally;',
+  ]) {
+    assert.ok(src.includes(line), `js/app.js no longer has: ${line}`);
+  }
+});
+
+// Colour is not a state. Driven at 216ba00 with Accessibility.getFullAXTree at
+// 393x852, the four came back `button "30 min" {}`, `button "1 hour" {}`,
+// `button "2 hours" {}`, `button "rest of day" {}`, with nothing separating the
+// chosen one from the other three. #76 made it live rather than theoretical:
+// the remembered duration is restored on boot, so with vacant.duration set to
+// "120" the accent fill lands on "2 hours" and the tree still says nothing.
+//
+// Toggle buttons, not a radio group. A radio group is a promise about the
+// keyboard that this control does not keep: #85 deleted the roving tabindex and
+// the arrow keys along with the chip bar, and all four are plain tab stops now.
+test('the chosen duration is in the accessibility tree, not only in the fill', () => {
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const opts = [...html.matchAll(/<button class="opt[^"]*" data-min="[^"]*"[^>]*>/g)].map((m) => m[0]);
+  assert.equal(opts.length, 4, 'the four duration buttons moved');
+  assert.equal(
+    opts.filter((b) => b.includes('aria-pressed="true"')).length,
+    1,
+    'exactly one duration button is authored as chosen',
+  );
+  for (const b of opts) assert.match(b, /aria-pressed="(true|false)"/, `no aria-pressed on ${b}`);
+  // The one carrying the accent fill is the one carrying the state.
+  assert.match(opts.find((b) => b.includes('primary')), /aria-pressed="true"/);
+
+  // A radio role would announce arrow-key navigation the app does not
+  // implement, so the group stays a group.
+  assert.doesNotMatch(html, /role="radio(group)?"/, 'a radio role promises a keyboard model #85 removed');
+
+  const src = codeOnly(readFileSync(join(ROOT, 'js', 'app.js'), 'utf8'));
+  const paint = src.slice(src.indexOf('function paintDuration()'), src.indexOf('function firstDoor'));
+  assert.match(paint, /setAttribute\('aria-pressed', String\(on\)\)/, 'paintDuration paints colour only');
+  assert.match(paint, /classList\.toggle\('primary', on\)/, 'the fill and the state come off one boolean');
+});
+
+// A missing basemap costs the map and nothing else, which is only true if the
+// black rectangle it leaves is explained. Driven at 216ba00 at 393x852 with
+// data/campus.json blocked over CDP: the list answered with 38 rows, the canvas
+// was hidden, the sheet rested with its top edge at y=528, and the 528px above
+// it, 62.0% of the screen, said nothing. #53 named the sentence and it was
+// never written.
+test('a missing basemap says so above row one, in print and out loud', () => {
+  const src = codeOnly(readFileSync(join(ROOT, 'js', 'app.js'), 'utf8'));
+  assert.match(src, /const MAPLESS = 'No campus map on this phone yet\.';/, "#53's sentence is missing");
+  // One constant with two readers, because a sentence written twice ends up
+  // written two ways.
+  assert.equal((src.match(/MAPLESS/g) ?? []).length, 3, 'MAPLESS has lost a reader or gained a copy');
+
+  // The catch that hides the canvas is the thing that has to raise the flag.
+  const catchBlock = src.slice(src.indexOf("$('map').hidden = true;"), src.indexOf('const current = await json'));
+  assert.ok(catchBlock.length > 0, 'the basemap catch in boot() moved');
+  assert.match(catchBlock, /state\.mapless = true;/, 'the canvas is hidden and nothing records why');
+
+  // Printed as the same .strip the situation note uses, so it lands in the
+  // reading order the list already has rather than in a component of its own.
+  const notes = src.slice(src.indexOf('const notes = () =>'), src.indexOf('function paintList()'));
+  assert.match(notes, /state\.mapless \? MAPLESS : ''/);
+  assert.match(notes, /<p class="strip">/);
+
+  // And said, on the one live region the contract allows, rather than on a
+  // second one.
+  assert.match(src, /state\.mapless \? MAPLESS : null,/, 'the notice is print-only');
+  assert.equal(
+    (readFileSync(join(ROOT, 'index.html'), 'utf8').match(/aria-live/g) ?? []).length,
+    1,
+    'docs/a11y-contract.md allows exactly one live region',
+  );
 });
 
 // Nothing walkable from here is a state the app has to answer, not a screen it

@@ -746,11 +746,15 @@
   <h1>Vacant<span>.</span></h1>
   <div id="ask-q">
     <p class="q">How long?</p>
+    <!-- aria-pressed is authored here, not only set by paintDuration(), so the
+         markup and the accent fill agree before any script runs. A remembered
+         duration moves both together on boot. Why toggle buttons and not a
+         radio group: js/app.js paintDuration(). -->
     <div class="opts" role="group" aria-label="How long do you need a room for?">
-      <button class="opt primary" data-min="30" disabled>30 min</button>
-      <button class="opt" data-min="60" disabled>1 hour</button>
-      <button class="opt" data-min="120" disabled>2 hours</button>
-      <button class="opt" data-min="day" disabled>rest of day</button>
+      <button class="opt primary" data-min="30" aria-pressed="true" disabled>30 min</button>
+      <button class="opt" data-min="60" aria-pressed="false" disabled>1 hour</button>
+      <button class="opt" data-min="120" aria-pressed="false" disabled>2 hours</button>
+      <button class="opt" data-min="day" aria-pressed="false" disabled>rest of day</button>
     </div>
   </div>
   <p class="loading">finding campus&hellip;</p>

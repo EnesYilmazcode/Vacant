@@ -122,10 +122,30 @@ const OVAL = { lat: 39.9995, lon: -83.013 };
 // twenty easy rooms in the nearest building. Quotas are filled in this order,
 // scarcest first, and a quota that cannot be filled is reported on the screen
 // instead of being quietly topped up from an easier bucket.
+//
+// The six this used to spend on `no-published-hours` are now spent on
+// `departmental`, and that is not a change of mind. It is a bucket that cannot
+// be filled any more: the room safety filter drops a room whose building has no
+// published hours, and MEASURED on the committed index, 123 rooms go that way
+// and ZERO of the 425 that ship are left in one. The instrument asked for six
+// of them for weeks and reported "wanted 6 no-published-hours, found 0" every
+// time, which is a shortfall line where a pick should have been.
+//
+// Departmental is what that risk moved to. 98 of the 425 shipped rooms are
+// absent from the Registrar's general-assignment list, they are the rooms whose
+// door is locked by preference rather than by a published schedule, and #26's
+// own comment names one: HH0120C, an 8 seat departmental conference room. The
+// app labels them and ranks them below every general-assignment room, and
+// nothing has ever checked whether a student can get into one.
+//
+// `type-1B` now also requires the room to be off that list, which is what #26's
+// done-when asked for all along. Plain type 1B is 309 of the 425 rooms and the
+// old bucket filled itself with ordinary centrally-scheduled classrooms the
+// `published-hours` quota already covers.
 const QUOTAS = [
   { key: 'low-confidence', want: 3 },
-  { key: 'no-published-hours', want: 6 },
-  { key: 'type-1B', want: 3 },
+  { key: 'departmental', want: 6 },
+  { key: 'type-1B-not-ga', want: 3 },
   { key: 'published-hours', want: 8 },
 ];
 const MAX_PER_BUILDING = 2;
@@ -305,6 +325,9 @@ function decorate(r, active) {
   const raw = data.rooms.rooms[r.id];
   const doubt = [];
   if (r.malformedBlocks > 0) doubt.push('the engine had to repair ' + r.malformedBlocks + ' booking block(s)');
+  // Kept as a tripwire, not as a bucket anybody can fill: scripts/build-index.mjs
+  // creates a room record only when a meeting names the room, so a room with no
+  // booking cannot reach the index. Measured on the committed file, 0 of 425.
   if (raw.busy.length === 0) doubt.push('no booking anywhere in the term, so nothing confirms it is in use');
   else if (raw.busy.every((b) => active[b[3]] === false)) doubt.push('every booking belongs to a session that is not running, so it reads free only because of the session mask');
   if (r.seats === null) doubt.push('capacity unknown in the index');

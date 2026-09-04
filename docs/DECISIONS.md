@@ -3210,3 +3210,24 @@ one, and the index was harvested on 08-27 against a term that began 08-25. That
 is ordinary one-week drift, and it means the matrix is an independent oracle for
 the weekly harvest, keyed by the same facility ids. Not wired up. Recorded so it
 is not rediscovered.
+
+### The overlay reads the Room Matrix document directly
+
+**Decided.** `scripts/lib/club-occupancy.mjs` accepts the parsed
+`data/room-events-<term>.json` document from the scraper above. The proposed EMS
+adapter contract from #113 is gone: it required organization identity, explicit
+status, source timestamps and caller-expanded recurrence that this verified,
+privacy-reduced source neither needs nor publishes.
+
+The boundary converts the matrix's 0=Sunday weekday into an exact date inside
+`_meta.weekStart` through `_meta.weekEnd`, verifies the source and class terms
+match, rejects unknown rooms and malformed events, and adds each accepted event
+to a one-date session without changing the original class index. A query outside
+the swept week is explicitly `outside-snapshot`; an event cannot repeat merely
+because its weekday matches.
+
+`kind: "block"` remains `undecided-room-block` and never becomes busy time here.
+That is the ROOM BLOCK decision above enforced in code rather than left to a
+caller. The test suite reads the committed #114 JSON and requires all 327 events
+to normalize, all 347 blocks to be reported and excluded, and no adapter or
+synthetic organization data in between.

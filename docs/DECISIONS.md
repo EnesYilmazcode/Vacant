@@ -3231,3 +3231,12 @@ That is the ROOM BLOCK decision above enforced in code rather than left to a
 caller. The test suite reads the committed #114 JSON and requires all 327 events
 to normalize, all 347 blocks to be reported and excluded, and no adapter or
 synthetic organization data in between.
+
+The application reads the event path from `data/current.json`. Ranking uses the
+overlay for today's date, and the room calendar uses it again for the date being
+drawn. A registered event therefore removes the room from a free window and
+appears as `In use` on its timeline. On a Registrar no-class day, class tuples
+are removed before the overlay so the event survives; passing the old blanket
+`classesSuspended` flag to the engine would have erased both. The service worker
+warms and evicts the term-keyed event file with the room index, and the weekly
+workflow refreshes it after rebuilding that index.

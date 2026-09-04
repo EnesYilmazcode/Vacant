@@ -128,14 +128,16 @@ export function normalizeMeetings(roomEvents, { rooms, term } = {}) {
 // for rooms receiving events, and a one-date session prevents a Room Matrix
 // occurrence from becoming a weekly class. Always overlay the original index,
 // never an index returned by an earlier call.
-export function overlayForDate(index, roomEvents, { date } = {}) {
+export function overlayForDate(index, roomEvents, { date, classesSuspended = false } = {}) {
   if (!index || typeof index !== 'object' || !validDate(date)) {
     throw new TypeError('Expected a class index and a valid ISO date');
   }
   const normalized = normalizeMeetings(roomEvents, { rooms: index.rooms, term: index.term });
   const meetings = normalized.meetings.filter((meeting) => meeting.date === date);
   const sessions = (index.sessions ?? []).map((session) => [...session]);
-  const rooms = { ...index.rooms };
+  const rooms = classesSuspended
+    ? Object.fromEntries(Object.entries(index.rooms).map(([id, room]) => [id, { ...room, busy: [] }]))
+    : { ...index.rooms };
 
   if (meetings.length) {
     const slot = sessions.length;

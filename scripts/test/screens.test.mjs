@@ -1154,22 +1154,22 @@ test('the screen hands one date to the grid, the timeline and the claim', () => 
   const tl = bodyOf('timelineRows');
   assert.match(tl, /function timelineRows\([^)]*\bdate\b/, 'timelineRows takes no date');
   assert.match(tl, /hoursFor\(room\.b, date\.getDay\(\)\)/);
-  assert.match(tl, /blocksOn\(room, date, state\.rooms\.sessions\)/);
+  assert.match(tl, /blocksOn\(room, date, schedule\.sessions\)/);
   assert.equal((tl.match(/state\.day/g) ?? []).length, 0, 'timelineRows still reads state.day');
 
   const room = bodyOf('roomHtml');
   assert.match(room, /const date = dayShown\(\)/);
-  assert.match(room, /timelineRows\([^)]*\bdate\)/);
+  assert.match(room, /timelineRows\([^)]*\bdate, schedule\)/);
   // An equality and nothing else. `roomDayOffset === 0 || true` still reads as
   // a day check and still matches a looser pattern, and it puts today's
   // sentence back over every stepped day.
   assert.match(room, /const today = roomDayOffset === 0;\n/);
-  assert.match(room, /!today\s*\?\s*shapeFor\(tl, date\)/, 'claimFor is still reachable off today');
+  assert.match(room, /!today\s*\?\s*shapeFor\(tl, date, schedule\)/, 'claimFor is still reachable off today');
 
   // The calendar is half the verdict, so the screen has to go and get it.
   const shape = bodyOf('shapeFor');
-  assert.match(shape, /calendarOn\(iso, state\.rooms, state\.current\)/);
-  assert.match(shape, /inTermOn\(iso, state\.current, state\.rooms\)/);
+  assert.match(shape, /calendarOn\(iso, schedule, state\.current\)/);
+  assert.match(shape, /inTermOn\(iso, state\.current, schedule\)/);
 });
 
 test('one weekday runs the whole remembered pick', () => {

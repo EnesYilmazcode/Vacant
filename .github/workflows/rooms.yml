@@ -139,6 +139,9 @@ jobs:
           ALLOW_TERM_DROP: ${{ inputs.dropTerms && '1' || '' }}
         run: node scripts/build-index.mjs "${{ steps.pick.outputs.term }}"
 
+      - name: Fetch registered non-class occupancy
+        run: node scripts/fetch-room-events.mjs
+
       # !cancelled() is success or failure, so a term that cleared its guards
       # still lands when a later step goes red. Nothing half-written can be
       # picked up here: both scripts write to a temp file and rename.
@@ -153,6 +156,7 @@ jobs:
           mapfile -t paths < <(git ls-files -co --exclude-standard -- \
             data/current.json \
             'data/rooms-*.json' \
+            'data/room-events-*.json' \
             'data/harvest-*.manifest.json' \
             data/terms.json)
           if [ "${#paths[@]}" -eq 0 ]; then

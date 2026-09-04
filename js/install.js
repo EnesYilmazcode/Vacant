@@ -224,6 +224,7 @@ async function prefetchTerm() {
     if (!pointer.ok) return;
     const current = await pointer.json();
     if (current.rooms) await fetch(BASE + String(current.rooms).replace(/^\//, ''));
+    if (current.events) await fetch(BASE + String(current.events).replace(/^\//, ''));
   } catch {
     // The prefetch is an optimisation. Failing it changes nothing the user sees.
   }

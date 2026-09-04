@@ -57,6 +57,14 @@ test('ROOM BLOCK records remain excluded until their meaning is decided', () => 
   assert.equal(clubDisclosure(out).blocksExcluded, 1);
 });
 
+test('a no-class day suppresses classes but keeps registered events', () => {
+  const out = overlayForDate(index(), document([event()]), {
+    date: '2026-09-03', classesSuspended: true,
+  });
+  const mask = activeSessions(out.index.sessions, '2026-09-03');
+  assert.deepEqual(freeGaps(out.index.rooms.TEST101.busy, 4, 540, 720, mask), [[540, 610], [660, 720]]);
+});
+
 test('unknown rooms and malformed events cannot become busy claims', () => {
   const rooms = {
     TEST101: [event({ start: -1 })],

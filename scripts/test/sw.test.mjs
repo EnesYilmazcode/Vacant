@@ -187,7 +187,7 @@ test('activate drops the stale Vacant caches and evicts last term', () => {
   assert.match(activate, /caches\.delete/);
   assert.match(activate, /evictOldTerms\(\)/);
   const evict = sw.slice(sw.indexOf('async function evictOldTerms'));
-  assert.match(evict, /rooms\|buildings/);
+  assert.match(evict, /rooms\|room-events\|buildings/);
   assert.match(evict, /data\.delete\(request\)/);
 });
 
@@ -343,7 +343,7 @@ test('the gzip figures in the header are the sizes of the files it caches', () =
     .split(',')
     .map((entry) => entry.trim().replace(/^'|'$/g, ''))
     .filter(Boolean);
-  const data = ['data/current.json', current.rooms, current.buildings, ...warm].reduce(
+  const data = ['data/current.json', current.rooms, current.events, current.buildings, ...warm].reduce(
     (total, file) => total + gzipped(file),
     0,
   );

@@ -58,7 +58,12 @@ node --test scripts/test/club-occupancy.test.mjs
 ```
 
 The final test reads the committed #114 snapshot and asserts that all 327 events
-are accepted while all 347 ROOM BLOCK records are visible but excluded. This is
-still an overlay library rather than application boot wiring; ranking and room
-screens will not use it until the application fetches the matching snapshot and
-queries the returned index.
+are accepted while all 347 ROOM BLOCK records are visible but excluded.
+
+`data/current.json` names the term's event snapshot. Application boot fetches it
+beside the class index, ranking queries the overlaid index for the current date,
+and the room screen rebuilds it for every date selected in the calendar. Events
+have no label in the privacy-reduced source, so the room grid renders them as
+`In use`. Outside the swept week, the UI explicitly says that non-class event
+coverage is unavailable. The weekly rooms workflow refreshes the Room Matrix
+after rebuilding the class index and commits both together.

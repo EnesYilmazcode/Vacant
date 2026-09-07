@@ -9,7 +9,8 @@
 //
 // Vacant's own harvest knows about CLASSES. It does not know about the two other
 // things that put a person in a room: registered events (MTG, TOUR, INFO, WRKS,
-// SMNR) and Registrar room blocks. Measured on the week of 08/31/2026, 323 of
+// SMNR, RCPT, INTV, FAIR) and Registrar room blocks. Measured on the week of
+// 08/31/2026, 323 of
 // 327 events and 343 of 347 block cells land in a window Vacant currently calls
 // entirely free, and blocks alone cover 10.7% of every weeknight 5-10pm free
 // room-minute. That is the gap this file closes.
@@ -62,6 +63,12 @@ const MIN_ROOMS = 400;
 const MIN_CLASS_CELLS = 4000;
 const MAX_INVALID = 5;
 const MAX_NO_GRID = 5;
+
+// Fail closed when the Registrar introduces a new code: it may be an event, or
+// it may be a new kind of hold whose occupancy meaning has not been settled.
+// RCPT, INTV and FAIR first appeared in the 09/07/2026 sweep and are ordinary
+// registered reservations (reception, interview and fair), so they are busy.
+const EVENT_TYPES = new Set(['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR', 'RCPT', 'INTV', 'FAIR']);
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const COMBINED_BG = 'rgb(222,184,135)';
@@ -402,7 +409,7 @@ export function parseRoom(html, facilityId, row, seenBuilding) {
         day,
         start: toMinutes(t[1], t[2], t[3]),
         end: toMinutes(t[4], t[5], t[6]),
-        // MTG, TOUR, INFO, WRKS, SMNR for an event; null for a block.
+        // An approved registered-event code for an event; null for a block.
         type: kind === 'event' ? (label.match(/^([A-Z]{3,4})\s+-\s+/)?.[1] ?? null) : null,
         eventId:
           kind === 'event'
@@ -759,7 +766,8 @@ async function main() {
       labels:
         'The Registrar names each booking in free text and 23 of the 189 distinct labels on ' +
         'this week name a person. That text is discarded at the parse boundary and is not in ' +
-        'this file. Only `type` survives: MTG, TOUR, INFO, WRKS or SMNR for an event, null for ' +
+        'this file. Only `type` survives: MTG, TOUR, INFO, WRKS, SMNR, RCPT, INTV or FAIR ' +
+        'for an event, null for ' +
         'a block.',
       windowNote:
         'The grid was queried 7:00AM-11:00PM. Times are read from the booking own text, not from ' +
@@ -790,15 +798,15 @@ async function main() {
   // The same fatal scan fetch-building-hours.mjs runs before it writes. The
   // label is dropped inside parseRoom, so nothing here should ever fire; that
   // is the point. A record is {kind, day, start, end, type, eventId}, so any
-  // run of letters outside the five type codes means the drop stopped working.
+  // run of letters outside the approved type codes means the drop stopped working.
   if (/[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(json)) die('an email address reached the output.');
   if (/\b\d{3}[-.]\d{3}[-.]\d{4}\b/.test(json)) die('a phone number reached the output.');
   for (const [fid, recs] of Object.entries(payload.rooms)) {
     for (const r of recs) {
       const stray = Object.keys(r).find((k) => !['kind', 'day', 'start', 'end', 'type', 'eventId'].includes(k));
       if (stray) die(`${fid} carries an unexpected field "${stray}"; free text must not reach the output.`);
-      if (r.type !== null && !['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR'].includes(r.type)) {
-        die(`${fid} has type "${r.type}", which is not one of the five codes.`);
+      if (r.type !== null && !EVENT_TYPES.has(r.type)) {
+        die(`${fid} has type "${r.type}", which is not an approved event code.`);
       }
     }
   }

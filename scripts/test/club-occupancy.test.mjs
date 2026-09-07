@@ -39,6 +39,17 @@ test('Room Matrix weekdays become dates within the snapshot week', () => {
     .meetings.map((meeting) => meeting.date), ['2026-08-31', '2026-09-06']);
 });
 
+test('all observed registered-event codes become occupancy', () => {
+  const types = ['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR', 'RCPT', 'INTV', 'FAIR'];
+  const records = types.map((type, i) => event({
+    type,
+    eventId: String(657000 + i).padStart(9, '0'),
+  }));
+  const normalized = normalizeMeetings(document(records), { rooms: index().rooms, term: '1268' });
+  assert.deepEqual(normalized.meetings.map((meeting) => meeting.type).sort(), types.sort());
+  assert.equal(normalized.rejected.length, 0);
+});
+
 test('an occurrence does not repeat outside the source week', () => {
   const out = overlayForDate(index(), document([event()]), { date: '2026-09-10' });
   assert.equal(out.coverage, 'outside-snapshot');

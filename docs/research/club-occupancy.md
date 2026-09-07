@@ -37,7 +37,9 @@ is enough to make the occupancy claim.
 - The Room Matrix term must match the class index term when both are present.
 - Room IDs must exist in the class index.
 - Events require a valid weekday, minute range, nine-digit reservation ID and
-  one of MTG, TOUR, INFO, WRKS or SMNR.
+  one of MTG, TOUR, INFO, WRKS, SMNR, RCPT, INTV or FAIR. RCPT, INTV and FAIR
+  first appeared in the 09/07/2026 sweep and mean ordinary registered
+  receptions, interviews and fairs, so they carry the same occupancy rule.
 - Duplicate records for the same room, date, time and reservation ID collapse.
 - Unknown fields are never copied into normalized output.
 - `ROOM BLOCK` is counted and reported as `undecided-room-block`, never overlaid.

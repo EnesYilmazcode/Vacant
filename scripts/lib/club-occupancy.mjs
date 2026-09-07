@@ -7,7 +7,7 @@
 // this module reports and excludes it.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const EVENT_TYPES = new Set(['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR']);
+const EVENT_TYPES = new Set(['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR', 'RCPT', 'INTV', 'FAIR']);
 
 const validDate = (value) => typeof value === 'string'
   && /^\d{4}-\d{2}-\d{2}$/.test(value)

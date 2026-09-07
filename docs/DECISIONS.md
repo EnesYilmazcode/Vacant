@@ -3183,8 +3183,11 @@ the decision can be made without refetching.
 
 ### The Registrar's booking labels are dropped at the parse boundary
 
-**Decided.** Only `type` survives: MTG, TOUR, INFO, WRKS, SMNR, and null for a
-block. The free text the Registrar types is read, counted and discarded.
+**Decided.** Only `type` survives: MTG, TOUR, INFO, WRKS, SMNR, RCPT, INTV,
+FAIR, and null for a block. RCPT, INTV and FAIR first appeared in the 09/07/2026
+sweep; they are registered receptions, interviews and fairs, so they occupy a
+room by the same rule as the original five codes. The free text the Registrar
+types is read, counted and discarded.
 
 **Measured.** 23 of the 189 distinct labels in a single week name a real person,
 in forms like "MTG - Dr X Training Mtg" and "MTG - Office Hours/<name>". No

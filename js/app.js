@@ -2275,6 +2275,27 @@ function openNear() {
   showNear();
 }
 
+// A room link can arrive while dev mode is still restoring its saved clock.
+// On a real-world refusal day (Labor Day is the useful example), boot cannot
+// open the room yet; devApply retries this after the simulated minute has made
+// the app rankable. Only retry from the question screen so changing the dev
+// clock while already viewing a room does not grow browser history.
+function openWantedRoom() {
+  if (!state.ready || state.screen !== 'ask' || !state.rankable) return false;
+  const wanted = new URLSearchParams(location.search).get('room');
+  if (!wanted || !state.classRooms?.rooms?.[wanted]) return false;
+  if (state.scheduled) {
+    showList();
+    answer();
+    history.replaceState({ v: 'list' }, '', cleanUrl());
+  } else {
+    showNear();
+    history.replaceState({ v: 'near' }, '', cleanUrl());
+  }
+  openRoom(wanted);
+  return true;
+}
+
 // Recompute. Never on a timer: a list that re-sorts under a thumb loses the row
 // somebody was reaching for. This fires when the app comes back to the
 // foreground, when the duration changes, and when the user asks.
@@ -2688,18 +2709,7 @@ async function boot() {
   // and outside scheduled hours that claim is exactly the one this app refuses
   // to make. Opening the list here anyway put 40 rows one back press behind a
   // link tapped at 3am on a Saturday, with the reason sentence nowhere.
-  const wanted = new URLSearchParams(location.search).get('room');
-  if (wanted && rooms.rooms[wanted] && state.rankable) {
-    if (state.scheduled) {
-      showList();
-      answer();
-      history.replaceState({ v: 'list' }, '', cleanUrl());
-    } else {
-      showNear();
-      history.replaceState({ v: 'near' }, '', cleanUrl());
-    }
-    openRoom(wanted);
-  }
+  openWantedRoom();
 }
 
 // Nothing came back, or what came back was not a schedule. The old catch left
@@ -2823,7 +2833,7 @@ export function devApply({ at, origin, note } = {}) {
   if (!state.ready) return;
   state.day = clockNow().getDay();
   refresh();
-  if (state.screen === 'ask') paintGate();
+  if (!openWantedRoom() && state.screen === 'ask') paintGate();
 }
 
 // What the app currently believes, for the panel's readout. A copy, so the

@@ -820,11 +820,20 @@ test('the room deep link is gated on scheduled hours, not only on rankable', () 
   // leaving 40 rows one back press from a link, on a screen the front door
   // refuses to show at all.
   const src = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
-  const branch = src.slice(src.indexOf('const wanted = new URLSearchParams'));
+  const branch = src.slice(src.indexOf('function openWantedRoom()'));
   assert.ok(branch.length > 0, 'the deep link branch moved');
-  const head = branch.slice(0, 700);
+  const head = branch.slice(0, 1200);
   assert.match(head, /if \(state\.scheduled\)/);
   assert.match(head, /showNear\(\)/);
+});
+
+test('dev clock restoration retries a room link refused by the live date', () => {
+  // Dev mode restores its saved clock after boot. When the live date is a
+  // holiday, boot has to leave the link pending and devApply must retry it
+  // after refresh() makes the simulated instructional date rankable.
+  const src = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
+  const seam = src.slice(src.indexOf('export function devApply'), src.indexOf('export function devReadout'));
+  assert.match(seam, /refresh\(\);[\s\S]*openWantedRoom\(\)/);
 });
 
 // ------------------------------------------------------------ #17 the picker

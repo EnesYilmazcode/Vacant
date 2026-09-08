@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 138,629 bytes, data 91,951.
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 141,112 bytes, data 91,951.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these sixteen files, which is most of a percent of
@@ -37,6 +37,12 @@
 // at PEEK and every ceiling is FULL, and gained the pixels a back button and an
 // install rail need on top of the fractions it already held.
 //
+// It read 138,629 before the card started showing the ROOM. That cost 2,483:
+// 1,570 on index.html for the picture, the plate over it and the blurred fill
+// behind it, and 913 on js/app.js. The photographs themselves are 11.7 MB and
+// none of it is here -- they are 306 files under data/photos/, fetched one at a
+// time by the card that shows them and never precached.
+//
 // It read 133,694 before the answer became one card you swipe rather than a
 // list you scan, which cost another 4,935: 3,082 on js/app.js for the deck, the
 // two verdicts and the gesture, and 1,853 on index.html for the card itself.
@@ -51,7 +57,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-7f1ce43';
+const SHELL_CACHE = 'vacant-shell-1ac4bed';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also
@@ -73,6 +79,11 @@ const DATA_PREFIX = SCOPE + 'data/';
 const CURRENT = DATA_PREFIX + 'current.json';
 const SHELL_DOC = SCOPE + 'index.html';
 
+// The 306 room photographs. NOT precached and never warmed: they are 11.7 MB
+// together, and a student who asks one question wants one of them. Each arrives
+// with the card that shows it and is kept from then on.
+const PHOTO = /\/data\/photos\/[^/]+\.webp$/;
+
 // `/Vacant/` and `/Vacant/index.html` are the same bytes at two cache keys and a
 // navigation can arrive as either, so both are precached.
 //
@@ -88,8 +99,8 @@ const SHELL_DOC = SCOPE + 'index.html';
 // restating it, because the restatement is what drifted.
 //
 // They are in addAll rather than a second best-effort pass, and that is the
-// argued half: the four are 25,425 of the 138,629 gzipped bytes here, so
-// install does 22.5% more work before it resolves, and a strict tier that fails
+// argued half: the four are 25,425 of the 141,112 gzipped bytes here, so
+// install does 22.0% more work before it resolves, and a strict tier that fails
 // fails the whole install. It is still right. A best-effort tier is for things
 // the app is better with; js/app.js cannot evaluate without js/state.js. And a
 // rejected install is retried where a resolved lie is not.
@@ -181,6 +192,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (url.pathname.startsWith(DATA_PREFIX)) {
+    // A room photograph never changes under its own name. Both other strategies
+    // revalidate in the background, and for a 39 KB image nobody edited that is
+    // 39 KB of somebody's data allowance for every card they look at -- on the
+    // one screen this app exists to answer on one bar of LTE. This branch
+    // returns the cached copy and stops asking.
+    if (PHOTO.test(url.pathname)) {
+      event.respondWith(immutable(request));
+      return;
+    }
     // The term pointer and dated event overlay must never be stale. The event
     // filename is stable for a whole term even though its covered week changes,
     // so an old cached response can otherwise hide the current week's events.
@@ -249,6 +269,24 @@ async function networkFirst(request) {
   // rendered.
   if (request.cache === 'no-store') return Response.error();
   return (await data.match(request)) || Response.error();
+}
+
+// Written once, kept. A new photograph is a deploy rather than an edit, so the
+// only thing that can strand an old one is a room being rephotographed under the
+// same id, which would need DATA_CACHE bumping to reach a phone that has it.
+// That is the trade: one stale picture in a case that has not happened yet,
+// against a re-download on every single card.
+async function immutable(request) {
+  const data = await caches.open(DATA_CACHE);
+  const cached = await data.match(request);
+  if (cached) return cached;
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) await data.put(request, response.clone());
+    return response;
+  } catch {
+    return Response.error();
+  }
 }
 
 async function staleWhileRevalidate(event, request) {

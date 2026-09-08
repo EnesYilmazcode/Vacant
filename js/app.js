@@ -186,6 +186,10 @@ const state = {
   // How deep into the ranking the card screen is. Reset by answer(), because a
   // re-rank makes "the third one" a different room.
   cardIndex: 0,
+  // The ids in data/photos.json, as a Set, or null until it arrives. Null is
+  // not "none": it is "not known yet", and the card renders without a picture
+  // rather than guessing and 404ing 118 times.
+  photos: null,
   total: 0,
   // How many rooms are free, and free for long enough, counted once by
   // engine.js so the printed strip and the spoken sentence cannot disagree.
@@ -1201,6 +1205,7 @@ function paintCard() {
         </button>
       </p>
       <button type="button" class="c-more" id="c-list">See all ${seen} in a list</button>`;
+    $('card').classList.add('done');
     $('c-again').onclick = () => {
       state.cardIndex = 0;
       paintCard();
@@ -1213,6 +1218,7 @@ function paintCard() {
   }
 
   const { building, room } = cardParts(r);
+  const photo = photoFor(r.id);
   const win = windowOf(r);
   const seats = seatsOf(r);
   const dept = deptOf(r);
@@ -1239,41 +1245,80 @@ function paintCard() {
   card.innerHTML =
     notes() +
     strip +
-    // Above the card, not on it. How deep you are in the deck is a fact about
-    // the deck, and it was in the card's top-left corner where the GO stamp
-    // lands: the two drew over each other and neither could be read. It also
-    // has no business flying off the side of the phone with a room it is not
-    // about.
-    `<p class="c-pos">${state.cardIndex + 1} of ${total}</p>
-    <div class="c-deck">
-      <article class="c-card" id="c-top" tabindex="0" role="group" aria-label="${esc(said)}">
+    // The photograph is the card. Everything the card SAYS rides on one plate
+    // over it, so the text has a single contrast problem to solve rather than
+    // one per line, and the two verdict buttons sit on the picture at the
+    // corners a thumb is already near.
+    //
+    // The deck position and the way to the list are under the deck, not on the
+    // card: both are about the SCREEN rather than about the room, and neither
+    // should fly off the side of the phone with a room it is not about.
+    `<div class="c-deck">
+      <article class="c-card${photo ? '' : ' plain'}" id="c-top" tabindex="0"
+        role="group" aria-label="${esc(said)}">
+        ${photo
+          ? `<img class="c-blur" src="${esc(photo)}" alt="" aria-hidden="true" decoding="async">
+             <img class="c-photo" id="c-img" src="${esc(photo)}" alt="" decoding="async">`
+          : ''}
+        <span class="c-scrim" aria-hidden="true"></span>
         <span class="c-stamp no" aria-hidden="true">NEXT</span>
         <span class="c-stamp yes" aria-hidden="true">GO</span>
-        ${building ? `<p class="c-b">${esc(building)}</p>` : ''}
-        <p class="c-n">${esc(room)}</p>
-        <p class="c-win">${win.html}</p>
-        <p class="c-facts">
-          <span>${WALK_ICON}${coarse ? '~' : ''}${r.walk} min</span>
-          <span>&middot;</span><span>${seats.html}</span>${dept.html ? `<span>${dept.html}</span>` : ''}
+        <div class="c-plate">
+          <p class="c-b">${esc(building ? `${building} ${room}` : room)}</p>
+          <p class="c-facts">
+            <span>${win.html}</span>
+            <span class="sep">&middot;</span>
+            <span>${WALK_ICON}${coarse ? '~' : ''}${r.walk} min</span>
+            <span class="sep">&middot;</span>
+            <span>${seats.html}</span>${dept.html ? `<span class="sep">&middot;</span><span>departmental</span>` : ''}
+          </p>
+        </div>
+        <p class="c-acts">
+          <button type="button" class="c-act no" id="c-no" aria-label="Not this one, show the next room">
+            <svg class="ico" aria-hidden="true"><use href="#i-bin"/></svg>
+          </button>
+          <button type="button" class="c-act yes" id="c-yes" aria-label="Take this room and show me the way">
+            <svg class="ico" aria-hidden="true"><use href="#i-tick"/></svg>
+          </button>
         </p>
       </article>
     </div>
-    <p class="c-acts">
-      <button type="button" class="c-act no" id="c-no" aria-label="Not this one, show the next room">
-        <svg class="ico" aria-hidden="true"><use href="#i-bin"/></svg>
-      </button>
-      <button type="button" class="c-act yes" id="c-yes" aria-label="Take this room and show me the way">
-        <svg class="ico" aria-hidden="true"><use href="#i-tick"/></svg>
-      </button>
-    </p>
-    <p class="c-hint">Swipe the card, or use the buttons.</p>
-    <button type="button" class="c-more" id="c-list">See all ${total} in a list</button>`;
+    <div class="c-foot">
+      <p class="c-pos">${state.cardIndex + 1} of ${total}</p>
+      <p class="c-hint">Swipe the card, or use the buttons.</p>
+      <button type="button" class="c-more" id="c-list">See all ${total} in a list</button>
+    </div>`;
 
+  $('card').classList.remove('done');
   $('c-no').onclick = () => rejectCard();
   $('c-yes').onclick = () => acceptCard();
   $('c-list').onclick = () => openList();
+  // Faded in on decode rather than on load, so the room does not appear as a
+  // flash under words already being read. A photograph that 404s or is corrupt
+  // leaves the plain card behind it, which is the same card 118 rooms get.
+  const img = $('c-img');
+  if (img) {
+    // Both copies together, or the blurred fill appears under an empty frame.
+    const show = () => card.querySelectorAll('.c-photo, .c-blur').forEach((el) => el.classList.add('on'));
+    if (img.complete && img.naturalWidth) show();
+    else {
+      img.onload = show;
+      img.onerror = () => {
+        card.querySelectorAll('.c-photo, .c-blur').forEach((el) => el.remove());
+        $('c-top')?.classList.add('plain');
+      };
+    }
+  }
   attachSwipe($('c-top'));
   syncPaneTouch();
+}
+
+// Where a room's photograph lives, or null. `state.photos` is null until
+// data/photos.json arrives and empty-ish for the 118 rooms OSU has never
+// photographed; both cases render the plain card, which is why this returns one
+// value rather than two.
+function photoFor(id) {
+  return state.photos?.has(id) ? `${BASE}data/photos/${encodeURIComponent(id)}.webp` : null;
 }
 
 // The two verdicts. Reject walks the ranking; accept is the same openRoom() the
@@ -2941,6 +2986,20 @@ async function boot() {
 
   const current = await json('current.json');
   state.current = current;
+
+  // Which rooms have a photograph. Off the critical path on purpose, the same
+  // way campus.json is: it is 2 KB and the answer does not need it, so a card
+  // painted before it lands is a card without a picture rather than a card that
+  // waited. Repaints when it arrives, but only if the card is what is on screen.
+  json('photos.json')
+    .then((list) => {
+      state.photos = new Set(list.rooms ?? []);
+      if (state.screen === 'card') paintCard();
+    })
+    .catch(() => {
+      // No manifest, no pictures, every other thing this app does still works.
+      state.photos = new Set();
+    });
 
   const [rooms, roomEvents, buildings, hours, located] = await Promise.all([
     parsedIndex(`${BASE}${current.rooms}`, signal),

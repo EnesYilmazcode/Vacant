@@ -70,6 +70,17 @@ const UA =
 
 const CHECK_ONLY = process.argv.includes('--check');
 
+// How far two captures of a still screen may differ, summed over R, G and B out
+// of 765. All three numbers behind this are measured at 393x852:
+//
+//   still, with a photograph on screen      0 to 27
+//   the card 60ms into its commit flight    623
+//   the sheet 80ms into a snap              743
+//
+// So 48 sits an order of magnitude above the noise and an order below the
+// smallest real movement either of the two animations on this screen produces.
+const STILL = 48;
+
 // One defect the frames are allowed to carry out of the door.
 //
 // It lives in js/app.js, which this script photographs and does not own, and
@@ -269,6 +280,40 @@ class Phone {
 // frame is drawn small on a canvas and the spread of its pixels is read back.
 // A dark app on a dark map still has hundreds of distinct colours; a frame
 // that failed to paint has one or two.
+// WHERE two frames differ, in CSS pixels, when one of them moved. "The screen
+// was still moving" used to be the whole report, and finding out what had moved
+// meant rebuilding this script by hand in a scratch file. It says which corner
+// now, and how much.
+async function whereMoved(lab, a, b) {
+  return lab.evaluate(`(async () => {
+    const load = async (b64) => {
+      const img = new Image();
+      img.src = 'data:image/webp;base64,' + b64;
+      await img.decode();
+      const c = new OffscreenCanvas(img.width, img.height);
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(img, 0, 0);
+      return { px: g.getImageData(0, 0, img.width, img.height).data, w: img.width, h: img.height };
+    };
+    const A = await load(${JSON.stringify(a)});
+    const B = await load(${JSON.stringify(b)});
+    let n = 0, worst = 0, minX = 1e9, minY = 1e9, maxX = -1, maxY = -1;
+    for (let i = 0; i < A.px.length; i += 4) {
+      const d = Math.abs(A.px[i] - B.px[i]) + Math.abs(A.px[i+1] - B.px[i+1]) + Math.abs(A.px[i+2] - B.px[i+2]);
+      if (d === 0) continue;
+      n++; if (d > worst) worst = d;
+      const x = (i / 4) % A.w, y = Math.floor((i / 4) / A.w);
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    const s = 3;
+    return n
+      ? { pixels: n, pct: +(n / (A.w * A.h) * 100).toFixed(3), worst,
+          css: [Math.round(minX/s), Math.round(minY/s), Math.round(maxX/s), Math.round(maxY/s)] }
+      : null;
+  })()`);
+}
+
 async function inspect(lab, base64) {
   return lab.evaluate(`(async () => {
     const img = new Image();
@@ -435,7 +480,28 @@ async function run() {
       const data = await page.capture();
       await sleep(250);
       const again = await page.capture();
-      if (data !== again) problems.push(`${name}: the screen was still moving when it was photographed`);
+      // Not byte-for-byte any more, and the reason is worth writing down. The
+      // capture is `fromSurface`, so it reads the compositor's raster of the
+      // page rather than re-rendering it, and once a downscaled PHOTOGRAPH is
+      // on screen that raster is not reproducible to the bit: the card frame
+      // differed from its own retake by up to 3 levels per channel over the
+      // lower half of the screen, identically on every run, at any settle time,
+      // with the blur off, with the map hidden, and with the image on its own
+      // compositor layer. The same frames captured without `fromSurface` were
+      // byte-identical, which is what says it is the raster and not the app.
+      //
+      // So the check measures what it was always FOR: whether the screen was
+      // moving. Anything actually in motion -- a sheet mid-snap, a fade, a card
+      // sliding -- moves edges between hundreds and the full 765 apart. Three
+      // levels per channel is not motion, it is arithmetic.
+      const moved = await whereMoved(lab, data, again);
+      if (moved && moved.worst > STILL) {
+        problems.push(
+          `${name}: the screen was still moving when it was photographed -- ` +
+            `${moved.pixels} px (${moved.pct}%) changed, worst ${moved.worst}/765, ` +
+            `inside CSS box [${moved.css.join(', ')}]`,
+        );
+      }
       // What the screen says, kept beside the picture. A screenshot cannot be
       // read by a test and its alt text can drift off it without anyone
       // noticing, which is how the README came to print a time the app does
@@ -481,31 +547,58 @@ async function run() {
     //    yet, so there is nothing on the map and the sheet covers it.
     await page.tapSelector('.opt[data-min="120"]');
     await page.waitFor(`document.getElementById('c-top')`, 'the first card');
+    // The photograph arrives after the text and fades in over 350ms, and a
+    // frame taken during that fade is a different frame every run.
+    await page.waitFor(
+      `(() => {
+        const i = document.getElementById('c-img');
+        // Computed opacity is the END of the fade. The class goes on when the
+        // decode finishes and the transition runs for another 350ms after that,
+        // and a frame taken inside it is a different frame every run.
+        return !i || getComputedStyle(i).opacity === '1';
+      })()`,
+      'the photograph to finish fading in',
+    );
+    // Settled AFTER the fade, not before it. The install rail mounts late and
+    // js/app.js resizes the sheet when it does, so a settle taken before the
+    // photograph had even arrived was a settle on a layout that then moved.
     await page.settled();
-    await sleep(1200);
+    await sleep(1400);
     const card = await page.evaluate(`(() => {
       const pick = (sel) => (document.querySelector(sel) || {}).textContent || '';
+      const img = document.getElementById('c-img');
       return {
         pos: pick('.c-pos').trim(),
-        building: pick('.c-b').trim(),
-        room: pick('.c-n').trim(),
-        win: pick('.c-win').trim(),
+        title: pick('.c-b').trim(),
         facts: pick('.c-facts').replace(/\\s+/g, ' ').trim(),
         acts: [...document.querySelectorAll('.c-act')].map((b) => b.getAttribute('aria-label')),
         nomap: document.body.classList.contains('nomap'),
+        photo: img ? img.getAttribute('src') : null,
+        drawn: img ? img.naturalWidth + 'x' + img.naturalHeight : null,
+        plain: document.getElementById('c-top').classList.contains('plain'),
       };
     })()`);
-    console.log(`card   ${card.pos}  ${card.building} ${card.room}  ${card.win}  ${card.facts}`);
-    // The room number is the thing you walk to and the reason this screen
-    // exists. A card that lost it is not a card.
-    if (!card.room) problems.push('card: no room number on it');
-    if (!card.win) problems.push('card: nothing says how long it is yours');
+    console.log(`card   ${card.pos}  ${card.title}  ${card.facts}`);
+    console.log(`photo  ${card.photo ?? '(none)'}  ${card.drawn ?? ''}`);
+    // The room and the building are the two things this screen exists to say.
+    if (!card.title) problems.push('card: nothing names the room');
+    // The window is the answer to the question that was asked, so it leads the
+    // facts line. Losing it would leave a card that never says how long.
+    if (!/free till|no class|from |till /i.test(card.facts)) {
+      problems.push(`card: nothing says how long it is yours: "${card.facts}"`);
+    }
     if (card.acts.length !== 2) problems.push(`card: ${card.acts.length} buttons, not two`);
     // A swipe nothing announces is unreachable from a keyboard and invisible to
     // a screen reader, so both verdicts have to exist as named controls.
     if (card.acts.some((a) => !a)) problems.push('card: a verdict button has no accessible name');
     if (!card.nomap) problems.push('card: the map is on screen with nothing on it');
-    await shoot('card', `${card.pos}, ${card.building} ${card.room}, ${card.win}`);
+    // The whole point of the frame. A photograph that 404s leaves the plain
+    // card, which is correct for the 119 rooms that have none and wrong for
+    // this one: Cunz Hall 160 has one, and it is the room the run picks.
+    if (!card.photo) problems.push('card: no photograph on a room that has one');
+    else if (card.plain) problems.push('card: the photograph failed to load');
+    else if (!/^900x/.test(card.drawn ?? '')) problems.push(`card: the photograph is ${card.drawn}`);
+    await shoot('card', `${card.pos}, ${card.title}, ${card.facts}`);
 
     // 2b and 2c. The same card, held mid-swipe in each direction. This is the
     //   only part of the screen no still frame can show: the stamp that says

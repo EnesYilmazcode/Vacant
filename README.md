@@ -5,12 +5,12 @@ Find an empty classroom near you at Ohio State, free for as long as you need it.
 ### **[enesyilmazcode.github.io/Vacant](https://enesyilmazcode.github.io/Vacant/)**
 
 It is a web page. No account, no search box, nothing to sign up for. It finds you,
-asks one question, and hands you **one room** you can walk to. Bin it and it hands
-you the next one. Take it and it shows you the way.
+asks one question, and hands you **one room** you can walk to, with a photograph of
+it. Bin it and it hands you the next one. Take it and it shows you the way.
 
 | | |
 | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![One card in the middle of a dark screen, reading 1 of 35, Cunz Hall, then 160 in very large type, then no class rest of today, then 4 min walk and 42 seats. Under it a bin button and a tick button, the line Swipe the card or use the buttons, and a link reading See all 35 in a list.](docs/media/card.webp) |
+| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![One card in the middle of a dark screen: a photograph of Cunz Hall 160, an empty classroom with rows of tables and yellow chairs, a clock and a door at the far end. A plate across the top of it reads Cunz Hall 160, and under that no class rest of today, 4 min walk, 42 seats. A bin button sits at the bottom left of the picture and a tick at the bottom right.](docs/media/card.webp) |
 | One question. | One answer. |
 
 ## Yours for, not free until
@@ -44,7 +44,7 @@ you commit to it.
 
 | | |
 | :--: | :--: |
-| ![The same card dragged left and held. It has slid off the left edge and tilted, and a grey NEXT badge has appeared on the corner still on screen. Cunz Hall 160, no class rest of today, 42 seats are all still readable.](docs/media/swipe-next.webp) | ![The same card dragged right and held. It has slid right and tilted the other way, and a red GO badge has appeared on the corner still on screen, above Cunz Hall 160, no class rest of today, 4 min walk and 42 seats.](docs/media/swipe-go.webp) |
+| ![The same card dragged left and held. The photograph of the room has slid off the left edge and tilted, and a grey NEXT badge has appeared on the corner still on screen.](docs/media/swipe-next.webp) | ![The same card dragged right and held. The photograph has slid right and tilted the other way, and a red GO badge has appeared on the corner still on screen, over the plate reading Cunz Hall 160.](docs/media/swipe-go.webp) |
 | Left: the next room, nearest first. | Right: this one, and the way there. |
 
 The buttons under the card do the same two things, and so do the left and right
@@ -63,6 +63,33 @@ and every row is the same answer the card gives, one per building, nearest first
 | :--: | :--: |
 | ![The same list after one tap, dropped to make room for the map. Cunz Hall 160's building footprint is outlined in red, a dashed line runs from the blue dot to it with an arrowhead pointing into the building, and its row is lit in the list below.](docs/media/room.webp) | ![The room screen for Cunz Hall 160: no class in here for the rest of today, yours for 8h26 once you get there, 4 min walk, 42 seats, classroom, then Wednesday drawn as a calendar from 6 AM with two red blocks, KNSISM 3208 from 8:00am to 8:55am and KNSISM 3550 from 9:10am to 10:05am, and everything else empty](docs/media/timeline.webp) |
 | Take a room and the map comes up pointing at it. | Tap it again for its whole day, doors included. |
+
+## The picture is the room
+
+The card shows the room, because a room you can see is a room you can recognise
+from the corridor, and "Cunz Hall 160" never told anybody that.
+
+**306 of the 425** have one. The other 119 are departmental rooms nobody has
+photographed, and they get the same card without a picture: the words were always
+the answer.
+
+They come from OTDI's [Learning Spaces
+directory](https://learningspaces.osu.edu/classrooms), which serves them from
+`rooms.app.it.osu.edu` at an address that can be built from a room id. The
+Registrar publishes the same rooms behind an opaque `/media/<hash>/` path with
+a **REGISTRAR - 2022** watermark burnt into the frame, so that copy is neither
+addressable nor the one you want.
+
+The originals are 1620x1080 JPEGs of up to 1.34 MB. `scripts/fetch-room-photos.mjs`
+resizes them to 900 wide and re-encodes them as WebP, which is **39 KB each and
+11.7 MB for all 306**, and commits them. Hotlinking would have put a megabyte on
+the one screen a student opens in a stairwell, would break the day OSU moves a
+file, and would tell OSU's server which room each reader is looking at, which
+[the privacy page](privacy.html) promises this app does not do with anything
+else. None of them are precached: each arrives with the card that shows it, and
+is kept from then on.
+
+Photographs &copy; The Ohio State University, OTDI Classroom Services.
 
 ## Put it on your home screen
 

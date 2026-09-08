@@ -1308,14 +1308,15 @@ test('a duration opens one room, not the ranking', () => {
 
 test('the card carries the two things Enes said were the point, and nothing else', () => {
   // "the room number is important and also the building is important", and
-  // "remove all the filler text". So: the building, the room, how long it is
-  // yours, the walk and the seats. The count, the walk cap and the coverage
-  // paragraph stay on the list -- a card carrying them is a list with one row.
+  // "remove all the filler text". The picture is the room, and one plate over it
+  // carries the name and the three facts. The count, the walk cap and the
+  // coverage paragraph stay on the list -- a card carrying them is a list with
+  // one row on it.
   const paint = bodyOf('paintCard');
-  for (const bit of ['c-b', 'c-n', 'c-win', 'c-facts']) {
+  for (const bit of ['c-photo', 'c-plate', 'c-b', 'c-facts']) {
     assert.ok(paint.includes(bit), `the card lost ${bit}`);
   }
-  assert.ok(paint.includes('cardParts(r)'), 'the building and the room are joined again');
+  assert.ok(paint.includes('cardParts(r)'), 'the card stopped naming the building and the room');
   assert.equal(paint.includes('caveatHtml'), false, 'the coverage paragraph is back on the card');
   assert.equal(paint.includes('MAX_WALK'), true, 'the end of the deck stopped naming the walk cap');
 
@@ -1323,6 +1324,58 @@ test('the card carries the two things Enes said were the point, and nothing else
   // degraded, and a card without it claims more than the ranking does.
   assert.ok(paint.includes('state.tally?.shorter'), 'the card stopped admitting a short answer');
   assert.ok(paint.includes('state.tally?.waiting'), 'the card stopped admitting an empty minute');
+});
+
+// ---- the photograph
+
+test('a room with no photograph gets a card, not a broken frame', () => {
+  // 119 of the 425 have none, and photoFor() is the only thing that decides.
+  // Null means BOTH "OSU never photographed this room" and "the manifest has
+  // not arrived yet", because the card is the same either way: the words are
+  // the answer and the picture was always the bonus.
+  const src = bodyOf('photoFor');
+  assert.match(src, /state\.photos\?\.has\(id\)/);
+  assert.match(src, /: null/);
+  const paint = bodyOf('paintCard');
+  assert.match(paint, /photo \? '' : ' plain'/, 'a photoless room stopped getting the plain card');
+  // And a file that 404s or decodes to nothing falls back to the same card
+  // rather than leaving an empty frame under the plate.
+  assert.match(paint, /img\.onerror/);
+  assert.match(paint, /classList\.add\('plain'\)/);
+});
+
+test('the photographs are on demand, never precached, and never re-fetched', () => {
+  // 11.7 MB together. Precaching them would be the install this app refuses to
+  // make a student wait for; revalidating them would spend 39 KB of somebody's
+  // allowance on every card, on the one screen that exists for one bar of LTE.
+  const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
+  assert.match(sw, /const PHOTO = /, 'sw.js does not recognise a photograph');
+  assert.match(sw, /if \(PHOTO\.test\(url\.pathname\)\) \{[\s\S]{0,80}immutable\(request\)/);
+  const immutableFn = sw.slice(sw.indexOf('async function immutable('), sw.indexOf('async function staleWhileRevalidate('));
+  assert.equal(/waitUntil|event\./.test(immutableFn), false, 'the photograph branch revalidates');
+  assert.equal(/photos/.test(sw.slice(sw.indexOf('const SHELL_ASSETS'), sw.indexOf('];', sw.indexOf('const SHELL_ASSETS')))), false,
+    'a photograph is in the precached shell');
+  assert.equal(/photos/.test(sw.slice(sw.indexOf('const WARM_ALWAYS'), sw.indexOf(';', sw.indexOf('const WARM_ALWAYS')))), false,
+    'a photograph is warmed on install');
+
+  // And the eviction that clears last term's files must not reach them: they
+  // are not term keyed, and the same regex once ate the building hours.
+  const evict = sw.slice(sw.indexOf('async function evictOldTerms('));
+  const pattern = evict.match(/pathname\.match\((\/[^;]+\/)\)/)[1];
+  assert.equal(new RegExp(pattern.slice(1, -1)).test('/Vacant/data/photos/CZ0160.webp'), false,
+    'the term eviction deletes photographs');
+});
+
+test('the manifest is off the critical path, like the map is', () => {
+  // data/photos.json is 2 KB and no answer needs it. boot() must not wait on
+  // it, and a card painted before it lands is a card without a picture rather
+  // than a card that waited for one.
+  const boot = bodyOf('boot');
+  const at = boot.indexOf("json('photos.json')");
+  assert.ok(at > 0, 'boot() stopped fetching the photo manifest');
+  assert.equal(boot.slice(Math.max(0, at - 40), at).includes('await'), false,
+    'boot() waits for the photo manifest');
+  assert.match(boot.slice(at), /\.catch\(/, 'a missing manifest is not survivable');
 });
 
 test('the swipe is not the only way to answer the card', () => {

@@ -3459,3 +3459,96 @@ js/app.js for the deck, the two verdicts and the gesture, and 1,853 on index.htm
 for the card. Suite 842 -> 848 tests. scripts/shoot.mjs photographs seven frames
 now: the question, the card, the card held in each direction, the list, a room
 lit on the map, and its day.
+
+## 2026-09-08  The card shows the room
+
+**Decided.** The card is a photograph of the classroom, with one plate over it
+carrying the name and the three facts, and the two verdict buttons on its bottom
+corners. 306 of the 425 have one; the other 119 get the same card without a
+picture. Enes: "instead of 160 being the big word here, like have an image of the
+class, its a great visualization."
+
+**Where they come from, and the one that looks right and is not.** OSU publishes
+these twice. The Registrar's per-room pages, which is the link Enes sent, serve
+them from `/media/<opaque-hash>/` -- the URL cannot be built from a room id, so
+learning it means scraping all 327 pages -- and that copy has **REGISTRAR - 2022**
+burnt into the middle of the frame. OTDI's Learning Spaces directory serves the
+same rooms from `rooms.app.it.osu.edu` at
+`<buildingNumber>-<floor>-<room>-<view>.jpg`, unwatermarked, with
+`access-control-allow-origin: *`. `data/room-features.json` has carried those
+URLs since 09-03, so nothing had to be crawled to find them.
+
+**Resized and committed, not hotlinked.** The originals are 1620x1080 JPEGs of
+218 KB to 1.34 MB and the whole app is 108 KB over the wire. Hotlinking would put
+a megabyte on the one screen a student opens in a stairwell on one bar, would
+break the day OSU moves a file, and would tell OSU's server which room each
+reader is looking at -- which the privacy page promises the app does not do with
+anything else. Resized to 900 wide at q0.62 they are **39 KB each and 11.7 MB for
+all 306**, which roughly doubles the tracked repo from 12 MB. That is the cost,
+and it is the one thing in this entry that is a judgement rather than a
+measurement.
+
+**Chrome does the resizing, because there is no image library here and there is
+not going to be one.** `scripts/fetch-room-photos.mjs` drives the same headless
+Chrome `scripts/shoot.mjs` already needs: it decodes each JPEG, draws it smaller
+and encodes WebP, wearing the User-Agent `scripts/lib/fetch.mjs` promises,
+because the politeness is about the server and not about which client asked.
+
+**Contain, not cover, with a blurred copy of itself behind.** Cover is the
+obvious choice and it is wrong: these photographs are 3:2 and the card is about
+1:1.75, so covering shows a 38% wide vertical slice. Measured at 393x852 the
+first card was carpet, one row of desks, and none of the boards, screen or
+windows you would recognise the room by. Contained, the whole room is there, and
+the blurred fill is what keeps the card full-bleed instead of letterboxed. The
+card is 4:5 rather than the full height of the deck, because at full height the
+picture floated in 400px of blurred nothing.
+
+**One bug that made the card undraggable.** An `<img>` is natively draggable, and
+a pointerdown on one starts a browser image-drag that CANCELS the pointer stream.
+The swipe saw a `pointercancel` instead of a move and put the card straight back,
+so a card with a photograph on it could not be swiped at all. The picture has no
+interaction of its own, so `pointer-events: none` gives the events to the card.
+
+**The photographs never touch the critical path.** `data/photos.json` is 2 KB and
+is fetched the way `campus.json` is: off to one side, and a card painted before
+it lands is a card without a picture rather than a card that waited. `sw.js`
+routes them to a new `immutable()` branch: 306 files, never precached, never
+warmed, and never revalidated, because both other strategies re-fetch in the
+background and 39 KB of somebody's allowance per card is exactly the waste this
+app exists to avoid.
+
+### The frame check stopped being byte-exact, and that took measuring
+
+`scripts/shoot.mjs` photographs every frame twice a quarter second apart and
+refuses to write if the two differ. With a photograph on the card, the card frame
+differed from its own retake by up to **3 levels per channel over the lower half
+of the screen** -- identically on every run, at any settle time, with the blur
+off, with the map hidden, with the image on its own compositor layer, and with a
+warm-up capture in front. The same frames captured WITHOUT `fromSurface` were
+byte-identical, which is what says it is the compositor's raster and not the app.
+
+So the check now measures what it was always for. Three numbers, all measured at
+393x852:
+
+| | worst difference, out of 765 |
+| --- | --- |
+| still, with a photograph on screen | 0 to 27 |
+| the card 60ms into its commit flight | 623 |
+| the sheet 80ms into a snap | 743 |
+
+`STILL = 48` sits an order of magnitude above the noise and an order below the
+smallest real movement either animation on this screen produces. And when a frame
+does fail, `whereMoved()` now reports how many pixels moved, by how much, and the
+CSS box they are in -- finding that out used to mean rebuilding the script by
+hand in a scratch file, which is what it took here.
+
+**Cost.** The shell went 138,629 -> 141,112 gzipped bytes: 1,570 on index.html
+for the picture, the plate and the fill, and 913 on js/app.js. The photographs
+are none of that -- they are 11.7 MB of `data/photos/`, fetched one at a time.
+Suite 848 -> 851 tests.
+
+**One upstream gap, recorded so it is not rediscovered.** UH0037's Learning
+Spaces entry links a photograph that 404s. The script asks Node for the real
+status when a browser fetch fails -- a browser cannot tell a dead link from a
+dead network, because the 404 page has no CORS header on it -- and reports a
+genuine 404 as OSU's gap rather than its own failure.

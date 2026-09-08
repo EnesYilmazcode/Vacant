@@ -1173,6 +1173,65 @@ function select(i) {
 const SWIPE_PX = 84;
 const SWIPE_V = 0.45;
 
+// The warp. How much of the source WIDTH the card keeps, centred, and how hard
+// the top of the frame is stretched to make up the height.
+//
+// A 900x600 photograph in a 393x852 screen is a 3.25x aspect gap, and something
+// has to give. Cover gives the width away: 31% of it, and half of what is left
+// is carpet. This gives the CEILING away instead. 0.72 of the width is 648
+// source pixels, which at 393 across is a natural height of 393; the screen
+// wants 852, so 459px have to come from somewhere, and the power curve below
+// takes them off the top of the frame.
+//
+// WARP_POWER is the exponent on that curve: source = height * (y / H) ** p. At
+// 1.9, the top 120px of the screen -- the strip the plate covers -- is drawn
+// from the top 15 rows of the photograph, and the bottom half of the screen is
+// stretched about 1.35x, which reads as a slightly tall room rather than as a
+// distortion. Raising it smears more and straightens the bottom; 1 is no warp
+// at all and letterboxes.
+const WARP_WIDTH = 0.72;
+const WARP_POWER = 1.9;
+
+// Horizontal bands the warp is drawn in. Each is a straight drawImage, so this
+// is a piecewise approximation of the curve: at 240 the seams are under a
+// device pixel at 393x852 and the whole draw is under 3ms.
+const WARP_BANDS = 240;
+
+// Draw `img` into `canvas`, stretched so the room fills the screen.
+//
+// Every band takes a slice of the source and paints it into a taller slice of
+// the destination, and the curve decides how much taller. Bands are drawn one
+// pixel past their own bottom edge, because a fractional destination height
+// otherwise leaves a hairline of background between them.
+function drawWarp(canvas, img) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (!w || !h || !img.naturalWidth) return false;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  const sw = img.naturalWidth * WARP_WIDTH;
+  const sx = (img.naturalWidth - sw) / 2;
+  const sh = img.naturalHeight;
+  const at = (t) => sh * t ** WARP_POWER;
+
+  for (let i = 0; i < WARP_BANDS; i++) {
+    const t0 = i / WARP_BANDS;
+    const t1 = (i + 1) / WARP_BANDS;
+    const sy = at(t0);
+    const sy1 = at(t1);
+    // A band whose source slice rounds to nothing still has to paint, or the
+    // stretched top of the frame comes out as gaps.
+    ctx.drawImage(img, sx, sy, sw, Math.max(sy1 - sy, 0.5), 0, h * t0, w, h * (t1 - t0) + 1);
+  }
+  return true;
+}
+
 // The building and the room number, apart. roomLabel() joins them for the list,
 // where a row is one line; this screen exists because the room number is the
 // thing you walk to, and it is the only text on it that gets to be 3.6rem.
@@ -1242,24 +1301,26 @@ function paintCard() {
   const said = `${roomLabel(r)}, ${walkSay}, ${win.say}, ${seats.say}${dept.say}.` +
     ` Room ${state.cardIndex + 1} of ${total}.`;
 
+  // The photograph is the SCREEN. One plate near the top carries everything the
+  // card says, so the text has a single contrast problem to solve rather than
+  // one per line; the two verdicts sit on the bottom corners where a thumb
+  // already is; and the one line between them is both how deep into the ranking
+  // you are and the way to the whole of it.
+  //
+  // Nothing else. The count, the hint and the list link used to be three
+  // stacked lines UNDER the picture, and that band of dark under a small
+  // photograph is the thing this layout exists to delete.
+  //
+  // notes() and the strip ride on the plate rather than above it, because the
+  // deck is the whole viewport now and anything in the flow before it would be
+  // painted over by the room. They are still not optional: the strip is the
+  // only thing that says the answer is degraded.
+  const admits = notes() + strip;
   card.innerHTML =
-    notes() +
-    strip +
-    // The photograph is the card. Everything the card SAYS rides on one plate
-    // over it, so the text has a single contrast problem to solve rather than
-    // one per line, and the two verdict buttons sit on the picture at the
-    // corners a thumb is already near.
-    //
-    // The deck position and the way to the list are under the deck, not on the
-    // card: both are about the SCREEN rather than about the room, and neither
-    // should fly off the side of the phone with a room it is not about.
     `<div class="c-deck">
       <article class="c-card${photo ? '' : ' plain'}" id="c-top" tabindex="0"
         role="group" aria-label="${esc(said)}">
-        ${photo
-          ? `<img class="c-blur" src="${esc(photo)}" alt="" aria-hidden="true" decoding="async">
-             <img class="c-photo" id="c-img" src="${esc(photo)}" alt="" decoding="async">`
-          : ''}
+        ${photo ? `<canvas class="c-photo" id="c-img" aria-hidden="true"></canvas>` : ''}
         <span class="c-scrim" aria-hidden="true"></span>
         <span class="c-stamp no" aria-hidden="true">NEXT</span>
         <span class="c-stamp yes" aria-hidden="true">GO</span>
@@ -1272,6 +1333,7 @@ function paintCard() {
             <span class="sep">&middot;</span>
             <span>${seats.html}</span>${dept.html ? `<span class="sep">&middot;</span><span>departmental</span>` : ''}
           </p>
+          ${admits ? `<div class="c-admits">${admits}</div>` : ''}
         </div>
         <p class="c-acts">
           <button type="button" class="c-act no" id="c-no" aria-label="Not this one, show the next room">
@@ -1283,11 +1345,10 @@ function paintCard() {
         </p>
       </article>
     </div>
-    <div class="c-foot">
-      <p class="c-pos">${state.cardIndex + 1} of ${total}</p>
-      <p class="c-hint">Swipe the card, or use the buttons.</p>
-      <button type="button" class="c-more" id="c-list">See all ${total} in a list</button>
-    </div>`;
+    <button type="button" class="c-more" id="c-list"
+      aria-label="Room ${state.cardIndex + 1} of ${total}. See all ${total} in a list">
+      ${state.cardIndex + 1} of ${total} &middot; see all
+    </button>`;
 
   $('card').classList.remove('done');
   $('c-no').onclick = () => rejectCard();
@@ -1295,19 +1356,27 @@ function paintCard() {
   $('c-list').onclick = () => openList();
   // Faded in on decode rather than on load, so the room does not appear as a
   // flash under words already being read. A photograph that 404s or is corrupt
-  // leaves the plain card behind it, which is the same card 118 rooms get.
-  const img = $('c-img');
-  if (img) {
-    // Both copies together, or the blurred fill appears under an empty frame.
-    const show = () => card.querySelectorAll('.c-photo, .c-blur').forEach((el) => el.classList.add('on'));
-    if (img.complete && img.naturalWidth) show();
-    else {
-      img.onload = show;
-      img.onerror = () => {
-        card.querySelectorAll('.c-photo, .c-blur').forEach((el) => el.remove());
-        $('c-top')?.classList.add('plain');
-      };
-    }
+  // leaves the plain card behind it, which is the same card 119 rooms get.
+  const canvas = $('c-img');
+  if (canvas && photo) {
+    // The decode happens off the DOM: the canvas is what is on screen, and an
+    // <img> in the tree as well would download nothing extra but would be a
+    // second thing to keep in step. Faded in on draw rather than on load, so
+    // the room does not appear as a flash under words already being read.
+    const source = new Image();
+    source.decoding = 'async';
+    source.onload = () => {
+      // The pane may have been repainted under a slow decode -- a swipe, or a
+      // background re-rank -- and drawing into a canvas nothing holds any more
+      // is how a stale room ends up under the right name.
+      if (!canvas.isConnected) return;
+      if (drawWarp(canvas, source)) canvas.classList.add('on');
+    };
+    source.onerror = () => {
+      canvas.remove();
+      $('c-top')?.classList.add('plain');
+    };
+    source.src = photo;
   }
   attachSwipe($('c-top'));
   syncPaneTouch();
@@ -2331,6 +2400,10 @@ async function paintAbout() {
 
 function showPane(name) {
   if (state.screen === 'room' && name !== 'room' && orientationOff) orientationOff();
+  // The card screen is a photograph edge to edge, so the sheet it lives in has
+  // no rounded top, no border and no grip there. index.html hangs those off the
+  // body rather than the pane, because the sheet is what has to lose them.
+  document.body.classList.toggle('carding', name === 'card');
   for (const id of PANES) $(id).hidden = id !== name;
   $('find').hidden = name !== 'pick';
   $('origin').hidden = !originBarOn(name);
@@ -2360,6 +2433,7 @@ function showAsk() {
   state.screen = 'ask';
   $('ask').hidden = false;
   document.body.classList.add('asking');
+  document.body.classList.remove('carding');
   $('sheet').hidden = true;
   $('back').hidden = true;
   for (const id of PANES) $(id).hidden = id !== 'list';

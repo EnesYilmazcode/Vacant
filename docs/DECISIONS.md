@@ -3494,14 +3494,54 @@ Chrome `scripts/shoot.mjs` already needs: it decodes each JPEG, draws it smaller
 and encodes WebP, wearing the User-Agent `scripts/lib/fetch.mjs` promises,
 because the politeness is about the server and not about which client asked.
 
-**Contain, not cover, with a blurred copy of itself behind.** Cover is the
-obvious choice and it is wrong: these photographs are 3:2 and the card is about
-1:1.75, so covering shows a 38% wide vertical slice. Measured at 393x852 the
-first card was carpet, one row of desks, and none of the boards, screen or
-windows you would recognise the room by. Contained, the whole room is there, and
-the blurred fill is what keeps the card full-bleed instead of letterboxed. The
-card is 4:5 rather than the full height of the deck, because at full height the
-picture floated in 400px of blurred nothing.
+### The picture is the whole screen, and getting there took four shapes
+
+**Decided.** No card. The photograph is the viewport: a back arrow over it, one
+translucent plate near the top, the two verdicts on the bottom corners, and one
+small line between them that is both how deep into the ranking you are and the
+way to the list. Nothing else. The sheet loses its rounded top, its border and
+its grip on that one screen, and `js/sheet.js` rests it at the full viewport
+height to match.
+
+**The arithmetic nothing gets around.** These photographs are 3:2 and the screen
+is about 1:2.2, a 3.25x aspect gap. Something has to give, and each of the first
+three shapes gave away the wrong thing:
+
+| | what it gave away |
+| --- | --- |
+| a 22rem card, room number at 3.6rem | the picture entirely |
+| the same card, cover crop | 55% of the phone was empty ground under it |
+| a 4:5 card, contained, blurred fill | read as a small picture in a field of dark |
+| full-bleed cover | 31% of the width, and half of that column is carpet |
+
+Cover can only ever show a 277x600 slice of the 900x600 source: the full height
+and 31% of the width. Every one of these is shot from the back of the room, so
+half of that column is foreground carpet. Measured, the full-bleed cover build
+was 60% carpet with the screen, the boards and both ends of the room gone.
+Cropping the source makes the column narrower, not wider.
+
+**The fifth shape is Enes's, and it is the one that works: stretch the TOP.**
+"could we experiment with a fisheye thing? like it stretches out the top, since
+the top will be covered by the translucence anyways, people won't see so that
+won't hurt too much." The top of the frame is ceiling, it is flat, and the plate
+sits over it, so spending most of the screen's height on a few rows of it costs
+nothing anybody can see -- and it buys back the width of the room, which is the
+part you are actually looking at.
+
+`drawWarp()` in js/app.js does it on a canvas, in 240 horizontal bands, each a
+straight `drawImage` from a thin source slice into a taller destination one. The
+curve is `source = height * (y / H) ** 1.9`. At that exponent the top 120px of
+the screen -- the strip the plate covers -- is drawn from the top **15 rows** of
+the photograph, and the bottom half is stretched about 1.35x, which reads as a
+room with a high ceiling rather than as a distortion. `WARP_WIDTH = 0.72` keeps
+72% of the source width, against 31% for cover. The whole draw is under 3ms.
+
+The canvas is the only copy on screen: the decode happens on an `Image` that
+never enters the DOM, because an `<img>` in the tree as well would be a second
+thing to keep in step. It checks `canvas.isConnected` before drawing, since a
+swipe or a background re-rank can replace the pane under a slow decode, and
+drawing into a canvas nothing holds any more is how a stale room ends up under
+the right name.
 
 **One bug that made the card undraggable.** An `<img>` is natively draggable, and
 a pointerdown on one starts a browser image-drag that CANCELS the pointer stream.
@@ -3542,10 +3582,10 @@ does fail, `whereMoved()` now reports how many pixels moved, by how much, and th
 CSS box they are in -- finding that out used to mean rebuilding the script by
 hand in a scratch file, which is what it took here.
 
-**Cost.** The shell went 138,629 -> 141,112 gzipped bytes: 1,570 on index.html
-for the picture, the plate and the fill, and 913 on js/app.js. The photographs
-are none of that -- they are 11.7 MB of `data/photos/`, fetched one at a time.
-Suite 848 -> 851 tests.
+**Cost.** The shell went 138,629 -> 142,263 gzipped bytes, +2.6%: the picture,
+the plate, the sheet losing its frame on that one screen, and `drawWarp()`. The
+photographs are none of that -- they are 11.7 MB of `data/photos/`, fetched one
+at a time and never precached. Suite 848 -> 851 tests.
 
 **One upstream gap, recorded so it is not rediscovered.** UH0037's Learning
 Spaces entry links a photograph that 404s. The script asks Node for the real

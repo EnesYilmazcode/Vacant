@@ -1340,8 +1340,12 @@ test('a room with no photograph gets a card, not a broken frame', () => {
   assert.match(paint, /photo \? '' : ' plain'/, 'a photoless room stopped getting the plain card');
   // And a file that 404s or decodes to nothing falls back to the same card
   // rather than leaving an empty frame under the plate.
-  assert.match(paint, /img\.onerror/);
+  assert.match(paint, /source\.onerror/);
   assert.match(paint, /classList\.add\('plain'\)/);
+  // The warp draws into a canvas the pane may have replaced under a slow
+  // decode -- a swipe, or a background re-rank -- and drawing into one nothing
+  // holds any more is how a stale room ends up under the right name.
+  assert.match(paint, /canvas\.isConnected/);
 });
 
 test('the photographs are on demand, never precached, and never re-fetched', () => {

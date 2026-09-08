@@ -260,202 +260,187 @@
 
   /* --- the card ---
 
-     One room, not thirty-five. Colin, who uses this on campus, asked for "a
+     The photograph IS the screen. Colin, who uses this on campus, asked for "a
      single button that just finds the nearest empty classroom and if its full u
-     swipe and gives u next best", and that is the whole screen: the building,
-     the room number, three facts, and two ways out.
+     swipe and gives u next best"; Enes asked for the room to be the picture,
+     edge to edge: "the image of the classroom is the most important part as it
+     provides a good visual aspect and a visual reference".
 
-     Everything the list says around the rows -- the count, the walk cap, the
-     coverage paragraph -- stays on the list. A card carrying them would be a
-     list with one row on it. */
-  /* Centred, not stacked at the top. The sheet covers the whole screen on this
-     screen -- there is no map behind it to leave room for -- and a card holding
-     six short lines at the top of it left 55% of the phone as empty ground.
-     `safe center` for the same reason #ask uses it: plain centring on a scroll
-     container puts overflow ABOVE the scroll origin, where a large root font
-     size would put the buttons out of reach of every way of scrolling. */
-  /* The photograph IS the card, so the pane is the frame: no gaps, no gutters,
-     and the buttons sit on the picture rather than under it. A room you can see
-     is a room you can recognise from the corridor, which is a thing no amount
-     of "Cunz Hall 160" ever told anybody. */
+     So there is no card floating on a background. There is a room, a back arrow
+     over it, one translucent plate near the top, and the two verdicts on the
+     bottom corners. Everything the list says around its rows -- the count, the
+     walk cap, the coverage paragraph -- stays on the list.
+
+     Three earlier shapes are gone and worth not repeating. A 22rem card with the
+     room number at 3.6rem: no picture at all. The same card filled by a cover
+     crop: 55% of the phone was empty ground under it. A 4:5 card holding the
+     photograph contained, with a blurred copy behind: the whole room was
+     visible, and it read as a small picture in a lot of dark. */
   #card {
-    display: flex; flex-direction: column;
-    padding: 0 0 calc(.5rem + var(--safe-b));
-    /* A thrown card leaves sideways. Sideways is clipped so the flight cannot
-       widen the page; vertical is clipped too, because this pane no longer
-       scrolls -- the deck fills it. */
+    position: relative;
+    padding: 0;
+    /* The pane does not scroll and the photograph does not letterbox: this
+       screen is exactly one viewport, and a thrown card leaves sideways out of
+       it. */
     overflow: hidden;
   }
-  /* The deck centres the card; the card is as tall as its own contents. It
-     used to fill the deck, and the photograph inside it then floated in 400px
-     of blurred nothing, because a 3:2 picture contained in a 366x643 box is
-     244px tall. Sized to the picture, the card is plate + photograph + buttons
-     and there is no dead ground in it at all. */
-  .c-deck {
-    position: relative; flex: 1 1 auto; min-height: 0;
-    display: flex; align-items: center; justify-content: center;
-  }
-  /* A portrait card with a landscape picture floating in the middle of it, and
-     the plate and the buttons over the blurred fill at either end. 4:5 is the
-     shape that leaves room for both without leaving a field of nothing: at
-     366px wide the card is 458 tall and the contained 3:2 photograph is 244 of
-     that, so each band is about 107px, which is one plate and one row of
-     buttons exactly. The card filling the whole deck left 400px of blur. */
+  .c-deck { position: absolute; inset: 0; }
   .c-card {
-    position: relative; width: 100%; aspect-ratio: 4 / 5;
-    max-height: 100%; overflow: hidden;
-    background: var(--card-hi); border-radius: 18px;
+    position: absolute; inset: 0; overflow: hidden;
+    background: var(--card-hi);
     touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none;
-    box-shadow: 0 10px 30px rgba(0,0,0,.45);
   }
   /* Only while the finger is off it. During a drag the transform is written
      every frame and a transition would lag the thumb. */
   .c-card.snap { transition: transform .26s cubic-bezier(.2,.8,.3,1), opacity .26s ease; }
 
-  /* CONTAIN, and the card is filled by a blurred copy of the same picture
-     behind it.
+  /* A canvas, not an img, because the picture is WARPED to fit.
 
-     Cover was the obvious choice and it is wrong here. These photographs are
-     3:2 and the card is about 1:1.75, so covering it shows a 38% wide vertical
-     slice: measured at 393x852 the first card was carpet, one row of desks and
-     nothing else -- no boards, no screen, no windows, none of the things you
-     would recognise the room by. Containing shows the whole room, and the
-     blurred fill is what keeps the card full-bleed instead of letterboxed.
-     Same src both times, so it is one request and one decode. */
+     The arithmetic that forces it: these photographs are 3:2 and the screen is
+     about 1:2.2, so a cover crop can only ever show a 277x600 slice of the
+     900x600 source -- 31% of the width, full height -- and since every one of
+     them is shot from the back of the room, half of that column is foreground
+     carpet. Measured, the first full-bleed build was 60% carpet with the
+     screen, the boards and both ends of the room gone. Cropping the source
+     makes the column narrower, not wider. Containing it shows the whole room
+     and leaves two bands of something else.
+
+     Enes's idea, and it is the one that works: stretch the TOP. The top of the
+     frame is ceiling, it is flat, and the plate sits over it, so spending most
+     of the screen's height on a few rows of it costs nothing anybody can see --
+     and it buys the width back for the part of the room you are looking at.
+     js/app.js drawWarp() does the mapping and says how. */
   .c-photo {
     position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%;
-    object-fit: contain;
     /* Loaded per card and never precached, so it arrives after the text. Fading
        it in stops the room appearing as a flash under words already being read.
        js/app.js adds .on when the decode finishes. */
     opacity: 0; transition: opacity .35s ease;
   }
-  .c-photo.on, .c-blur.on { opacity: 1; }
-  .c-blur {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    object-fit: cover; opacity: 0; transition: opacity .35s ease;
-    /* Scaled past the frame because a blur samples past its own edges and
-       leaves a pale rim without it. */
-    filter: blur(22px) saturate(.85) brightness(.62); transform: scale(1.2);
-  }
+  .c-photo.on { opacity: 1; }
   /* An img is natively draggable, and a pointerdown on one starts a browser
      image-drag that CANCELS the pointer stream. The swipe then saw a
      pointercancel instead of a move and put the card straight back, so a card
      with a photograph on it could not be dragged at all. The picture has no
      interaction of its own, so the events belong to the card under it. */
-  .c-photo, .c-blur, .c-scrim { pointer-events: none; }
-  /* Under the plate, so white text on a bright ceiling still clears 7:1, and
-     under the buttons at the bottom for the same reason. Two stops rather than
-     one, because a single full-height wash greys the whole room out. */
+  .c-photo, .c-scrim { pointer-events: none; }
+  /* Under the plate and under the buttons, and nowhere else. A single wash over
+     a whole room greys out the thing the screen exists to show. */
   .c-scrim {
-    position: absolute; inset: 0; pointer-events: none;
+    position: absolute; z-index: 1; inset: 0;
     background:
-      linear-gradient(180deg, rgba(11,13,16,.6) 0%, rgba(11,13,16,.1) 26%, rgba(11,13,16,0) 40%),
-      linear-gradient(0deg, rgba(11,13,16,.75) 0%, rgba(11,13,16,0) 22%);
+      linear-gradient(180deg, rgba(11,13,16,.5) 0%, rgba(11,13,16,.1) 20%, rgba(11,13,16,0) 30%),
+      linear-gradient(0deg, rgba(11,13,16,.55) 0%, rgba(11,13,16,0) 18%);
   }
   /* No photograph for this room, and 119 of the 425 have none. A flat panel
-     rather than a grey box with a broken-image glyph in it: the answer is the
-     words, and the picture was always the bonus. The card keeps a shape so the
-     deck does not collapse to the height of two lines of text. */
+     rather than a broken-image glyph: the answer is the words, and the picture
+     was always the bonus. */
   .c-card.plain { background: var(--card-hi); }
   .c-card.plain .c-scrim { background: none; }
 
-  /* The floating plate. Everything the card says lives on it, so the text has
-     one contrast problem to solve instead of one per line, and it reads at the
-     same weight over a dark lecture hall and a window wall. */
+  /* The plate. Everything the card SAYS is on it, so the text has one contrast
+     problem to solve instead of one per line, and it reads at the same weight
+     over a dark lecture hall and a wall of windows. Inset from the top rather
+     than pinned to it, so the back arrow beside it has room. */
   .c-plate {
-    position: absolute; z-index: 2; top: .8rem; left: .8rem; right: .8rem;
-    background: rgba(18, 24, 33, .82);
-    /* No backdrop-filter. It samples what is behind it at composite time, and
-       over a photograph headless Chrome renders it differently between two
-       frames a quarter second apart: scripts/shoot.mjs refused the card frame
-       as still moving on every run with it in. The plate is 82% opaque dark on
-       its own, which is what the contrast was measured against anyway. */
-    border: 1px solid rgba(255,255,255,.09); border-radius: 14px;
-    padding: .8rem .95rem; text-align: center;
+    position: absolute; z-index: 2; top: calc(var(--safe-t) + .7rem);
+    left: 4.2rem; right: .9rem;
+    background: rgba(18, 24, 33, .74);
+    border: 1px solid rgba(255,255,255,.1); border-radius: 14px;
+    padding: .6rem .8rem; text-align: center;
   }
   .c-b {
-    margin: 0; font-size: clamp(1.15rem, 6vw, 1.5rem); font-weight: 700;
+    margin: 0; font-size: clamp(1.1rem, 5.6vw, 1.45rem); font-weight: 700;
     letter-spacing: -.01em; line-height: 1.15;
   }
-  /* One line, three facts, separated the way the list separates them. The
-     window comes first because it is the answer to the question that was
-     asked; the walk and the seats are what you weigh it against. */
+  /* One line, three facts. The window comes first because it is the answer to
+     the question that was asked; the walk and the seats are what you weigh it
+     against. */
   .c-facts {
-    margin: .3rem 0 0; color: var(--dim); font-size: .88rem;
-    display: flex; align-items: center; justify-content: center; gap: .45rem;
+    margin: .22rem 0 0; color: var(--dim); font-size: .82rem;
+    display: flex; align-items: center; justify-content: center; gap: .4rem;
     flex-wrap: wrap;
   }
   .c-facts .ico { width: 1em; height: 1em; }
-  .c-facts .sep { opacity: .5; }
+  .c-facts .sep { opacity: .45; }
   .c-facts .warn { color: var(--warn); }
-  .c-pos {
-    position: relative; z-index: 1; margin: .5rem 0 0; text-align: center;
-    color: var(--dim); font-size: .78rem;
+  /* What the answer has to admit, when it has anything to admit -- a window
+     shorter than the one you asked for, a minute with nothing free in it, a
+     campus whose published doors are all shut. It rides on the plate rather
+     than above it, because the room fills the screen and anything in the flow
+     before the deck would be painted over by it. Absent 94.1% of the time. */
+  .c-admits { margin: .5rem 0 0; border-top: 1px solid rgba(255,255,255,.1); padding-top: .45rem; }
+  .c-admits .strip, .c-admits p {
+    margin: 0; color: var(--warn); font-size: .78rem; text-align: center;
   }
 
   /* The two verdicts, painted on the card as it moves so the gesture says what
      it will do before it is finished. Opacity is driven from js/app.js.
-     Below the plate, not beside it: the plate is the full width of the card
-     now, so there are no top corners left to sit in. */
-  .c-stamp {
-    position: absolute; z-index: 3; top: 7rem; font-size: 1rem; font-weight: 800;
-    letter-spacing: .08em; padding: .35rem .7rem; border-radius: 8px;
-    border: 2px solid currentColor; opacity: 0; pointer-events: none;
-    background: rgba(11,13,16,.55);
-  }
-  /* Each one sits on the side of the card that stays ON SCREEN, which is the
+     Each sits on the side of the card that stays ON SCREEN, which is the
      opposite side to the direction of travel: a card thrown left takes its left
-     edge away first, so NEXT lives on the right, and GO lives on the left for
-     the same reason going the other way. The first build had them the other way
-     round and the word telling you what you were about to do slid off the
-     screen exactly as you committed to it. */
-  .c-stamp.no { right: 1.1rem; color: var(--dim); transform: rotate(12deg); }
-  .c-stamp.yes { left: 1.1rem; color: var(--accent); transform: rotate(-12deg); }
+     edge away first, so NEXT lives on the right. The first build had them the
+     other way round and the word telling you what you were about to do slid off
+     the screen exactly as you committed to it. */
+  .c-stamp {
+    position: absolute; z-index: 3; top: 40%; font-size: 1.15rem; font-weight: 800;
+    letter-spacing: .08em; padding: .4rem .8rem; border-radius: 10px;
+    border: 2px solid currentColor; opacity: 0; pointer-events: none;
+    background: rgba(11,13,16,.5);
+  }
+  .c-stamp.no { right: 1.4rem; color: #fff; transform: rotate(12deg); }
+  .c-stamp.yes { left: 1.4rem; color: var(--accent); transform: rotate(-12deg); }
 
-  /* Buttons, not only a swipe. A gesture nothing announces is unreachable from
-     a keyboard and invisible to a screen reader, and it is also just harder to
-     find: these say what the swipe does. */
   /* On the picture, at its two bottom corners, which is where a thumb already
-     is. `justify-content: space-between` and not a centred pair, because the
-     side each one sits on is the direction its swipe goes. */
+     is. The side each one sits on is the direction its swipe goes. */
   .c-acts {
-    position: absolute; z-index: 2; left: 0; right: 0; bottom: .9rem;
+    position: absolute; z-index: 2; left: 0; right: 0;
+    bottom: calc(1.1rem + var(--safe-b));
     display: flex; justify-content: space-between; align-items: center;
-    margin: 0; padding: 0 1.1rem; pointer-events: none;
+    margin: 0; padding: 0 1.2rem; pointer-events: none;
   }
   .c-acts .c-act { pointer-events: auto; }
   .c-act {
     appearance: none; width: 58px; height: 58px; border-radius: 999px;
-    border: 1px solid rgba(255,255,255,.16);
-    background: rgba(11,13,16,.72); color: var(--fg); cursor: pointer;
+    border: 1px solid rgba(255,255,255,.18);
+    background: rgba(11,13,16,.55); color: var(--fg); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
   }
   .c-act .ico { width: 1.6em; height: 1.6em; stroke-width: 1.8; }
   .c-act.yes { border-color: var(--accent); color: var(--accent); }
   .c-act:active { transform: scale(.94); }
-  .c-hint { margin: .55rem 0 0; color: var(--dim); font-size: .8rem; text-align: center; }
-  /* Under the deck, not on it. Both of these are about the SCREEN rather than
-     about the room, so they do not travel with a card being thrown. */
-  .c-foot {
-    flex: none; display: flex; flex-direction: column; align-items: center;
-    padding: .55rem 1rem 0;
-  }
-  /* The way back to the ranking. A link and not a button, weighted like the
-     other quiet lines, because it is a second choice and not the point. */
+
+  /* Between the two buttons, and the only other thing on the screen. It is one
+     line doing two jobs -- how deep into the ranking you are, and the way to the
+     whole of it -- because the alternative was three stacked lines under the
+     picture, which is the black band this screen was rebuilt to delete. */
   .c-more {
-    margin: 0; appearance: none; background: none; border: 0; padding: .5rem;
-    color: var(--dim); font: inherit; font-size: .85rem; cursor: pointer;
-    text-decoration: underline; text-underline-offset: 3px;
+    position: absolute; z-index: 2; left: 50%;
+    bottom: calc(1.1rem + var(--safe-b) + 14px);
+    transform: translateX(-50%);
+    appearance: none; border: 1px solid rgba(255,255,255,.14);
+    background: rgba(11,13,16,.5); color: var(--dim);
+    font: inherit; font-size: .78rem; padding: .35rem .7rem; border-radius: 999px;
+    cursor: pointer; white-space: nowrap;
   }
   .c-end { margin: 0; text-align: center; color: var(--dim); font-size: .9rem; }
   /* The end of the deck has no photograph and no gesture, so it is laid out
-     like every other message pane in this app rather than like a card. */
-  #card.done { justify-content: center; justify-content: safe center; padding: 1rem; }
-  #card.done .c-deck { flex: none; }
+     like every other message pane in this app rather than like a screen. */
+  #card.done {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; justify-content: safe center;
+    gap: .85rem; padding: 1rem;
+  }
+  #card.done .c-deck { position: static; }
   @media (prefers-reduced-motion: reduce) {
     .c-card.snap { transition: none; }
   }
+
+  /* The sheet is the photograph's frame on this screen, so it has no frame:
+     no rounded top, no border, no grip, and it starts at the top of the phone.
+     js/sheet.js rests it at the full viewport height to match. */
+  body.carding #sheet { border-radius: 0; border-top: 0; background: none; }
+  body.carding #sheet .handle { display: none; }
+
 
   /* --- the answer --- */
   /* The sheet carries the column width itself, rather than running the full

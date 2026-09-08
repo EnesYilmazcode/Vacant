@@ -26,6 +26,12 @@ export const REST = { ask: 0, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: FU
 export const COVER = 0.92;
 export const BACK_PX = 76;
 
+// The card screen is a photograph of a room and nothing else, so it is the
+// whole viewport: no strip at the top, no rounded sheet edge, no grip. The back
+// arrow floats ON the picture there and carries its own dark disc, which is why
+// this one does not reserve BACK_PX the way every other covered screen does.
+const FULL_BLEED = new Set(['card']);
+
 // A screen leaves a map band because there is a lit footprint and a walk line in
 // it. Before a row is tapped there is nothing on that canvas but your own dot:
 // at 393x852 the list left 528px of campus, 62% of the screen, to say where the
@@ -38,7 +44,7 @@ export const BACK_PX = 76;
 // `targeted` is state.selected at every call site. Defaulted true so the screens
 // that always have one read unchanged.
 export const restFor = (screen, targeted = true) =>
-  (!targeted && screen !== 'ask' ? COVER : REST[screen]) ?? PEEK;
+  (FULL_BLEED.has(screen) ? 1 : !targeted && screen !== 'ask' ? COVER : REST[screen]) ?? PEEK;
 
 // The strip the sheet is NOT covering, which is what the camera centres in.
 // Keyed to where the screen RESTS so a drag slides the sheet over a map that
@@ -69,9 +75,11 @@ export const bandFor = (screen, height, rail = 0) =>
 // guard. PEEK is where these screens actually stopped before, and a rail that
 // tall has already broken the layout on its own.
 export const capFor = (screen, height, rail = 0, targeted = true) =>
-  restFor(screen, targeted) <= FULL
-    ? FULL * height
-    : Math.max(PEEK * height, Math.min(COVER * height, height - rail - BACK_PX));
+  FULL_BLEED.has(screen)
+    ? height - rail
+    : restFor(screen, targeted) <= FULL
+      ? FULL * height
+      : Math.max(PEEK * height, Math.min(COVER * height, height - rail - BACK_PX));
 
 // Where a screen rests, in pixels: its fraction, or the cap when the fraction
 // asks for more room than the button and the rail leave.

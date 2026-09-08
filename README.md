@@ -67,7 +67,19 @@ and every row is the same answer the card gives, one per building, nearest first
 ## The picture is the room
 
 The card shows the room, because a room you can see is a room you can recognise
-from the corridor, and "Cunz Hall 160" never told anybody that.
+from the corridor, and "Cunz Hall 160" never told anybody that. It is the whole
+screen: a back arrow over it, one translucent plate near the top, and the two
+verdicts on the bottom corners.
+
+**The top of the frame is stretched to make it fit.** A 3:2 photograph in a
+1:2.2 screen is a 3.25x aspect gap, and a cover crop pays for it in width: 31%
+of the room, and since every one of these is shot from the back, half of that
+column is foreground carpet. So the ceiling pays instead. It is flat, the plate
+sits over it, and stretching it buys back **72% of the width** for the part of
+the room you are looking at. `drawWarp()` maps the source to the screen as
+`y ** 1.9` over 240 bands on a canvas: the top 120px of the phone comes from the
+top 15 rows of the photograph, and the bottom half is stretched about 1.35x,
+which reads as a high ceiling rather than as a distortion.
 
 **306 of the 425** have one. The other 119 are departmental rooms nobody has
 photographed, and they get the same card without a picture: the words were always

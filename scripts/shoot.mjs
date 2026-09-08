@@ -193,7 +193,9 @@ class Phone {
       await this.call('Input.dispatchMouseEvent', at(box.x + (dx * i) / steps, 'mouseMoved', 1));
       await sleep(24);
     }
-    await sleep(200);
+    // Long enough for the snap the PREVIOUS drop started to have finished, and
+    // for the transform this one wrote to be the last thing that moved.
+    await sleep(500);
     this.held = box;
   }
 
@@ -553,7 +555,7 @@ async function run() {
       `(() => {
         const i = document.getElementById('c-img');
         // Computed opacity is the END of the fade. The class goes on when the
-        // decode finishes and the transition runs for another 350ms after that,
+        // warp is drawn and the transition runs for another 350ms after that,
         // and a frame taken inside it is a different frame every run.
         return !i || getComputedStyle(i).opacity === '1';
       })()`,
@@ -573,8 +575,8 @@ async function run() {
         facts: pick('.c-facts').replace(/\\s+/g, ' ').trim(),
         acts: [...document.querySelectorAll('.c-act')].map((b) => b.getAttribute('aria-label')),
         nomap: document.body.classList.contains('nomap'),
-        photo: img ? img.getAttribute('src') : null,
-        drawn: img ? img.naturalWidth + 'x' + img.naturalHeight : null,
+        photo: img ? (img.tagName === 'CANVAS' ? 'canvas' : img.getAttribute('src')) : null,
+        drawn: img ? img.width + 'x' + img.height : null,
         plain: document.getElementById('c-top').classList.contains('plain'),
       };
     })()`);
@@ -597,7 +599,10 @@ async function run() {
     // this one: Cunz Hall 160 has one, and it is the room the run picks.
     if (!card.photo) problems.push('card: no photograph on a room that has one');
     else if (card.plain) problems.push('card: the photograph failed to load');
-    else if (!/^900x/.test(card.drawn ?? '')) problems.push(`card: the photograph is ${card.drawn}`);
+    // The warp draws at the device pixel ratio, capped at 2, so a 393x852 phone
+    // gets a 786x1704 canvas. A canvas that came out 0 wide is a draw that
+    // happened before the pane had a size.
+    else if (!/^\d{3,}x\d{3,}$/.test(card.drawn ?? '')) problems.push(`card: the canvas is ${card.drawn}`);
     await shoot('card', `${card.pos}, ${card.title}, ${card.facts}`);
 
     // 2b and 2c. The same card, held mid-swipe in each direction. This is the

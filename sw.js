@@ -41,7 +41,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-f98a695';
+const SHELL_CACHE = 'vacant-shell-e5e43ff';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also
@@ -171,11 +171,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (url.pathname.startsWith(DATA_PREFIX)) {
-    // The term pointer is the one file that must never be stale: a two month old
-    // shell reading a cached pointer would ask for last term's rooms by name. It
-    // is 226 bytes.
+    // The term pointer and dated event overlay must never be stale. The event
+    // filename is stable for a whole term even though its covered week changes,
+    // so an old cached response can otherwise hide the current week's events.
+    // Both still fall back to the data cache when the network is unavailable.
+    const needsFreshData =
+      url.pathname === CURRENT || /\/room-events-\d+\.json$/.test(url.pathname);
     event.respondWith(
-      url.pathname === CURRENT ? networkFirst(request) : staleWhileRevalidate(event, request),
+      needsFreshData ? networkFirst(request) : staleWhileRevalidate(event, request),
     );
     return;
   }
@@ -219,7 +222,9 @@ async function cacheFirst(event, request) {
 async function networkFirst(request) {
   const data = await caches.open(DATA_CACHE);
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, {
+      cache: request.cache === 'no-store' ? 'no-store' : 'no-cache',
+    });
     if (response && response.ok) {
       await data.put(request, response.clone());
       return response;

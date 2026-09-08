@@ -236,8 +236,12 @@ test('a navigation falls back to the cached shell', () => {
   assert.match(navigate, /response\.ok/);
 });
 
-test('term data is stale-while-revalidate and the pointer is network first', () => {
-  assert.match(sw, /url\.pathname === CURRENT \? networkFirst\(request\) : staleWhileRevalidate\(/);
+test('dated event data and the term pointer are network first', () => {
+  assert.match(sw, /const needsFreshData =/);
+  assert.match(sw, /\/room-events-\\d\+\\\.json\$/);
+  assert.match(sw, /needsFreshData \? networkFirst\(request\) : staleWhileRevalidate\(/);
+  const first = sw.slice(sw.indexOf('async function networkFirst'), sw.indexOf('async function staleWhileRevalidate'));
+  assert.match(first, /cache: request\.cache === 'no-store' \? 'no-store' : 'no-cache'/);
   const swr = sw.slice(sw.indexOf('async function staleWhileRevalidate'), sw.indexOf('function changed'));
   assert.match(swr, /event\.waitUntil\(update\)/);
   assert.match(swr, /announce\(request\.url\)/);

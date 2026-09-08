@@ -258,6 +258,106 @@
     display: flex; align-items: center; justify-content: center;
   }
 
+  /* --- the card ---
+
+     One room, not thirty-five. Colin, who uses this on campus, asked for "a
+     single button that just finds the nearest empty classroom and if its full u
+     swipe and gives u next best", and that is the whole screen: the building,
+     the room number, three facts, and two ways out.
+
+     Everything the list says around the rows -- the count, the walk cap, the
+     coverage paragraph -- stays on the list. A card carrying them would be a
+     list with one row on it. */
+  /* Centred, not stacked at the top. The sheet covers the whole screen on this
+     screen -- there is no map behind it to leave room for -- and a card holding
+     six short lines at the top of it left 55% of the phone as empty ground.
+     `safe center` for the same reason #ask uses it: plain centring on a scroll
+     container puts overflow ABOVE the scroll origin, where a large root font
+     size would put the buttons out of reach of every way of scrolling. */
+  #card {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; justify-content: safe center;
+    gap: .85rem; padding: .4rem 1rem calc(.6rem + var(--safe-b));
+  }
+  /* The card is lifted off the sheet so the swipe reads as moving an object
+     rather than wiping the screen. It carries its own ground, one step up from
+     the sheet's, because a card the same colour as what is behind it has no
+     edge to throw. */
+  .c-card {
+    position: relative; width: 100%; max-width: 22rem; flex: none;
+    background: var(--card-hi); border: 1px solid var(--line-hi); border-radius: 20px;
+    padding: 1.5rem 1.35rem 1.6rem;
+    display: flex; flex-direction: column; gap: .3rem;
+    touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none;
+    box-shadow: 0 10px 30px rgba(0,0,0,.45);
+  }
+  .c-card.back {
+    position: absolute; inset: 0; z-index: 0;
+    transform: scale(.94) translateY(10px); opacity: .55; pointer-events: none;
+  }
+  /* Only while the finger is off it. During a drag the transform is written
+     every frame and a transition would lag the thumb. */
+  .c-card.snap { transition: transform .26s cubic-bezier(.2,.8,.3,1), opacity .26s ease; }
+  .c-deck { position: relative; width: 100%; max-width: 22rem; }
+
+  /* The building, then the room. Two lines, because "Cunz Hall 160" as one
+     string is what the list says and the whole point of this screen is that the
+     room number is the thing you are walking to. */
+  .c-b {
+    margin: 0; font-size: 1.05rem; font-weight: 650; color: var(--dim);
+    letter-spacing: .01em;
+  }
+  .c-n {
+    margin: 0; font-size: clamp(2.6rem, 15vw, 3.6rem); font-weight: 800;
+    line-height: 1; letter-spacing: -.03em;
+  }
+  /* The window is the answer to "for how long", so it is the one fact in the
+     app's own accent rather than in the grey the other two share. */
+  .c-win { margin: .75rem 0 0; font-size: 1.05rem; font-weight: 650; }
+  .c-win .warn { color: var(--warn); }
+  .c-facts {
+    margin: .1rem 0 0; color: var(--dim); font-size: .95rem;
+    display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  }
+  .c-facts .ico { width: 1em; height: 1em; }
+  .c-pos { margin: 0 0 .5rem; color: var(--dim); font-size: .78rem; }
+
+  /* The two verdicts, painted on the card as it moves so the gesture says what
+     it will do before it is finished. Opacity is driven from js/app.js. */
+  .c-stamp {
+    position: absolute; top: 1.1rem; font-size: .85rem; font-weight: 800;
+    letter-spacing: .08em; padding: .3rem .6rem; border-radius: 8px;
+    border: 2px solid currentColor; opacity: 0; pointer-events: none;
+  }
+  .c-stamp.no { left: 1.1rem; color: var(--dim); transform: rotate(-12deg); }
+  .c-stamp.yes { right: 1.1rem; color: var(--accent); transform: rotate(12deg); }
+
+  /* Buttons, not only a swipe. A gesture nothing announces is unreachable from
+     a keyboard and invisible to a screen reader, and it is also just harder to
+     find: these say what the swipe does. */
+  .c-acts { display: flex; gap: 1.4rem; margin: 0; align-items: center; }
+  .c-act {
+    appearance: none; width: 62px; height: 62px; border-radius: 999px;
+    border: 1px solid var(--line-hi); background: var(--card);
+    color: var(--fg); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .c-act .ico { width: 1.6em; height: 1.6em; stroke-width: 1.8; }
+  .c-act.yes { border-color: var(--accent); color: var(--accent); }
+  .c-act:active { transform: scale(.94); }
+  .c-hint { margin: 0; color: var(--dim); font-size: .8rem; }
+  /* The way back to the ranking. A link and not a button, weighted like the
+     other quiet lines, because it is a second choice and not the point. */
+  .c-more {
+    margin: 0; appearance: none; background: none; border: 0; padding: .5rem;
+    color: var(--dim); font: inherit; font-size: .85rem; cursor: pointer;
+    text-decoration: underline; text-underline-offset: 3px;
+  }
+  .c-end { margin: 0; text-align: center; color: var(--dim); font-size: .9rem; }
+  @media (prefers-reduced-motion: reduce) {
+    .c-card.snap { transition: none; }
+  }
+
   /* --- the answer --- */
   /* The sheet carries the column width itself, rather than running the full
      width with a narrow strip of content floating in it.
@@ -734,6 +834,10 @@
   </symbol>
   <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M12 3 12 21M12 3 6 9M12 3l6 6"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19"/></symbol>
+  <symbol id="i-bin" viewBox="0 0 24 24">
+    <path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6"/>
+  </symbol>
+  <symbol id="i-tick" viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6"/></symbol>
 </svg>
 
 <canvas id="map"></canvas>
@@ -789,6 +893,7 @@
       <svg class="ico" aria-hidden="true"><use href="#i-x"/></svg>
     </button>
   </div>
+  <section id="card" class="pane" hidden></section>
   <div id="list" class="pane"></div>
   <section id="room" class="pane" hidden></section>
   <section id="near" class="pane" hidden></section>

@@ -183,6 +183,9 @@ const state = {
   duration: safeGet(KEY_DURATION) ?? '30',
   needed: 30,
   results: [],
+  // How deep into the ranking the card screen is. Reset by answer(), because a
+  // re-rank makes "the third one" a different room.
+  cardIndex: 0,
   total: 0,
   // How many rooms are free, and free for long enough, counted once by
   // engine.js so the printed strip and the spoken sentence cannot disagree.
@@ -424,7 +427,7 @@ function frame(r) {
 
 // ---------------------------------------------------------------- the sheet
 
-const PANES = ['list', 'room', 'near', 'pick', 'about'];
+const PANES = ['card', 'list', 'room', 'near', 'pick', 'about'];
 let sheetH = 0;
 // Which screen sheetH was measured on. A height dragged on the room screen is
 // not the list's height, and viewport() reads the list's.
@@ -520,6 +523,10 @@ function attachSheet() {
     if (e.target.closest('#handle')) return;
     // The search field is a control, not a surface to drag from.
     if (e.target.closest('#find')) return;
+    // Nor is the card. It owns the horizontal gesture, and a diagonal drag begun
+    // on it would otherwise turn into a sheet drag on its eighth pixel and throw
+    // the answer away mid-swipe.
+    if (e.target.closest('.c-card')) return;
     begin(e, 'pending');
   });
 
@@ -775,6 +782,10 @@ function answer() {
   // what made the highlight fire on load and never move again.
   state.selected = null;
   state.listScroll = 0;
+  // A re-rank makes "the third one" a different room, so the deck goes back to
+  // the top with it. Both screens are painted below; which one is on top is not
+  // this function's business.
+  state.cardIndex = 0;
   // The sheet and the map follow the selection, and this is the second place it
   // is dropped. showList() has the first and re-rests on its own; a re-rank does
   // not go through it. Measured with a row lit at 393x852, both ways in: Check
@@ -795,6 +806,7 @@ function answer() {
   // them, relaxedLine(), and paintList() is the only caller of that. The strip
   // is repainted on the line after, off the same state paintList() just used.
   paintList();
+  paintCard();
   const answered = ladder(rooms, {
     ...ask,
     calendar: state.situation?.classesSuspended ? { noClasses: true } : undefined,
@@ -1147,6 +1159,210 @@ function select(i) {
   setSheet(restNow(), true);
   frame(r);
   say(`${roomLabel(r)}, ${r.walk} minute walk, shown on the map.`);
+}
+
+// ------------------------------------------------------------------ the card
+
+// How far the card has to be thrown before letting go means something, and how
+// fast a flick counts whatever distance it covered. Both in the units the
+// gesture arrives in, so nothing here has to know the screen size.
+const SWIPE_PX = 84;
+const SWIPE_V = 0.45;
+
+// The building and the room number, apart. roomLabel() joins them for the list,
+// where a row is one line; this screen exists because the room number is the
+// thing you walk to, and it is the only text on it that gets to be 3.6rem.
+function cardParts(r) {
+  const name = shortName(r.name);
+  const n = state.rooms?.rooms?.[r.id]?.n;
+  return { building: n ? name : '', room: n || name || r.id };
+}
+
+// One room. The count, the walk cap and the coverage paragraph stay on the
+// list: a card carrying them would be a list with one row on it.
+//
+// The strip does NOT stay on the list. It is the only thing that says the
+// answer is degraded -- shorter than asked, nothing free this second, hours
+// nobody publishes -- and a card that omits it is a card claiming more than the
+// ranking does.
+function paintCard() {
+  const card = $('card');
+  const r = state.results[state.cardIndex];
+
+  if (!r) {
+    const seen = state.results.length;
+    card.innerHTML = `
+      <h2 class="msg" id="card-h" tabindex="-1">That is all of them.</h2>
+      <p class="c-end">You went through ${seen} room${seen === 1 ? '' : 's'} within a
+        ${MAX_WALK} minute walk.</p>
+      <p class="c-acts">
+        <button type="button" class="c-act" id="c-again" aria-label="Start again at the first room">
+          <svg class="ico" aria-hidden="true"><use href="#i-back"/></svg>
+        </button>
+      </p>
+      <button type="button" class="c-more" id="c-list">See all ${seen} in a list</button>`;
+    $('c-again').onclick = () => {
+      state.cardIndex = 0;
+      paintCard();
+      say(`Back to the first of ${seen}.`);
+    };
+    $('c-list').onclick = () => openList();
+    focusHeading($('card-h'));
+    syncPaneTouch();
+    return;
+  }
+
+  const { building, room } = cardParts(r);
+  const win = windowOf(r);
+  const seats = seatsOf(r);
+  const dept = deptOf(r);
+  const coarse = Number.isFinite(state.accuracy) && state.accuracy > COARSE_M;
+  const walkSay = coarse ? `about ${r.walk} minutes walk` : `${r.walk} minute walk`;
+  const total = state.results.length;
+  const relaxed = relaxedLine();
+  const strip = relaxed
+    ? `<p class="strip">${esc(relaxed.text)}</p>`
+    : state.tally?.meets
+      ? ''
+      : state.tally?.shorter
+        ? `<p class="strip">Nothing near you is free for ${dur(state.needed)}. Closest anyway:</p>`
+        : state.tally?.waiting
+          ? '<p class="strip">Nothing is free this second.</p>'
+          : '<p class="strip">Every building we have hours for is closed.</p>';
+
+  // The card's own name is written out. The computed one would read "3 of 35
+  // Cunz Hall 160 4 min 42 seats", with no units and nothing saying what the
+  // two buttons under it do.
+  const said = `${roomLabel(r)}, ${walkSay}, ${win.say}, ${seats.say}${dept.say}.` +
+    ` Room ${state.cardIndex + 1} of ${total}.`;
+
+  card.innerHTML =
+    notes() +
+    strip +
+    `<div class="c-deck">
+      <article class="c-card" id="c-top" tabindex="0" role="group" aria-label="${esc(said)}">
+        <span class="c-stamp no" aria-hidden="true">NEXT</span>
+        <span class="c-stamp yes" aria-hidden="true">GO</span>
+        <p class="c-pos">${state.cardIndex + 1} of ${total}</p>
+        ${building ? `<p class="c-b">${esc(building)}</p>` : ''}
+        <p class="c-n">${esc(room)}</p>
+        <p class="c-win">${win.html}</p>
+        <p class="c-facts">
+          <span>${WALK_ICON}${coarse ? '~' : ''}${r.walk} min</span>
+          <span>&middot;</span><span>${seats.html}</span>${dept.html ? `<span>${dept.html}</span>` : ''}
+        </p>
+      </article>
+    </div>
+    <p class="c-acts">
+      <button type="button" class="c-act no" id="c-no" aria-label="Not this one, show the next room">
+        <svg class="ico" aria-hidden="true"><use href="#i-bin"/></svg>
+      </button>
+      <button type="button" class="c-act yes" id="c-yes" aria-label="Take this room and show me the way">
+        <svg class="ico" aria-hidden="true"><use href="#i-tick"/></svg>
+      </button>
+    </p>
+    <p class="c-hint">Swipe the card, or use the buttons.</p>
+    <button type="button" class="c-more" id="c-list">See all ${total} in a list</button>`;
+
+  $('c-no').onclick = () => rejectCard();
+  $('c-yes').onclick = () => acceptCard();
+  $('c-list').onclick = () => openList();
+  attachSwipe($('c-top'));
+  syncPaneTouch();
+}
+
+// The two verdicts. Reject walks the ranking; accept is the same openRoom() the
+// list's second tap fires, so the room screen, its calendar and its map are
+// reached by one path and not two.
+function rejectCard() {
+  const r = state.results[state.cardIndex];
+  // paintCard() replaces this whole screen, so whatever was focused stops
+  // existing: a keyboard user who pressed the left arrow lands on the body with
+  // nothing left to press it on. Guarded on focus already being in here,
+  // because answer() repaints this screen too, from a background refresh, and
+  // stealing focus off another screen is worse than losing it on this one.
+  const held = $('card').contains(document.activeElement);
+  state.cardIndex += 1;
+  paintCard();
+  if (held) $('c-top')?.focus({ preventScroll: true });
+  const next = state.results[state.cardIndex];
+  say(next
+    ? `${roomLabel(r)} skipped. Next, ${roomLabel(next)}, ${next.walk} minute walk.`
+    : 'That was the last one.');
+}
+
+function acceptCard() {
+  const r = state.results[state.cardIndex];
+  if (!r) return;
+  openRoom(r.id);
+}
+
+// Drag, throw, or press an arrow key. Distance OR velocity commits, because a
+// short flick is the gesture people actually make and a distance-only rule
+// makes them drag the card halfway across the screen every time.
+//
+// The card carries `touch-action: none`, so the browser never claims the
+// gesture, and attachSheet() steps aside for it: a diagonal drag begun on the
+// card would otherwise become a sheet drag on its eighth pixel and take the
+// answer away.
+function attachSwipe(el) {
+  const stamps = { no: el.querySelector('.c-stamp.no'), yes: el.querySelector('.c-stamp.yes') };
+  let drag = null;
+
+  const paint = (dx) => {
+    el.style.transform = `translateX(${dx}px) rotate(${dx / 22}deg)`;
+    stamps.no.style.opacity = String(Math.min(1, Math.max(0, -dx / SWIPE_PX)));
+    stamps.yes.style.opacity = String(Math.min(1, Math.max(0, dx / SWIPE_PX)));
+  };
+  const rest = () => {
+    el.classList.add('snap');
+    paint(0);
+  };
+  // The card leaves the screen in the direction it was thrown, and the verdict
+  // fires when it is gone rather than on release, so the answer does not change
+  // under a card still sliding over it. Under reduced motion there is no
+  // transition to wait for, so the timer is what carries both cases.
+  const commit = (dir) => {
+    el.classList.add('snap');
+    paint(dir * window.innerWidth);
+    el.style.opacity = '0';
+    setTimeout(() => (dir < 0 ? rejectCard() : acceptCard()), reduceMotion ? 0 : 200);
+  };
+
+  el.addEventListener('pointerdown', (e) => {
+    drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: e.timeStamp, dx: 0 };
+    el.classList.remove('snap');
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      /* another element already owns it; the moves still arrive */
+    }
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag.dx = e.clientX - drag.x0;
+    paint(drag.dx);
+    e.preventDefault();
+  });
+  const end = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const { dx, t0 } = drag;
+    drag = null;
+    const v = Math.abs(dx) / Math.max(1, e.timeStamp - t0);
+    const thrown = Math.abs(dx) > SWIPE_PX || (v > SWIPE_V && Math.abs(dx) > 24);
+    // pointercancel is the platform taking the gesture, not a decision.
+    if (thrown && e.type === 'pointerup') commit(Math.sign(dx));
+    else rest();
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') rejectCard();
+    else if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') acceptCard();
+    else return;
+    e.preventDefault();
+  });
 }
 
 // ------------------------------------------------------------- the duration
@@ -2118,6 +2334,19 @@ function sheetHeight() {
   setSheet(h, sheetScreen !== state.screen);
 }
 
+function showCard() {
+  // Cleared before showPane for the same reason showList clears it: the map is
+  // covered on this screen and reframe() composes for what is selected. Nothing
+  // is, and nothing should be -- the whole idea is that you do not see a map
+  // until you have said yes to a room.
+  state.selected = null;
+  showPane('card');
+  $('back').setAttribute('aria-label', 'Back to the question');
+  $('card').scrollTop = 0;
+  paintCard();
+  sheetHeight();
+}
+
 function showList() {
   // Cleared before showPane, because reframe() in there composes the camera
   // for the band this screen leaves and the band now depends on it.
@@ -2131,7 +2360,7 @@ function showList() {
   // a property of the room screen; coming back to the list ends it.
   state.selected = null;
   showPane('list');
-  $('back').setAttribute('aria-label', 'Back to the question');
+  $('back').setAttribute('aria-label', 'Back to the card');
   $('list').scrollTop = state.listScroll;
   sheetHeight();
 }
@@ -2292,8 +2521,8 @@ function choose(min) {
     }
     return;
   }
-  if (state.screen === 'ask') history.pushState({ v: 'list' }, '', cleanUrl());
-  showList();
+  if (state.screen === 'ask') history.pushState({ v: 'card' }, '', cleanUrl());
+  showCard();
   answer();
 }
 
@@ -2303,6 +2532,13 @@ function openRoom(id) {
   // reopen from popstate names the same pane a press of back will reach.
   history.pushState({ v: 'room', room: id, from: state.screen }, '', `?room=${encodeURIComponent(id)}`);
   showRoom(id);
+}
+
+// The ranking, from the card. Its own history entry, so Back off the list
+// lands on the card the reader came from rather than on the question.
+function openList() {
+  history.pushState({ v: 'list' }, '', cleanUrl());
+  showList();
 }
 
 function openPick() {
@@ -2330,9 +2566,9 @@ function openWantedRoom() {
   const wanted = new URLSearchParams(location.search).get('room');
   if (!wanted || !state.classRooms?.rooms?.[wanted]) return false;
   if (state.scheduled) {
-    showList();
+    showCard();
     answer();
-    history.replaceState({ v: 'list' }, '', cleanUrl());
+    history.replaceState({ v: 'card' }, '', cleanUrl());
   } else {
     showNear();
     history.replaceState({ v: 'near' }, '', cleanUrl());
@@ -2360,11 +2596,11 @@ function refresh() {
     return;
   }
   if (!state.scheduled) {
-    if (state.screen === 'list' || state.screen === 'room') showNear();
+    if (state.screen === 'card' || state.screen === 'list' || state.screen === 'room') showNear();
     else if (state.screen === 'near') paintNear(nearReason());
     return;
   }
-  if (state.screen === 'near') showList();
+  if (state.screen === 'near') showCard();
   answer();
 }
 
@@ -2785,6 +3021,7 @@ window.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('popstate', (e) => {
     const v = e.state?.v;
     if (v === 'room') showRoom(e.state.room);
+    else if (v === 'card') showCard();
     else if (v === 'list') showList();
     else if (v === 'near') showNear();
     else if (v === 'pick') showPick();
@@ -2801,7 +3038,7 @@ window.addEventListener('DOMContentLoaded', () => {
     // The question screen is in this list because the night gate's heading is a
     // live minute. Left out, a card booted at 11:40pm on a Monday still read
     // "Monday, 11:40pm" at 10:00am on the Tuesday, on a minute the app ranks.
-    if (state.screen === 'list' || state.screen === 'near' || state.screen === 'ask') refresh();
+    if (['card', 'list', 'near', 'ask'].includes(state.screen)) refresh();
   });
 
   attachSheet();

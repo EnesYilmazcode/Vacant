@@ -3373,3 +3373,66 @@ are removed before the overlay so the event survives; passing the old blanket
 `classesSuspended` flag to the engine would have erased both. The service worker
 warms and evicts the term-keyed event file with the room index, and the weekly
 workflow refreshes it after rebuilding that index.
+
+## 2026-09-08  The answer is one card you swipe, not a list you scan
+
+**Decided.** A duration opens ONE room. Bin it -- swipe left, tap the bin, or
+press the left arrow -- and the next one comes up. Take it -- swipe right, tap
+the tick, press the right arrow or Enter -- and it opens the room screen, which
+is where the map and the day calendar already were. The ranking is still all
+there, one tap behind the card under **See all 35 in a list**.
+
+**Whose idea it was, which is the part worth writing down.** Colin, who uses this
+on campus every day and is the only user of it who is not its author, asked for
+"a single button that just finds the nearest empty classroom and if its full u
+swipe and gives u next best". Enes took the call and added the rest: "if you
+don't have a classroom selected, there's no reason to even see a map", the trash
+can on the left, and "remove all the filler text ... the room number is important
+and also the building is important".
+
+**What the card carries, and what it does not.** The building, the room number at
+3.6rem, how long it is yours, the walk and the seats. Nothing else. The count of
+what is left, the walk cap, the two "N more" sentences and the coverage paragraph
+all stay on the list, because a card carrying them is a list with one row on it.
+`roomLabel()` joins the building and the room for a list row, which is one line;
+`cardParts()` splits them, because the room number is the thing you are walking
+to and it is the only text on the screen that gets to be that size.
+
+**The strip is not filler and it stays.** It is the only thing that says the
+answer is degraded -- shorter than you asked for, nothing free this second, every
+building we have hours for closed -- and a card that drops it claims more than
+the ranking does.
+
+**The swipe is not the only way.** Both verdicts are real buttons with written
+names, the card takes focus, and the arrow keys do what the swipe does. A gesture
+nothing announces is unreachable from a keyboard and invisible to a screen
+reader, and it is also just harder to find. One bug caught while building it:
+paintCard() replaces the whole screen, so a keyboard user who pressed the left
+arrow lost focus to the body and had nothing left to press it on. Focus moves to
+the new card now, guarded on focus having been in there already -- answer()
+repaints this screen from a background refresh, and stealing focus off another
+screen is worse than losing it on this one.
+
+**Distance OR velocity commits.** 84 px, or a flick over 0.45 px/ms that moved at
+least 24. Distance alone makes people drag the card halfway across the phone
+every time; a short flick is the gesture they actually make. The card leaves the
+screen in the direction it was thrown and the verdict fires when it is gone
+rather than on release, so the next answer does not appear under a card still
+sliding over it.
+
+**The sheet drag had to stand aside.** The card owns the horizontal gesture and
+carries `touch-action: none`. Left in, a diagonal drag begun on the card becomes
+a sheet drag on its eighth pixel and throws the answer away mid-swipe, which is
+the same defect the dismiss travel was narrowed for two entries ago.
+
+**Centred, not stacked.** The first build put the card at the top of a sheet that
+covers the whole screen and left 55% of the phone as empty ground under it.
+`justify-content: safe center`, for the same reason `#ask` uses the safe keyword:
+plain centring on a scroll container puts overflow ABOVE the scroll origin, where
+a large root font size would put the two buttons out of reach of every way of
+scrolling.
+
+**Cost.** The shell went 133,694 -> 138,137 gzipped bytes, +3.3%: 2,941 on
+js/app.js for the deck, the two verdicts and the gesture, and 1,502 on index.html
+for the card. Suite 842 -> 848 tests. scripts/shoot.mjs photographs the card as
+its second frame now and reaches the list through it.

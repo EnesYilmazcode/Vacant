@@ -444,10 +444,39 @@ async function run() {
     // with a TypeError instead of reporting the failure it had just found.
     await shoot('ask', `${ask.opts.join(', ')}; ${(ask.chosen ?? 'none').trim()} chosen`);
 
-    // 2. the ranked list. Nothing is selected yet, so there is nothing on the
-    //    map, so the list has the screen: the sheet rests at full height and
-    //    the canvas is faded out under it.
+    // 2. the card. A duration opens ONE room now, not thirty-five: the
+    //    building, the room number, and two ways out of it. Nothing is selected
+    //    yet, so there is nothing on the map and the sheet covers it.
     await page.tapSelector('.opt[data-min="120"]');
+    await page.waitFor(`document.getElementById('c-top')`, 'the first card');
+    await page.settled();
+    await sleep(1200);
+    const card = await page.evaluate(`(() => {
+      const pick = (sel) => (document.querySelector(sel) || {}).textContent || '';
+      return {
+        pos: pick('.c-pos').trim(),
+        building: pick('.c-b').trim(),
+        room: pick('.c-n').trim(),
+        win: pick('.c-win').trim(),
+        facts: pick('.c-facts').replace(/\\s+/g, ' ').trim(),
+        acts: [...document.querySelectorAll('.c-act')].map((b) => b.getAttribute('aria-label')),
+        nomap: document.body.classList.contains('nomap'),
+      };
+    })()`);
+    console.log(`card   ${card.pos}  ${card.building} ${card.room}  ${card.win}  ${card.facts}`);
+    // The room number is the thing you walk to and the reason this screen
+    // exists. A card that lost it is not a card.
+    if (!card.room) problems.push('card: no room number on it');
+    if (!card.win) problems.push('card: nothing says how long it is yours');
+    if (card.acts.length !== 2) problems.push(`card: ${card.acts.length} buttons, not two`);
+    // A swipe nothing announces is unreachable from a keyboard and invisible to
+    // a screen reader, so both verdicts have to exist as named controls.
+    if (card.acts.some((a) => !a)) problems.push('card: a verdict button has no accessible name');
+    if (!card.nomap) problems.push('card: the map is on screen with nothing on it');
+    await shoot('card', `${card.pos}, ${card.building} ${card.room}, ${card.win}`);
+
+    // 3. the ranked list, one tap behind the card for anyone who wants to scan.
+    await page.tapSelector('.c-more');
     await page.waitFor(`document.querySelectorAll('#list .row').length > 3`, 'the list to fill');
     await page.settled();
     await sleep(1500);
@@ -477,7 +506,7 @@ async function run() {
       problems.push(`list: a 60px pull moved the sheet ${Math.round(browsing.sheet)} -> ${Math.round(pulled)}`);
     }
 
-    // 3. one room selected: the map comes out from under the list with the
+    // 4. one room selected: the map comes out from under the list with the
     //    footprint lit and an arrow drawn to it. The first tap on a row
     //    selects, so this is one tap and the sheet drops back to peek.
     // The chosen room is not always above the fold, so the list is scrolled to
@@ -511,7 +540,7 @@ async function run() {
       target.name,
     );
 
-    // 4. tap the same row again and the room screen opens
+    // 5. tap the same row again and the room screen opens
     await page.tapSelector(`#list .row[data-i="${target.i}"]`);
     await page.waitFor(`!document.getElementById('room').hidden`, 'the room screen');
     await page.waitFor(`document.querySelector('#room .day')`, "today's grid");

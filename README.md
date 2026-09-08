@@ -5,12 +5,13 @@ Find an empty classroom near you at Ohio State, free for as long as you need it.
 ### **[enesyilmazcode.github.io/Vacant](https://enesyilmazcode.github.io/Vacant/)**
 
 It is a web page. No account, no search box, nothing to sign up for. It finds you,
-asks one question, and hands you rooms you can walk to, nearest first.
+asks one question, and hands you **one room** you can walk to. Bin it and it hands
+you the next one. Take it and it shows you the way.
 
 | | |
 | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![The ranked list, filling the screen with no map behind it. One room per building, under a line reading "You asked for 2h00." Cunz Hall 160, 4 min walk, no class rest of today, 42 seats. Dulles Hall 012, 4 min, no class rest of today, 25 seats. Seven more below them.](docs/media/list.webp) |
-| One question. | The answer, and nothing else. |
+| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![One card in the middle of a dark screen, reading 1 of 35, Cunz Hall, then 160 in very large type, then no class rest of today, then 4 min walk and 42 seats. Under it a bin button and a tick button, the line Swipe the card or use the buttons, and a link reading See all 35 in a list.](docs/media/card.webp) |
+| One question. | One answer. |
 
 ## Yours for, not free until
 
@@ -22,23 +23,31 @@ in the room's schedule, subtracts the walk, and leaves ten minutes at the end so
 you are not packing up while the next class files in. Walk time is straight line
 distance times 1.3 for the fact that campus paths bend, at 78 metres a minute.
 
-Read the second row of the middle screenshot. PAES A111 says **free till 4:00pm**.
+Read the third row of the list further down. PAES A111 says **free till 4:00pm**.
 The next class in that room starts at 4:10pm, you are four minutes away, and
 4:00pm is when you have to be packed up.
 
-Tap it and the room screen says the same minute, then spells the rest out:
+Take it and the room screen says the same minute, then spells the rest out:
 **Yours for 5h36 once you get there.** The two screens agreeing is the point.
 They did not for a while: the room screen printed the raw class start, handing
 back the ten minutes the row had already taken off
 ([#77](https://github.com/EnesYilmazcode/Vacant/issues/77)).
 
-A row that says **no class rest of today** instead of a time means no class is
+A card that says **no class rest of today** instead of a time means no class is
 coming at all, and the timeline behind it ends where the building locks.
+
+The ranking is still all there. **See all 35 in a list** under the card opens it,
+and every row is the same answer the card gives, one per building, nearest first.
+
+| |
+| :--: |
+| ![The ranked list, filling the screen with no map behind it. One room per building, under a line reading "You asked for 2h00." Cunz Hall 160, 4 min walk, no class rest of today, 42 seats. Dulles Hall 012, 4 min, no class rest of today, 25 seats. Seven more below them.](docs/media/list.webp) |
+| One tap behind the card, for when you would rather scan. |
 
 | | |
 | :--: | :--: |
 | ![The same list after one tap, dropped to make room for the map. Cunz Hall 160's building footprint is outlined in red, a dashed line runs from the blue dot to it with an arrowhead pointing into the building, and its row is lit in the list below.](docs/media/room.webp) | ![The room screen for Cunz Hall 160: no class in here for the rest of today, yours for 8h26 once you get there, 4 min walk, 42 seats, classroom, then Wednesday drawn as a calendar from 6 AM with two red blocks, KNSISM 3208 from 8:00am to 8:55am and KNSISM 3550 from 9:10am to 10:05am, and everything else empty](docs/media/timeline.webp) |
-| Tap a room and the map comes up pointing at it. | Tap it again for its whole day, doors included. |
+| Take a room and the map comes up pointing at it. | Tap it again for its whole day, doors included. |
 
 ## Put it on your home screen
 
@@ -103,7 +112,7 @@ the first answer rather than before it.
 | Where | What is in it |
 | --- | --- |
 | `index.html` | The whole shell. Markup and CSS, no framework. |
-| `js/app.js` | Three screens in one sheet: the question, the list, one room. |
+| `js/app.js` | Four screens in one sheet: the card, the list, one room, the buildings. |
 | `js/engine.js` | The ranking, and the formula that decides how long a room is yours. |
 | `js/map.js` | The campus map, drawn as vectors on a canvas. No tiles, no key. |
 | `js/campus.js` | Latitude and longitude into map grid space. |
@@ -122,7 +131,7 @@ Then open `http://localhost:8000`. It has to be served rather than opened as a
 file, because the page is ES modules and it fetches JSON.
 
 ```sh
-npm test                        # node --test, 589 tests, no network
+npm test                        # node --test, 842 tests, no network
 node scripts/shoot.mjs          # redraw docs/media from the real app
 ```
 

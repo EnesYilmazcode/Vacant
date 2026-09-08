@@ -1290,11 +1290,96 @@ test('the ranked list says which question it is answering', () => {
   assert.doesNotMatch(line, /[Ff]ree for/);
 });
 
-test('back is the way to the question, and it says so on the list', () => {
-  // The only route to the duration now, so its accessible name has to name the
-  // screen it lands on rather than reading "Back".
-  const show = bodyOf('showList');
-  assert.match(show, /\$\('back'\)\.setAttribute\('aria-label', 'Back to the question'\)/);
+// ---- the card, which is what a duration opens now
+
+test('a duration opens one room, not the ranking', () => {
+  // Colin, who uses this on campus every day, asked for "a single button that
+  // just finds the nearest empty classroom and if its full u swipe and gives u
+  // next best". The list is still there, one tap behind it, but it is no longer
+  // what answering the question puts on screen.
+  const choose = bodyOf('choose');
+  assert.match(choose, /showCard\(\)/);
+  assert.doesNotMatch(choose, /showList\(\)/, 'a duration still opens the list');
+  assert.match(choose, /history\.pushState\(\{ v: 'card' \}/);
+  // And the card is a pane of the same sheet, so it inherits the drag, the
+  // dismiss and the covered map rather than reimplementing them.
+  assert.match(APP, /const PANES = \['card', 'list'/);
+});
+
+test('the card carries the two things Enes said were the point, and nothing else', () => {
+  // "the room number is important and also the building is important", and
+  // "remove all the filler text". So: the building, the room, how long it is
+  // yours, the walk and the seats. The count, the walk cap and the coverage
+  // paragraph stay on the list -- a card carrying them is a list with one row.
+  const paint = bodyOf('paintCard');
+  for (const bit of ['c-b', 'c-n', 'c-win', 'c-facts']) {
+    assert.ok(paint.includes(bit), `the card lost ${bit}`);
+  }
+  assert.ok(paint.includes('cardParts(r)'), 'the building and the room are joined again');
+  assert.equal(paint.includes('caveatHtml'), false, 'the coverage paragraph is back on the card');
+  assert.equal(paint.includes('MAX_WALK'), true, 'the end of the deck stopped naming the walk cap');
+
+  // The strip is NOT filler. It is the only thing that says the answer is
+  // degraded, and a card without it claims more than the ranking does.
+  assert.ok(paint.includes('state.tally?.shorter'), 'the card stopped admitting a short answer');
+  assert.ok(paint.includes('state.tally?.waiting'), 'the card stopped admitting an empty minute');
+});
+
+test('the swipe is not the only way to answer the card', () => {
+  // A gesture nothing announces is unreachable from a keyboard and invisible to
+  // a screen reader. Both verdicts are real buttons with written names, the
+  // card takes focus, and the arrow keys do what the swipe does.
+  const paint = bodyOf('paintCard');
+  assert.match(paint, /id="c-no"[^>]*aria-label="[^"]+"/);
+  assert.match(paint, /id="c-yes"[^>]*aria-label="[^"]+"/);
+  assert.match(paint, /id="c-top"[^>]*tabindex="0"/);
+  const swipe = bodyOf('attachSwipe');
+  assert.match(swipe, /ArrowLeft/);
+  assert.match(swipe, /ArrowRight/);
+  // And the repaint does not drop the reader on the body.
+  assert.match(bodyOf('rejectCard'), /\$\('c-top'\)\?\.focus/);
+});
+
+test('taking a room goes through the one door the list already used', () => {
+  // Two ways into the room screen would be two places for its history entry,
+  // its focus move and its map frame to drift apart.
+  assert.match(bodyOf('acceptCard'), /openRoom\(r\.id\)/);
+  const opens = [...APP.matchAll(/\bopenRoom\(/g)];
+  assert.ok(opens.length >= 2, 'openRoom lost a caller');
+  assert.match(bodyOf('openRoom'), /history\.pushState/);
+});
+
+test('a re-rank puts the deck back on top', () => {
+  // "the third one" is a different room after the ranking moves, so the index
+  // cannot survive it. answer() is where both screens are repainted.
+  const ans = bodyOf('answer');
+  assert.match(ans, /state\.cardIndex = 0;/);
+  assert.match(ans, /paintCard\(\);/);
+  assert.match(ans, /paintList\(\);/);
+});
+
+test('the sheet drag stands aside for the card', () => {
+  // The card owns the horizontal gesture. Left in, a diagonal drag begun on it
+  // becomes a sheet drag on its eighth pixel and throws the answer away
+  // mid-swipe, which is the same defect the dismiss travel was narrowed for.
+  const sheet = bodyOf('attachSheet');
+  assert.match(sheet, /if \(e\.target\.closest\('\.c-card'\)\) return;/);
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(css, /\.c-card \{[^}]*touch-action: none/);
+});
+
+test('back names the screen it lands on, at every step of the answer', () => {
+  // Its accessible name has to name the screen it reaches rather than reading
+  // "Back", and there are three steps now: the card is what a duration opens,
+  // the list is one tap behind the card, and a room is behind either.
+  assert.match(
+    bodyOf('showCard'),
+    /\$\('back'\)\.setAttribute\('aria-label', 'Back to the question'\)/,
+  );
+  assert.match(
+    bodyOf('showList'),
+    /\$\('back'\)\.setAttribute\('aria-label', 'Back to the card'\)/,
+  );
   const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.match(html, /id="back"[^>]*aria-label="Back to the question"/);
   // The four .opt buttons are what back lands on, and they are the four the
@@ -1760,7 +1845,10 @@ test('the question screen is repainted when the app comes back to the foreground
   // on a minute the app is willing to rank.
   const app = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
   const hook = app.slice(app.indexOf("addEventListener('visibilitychange'"));
-  assert.match(hook.slice(0, 500), /state\.screen === 'ask'/);
+  assert.match(hook.slice(0, 600), /'ask'/);
+  // And the card is in it too. It is what a duration opens now, so it is the
+  // screen most sessions are actually looking at when the phone comes back.
+  assert.match(hook.slice(0, 600), /'card'/);
 });
 
 test('the buildings screen names the door it is already holding the hours for', () => {

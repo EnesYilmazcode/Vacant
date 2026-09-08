@@ -439,7 +439,10 @@ async function run() {
     if (!ask.chosen) problems.push('ask: no duration is marked chosen');
     if (/How long/i.test(ask.copy)) problems.push('ask: the question label is back');
     if (/\b(Autumn|Spring|Summer) \d{4}\b/.test(ask.copy)) problems.push('ask: the term line is back');
-    await shoot('ask', `${ask.opts.join(', ')}; ${ask.chosen.trim()} chosen`);
+    // `?? 'none'` rather than ask.chosen.trim(): undefined is exactly what the
+    // check two lines up records, and reading through it here killed the run
+    // with a TypeError instead of reporting the failure it had just found.
+    await shoot('ask', `${ask.opts.join(', ')}; ${(ask.chosen ?? 'none').trim()} chosen`);
 
     // 2. the ranked list. Nothing is selected yet, so there is nothing on the
     //    map, so the list has the screen: the sheet rests at full height and

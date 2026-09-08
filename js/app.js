@@ -72,7 +72,7 @@ import {
   pixelsPerGridFor,
   zoomBy,
 } from './map.js';
-import { bandFor, capFor, floorFor, openAt, restPxFor, sheetAfterDrag } from './sheet.js';
+import { bandFor, capFor, floorFor, lowPxFor, openAt, restPxFor, sheetAfterDrag } from './sheet.js';
 
 const BASE = new URL('.', import.meta.url).pathname.replace(/js\/$/, '');
 
@@ -289,6 +289,9 @@ const targeted = () => Boolean(state.selected);
 // sheet stands on it and it is the same headroom.
 const restNow = () => restPxFor(state.screen, window.innerHeight, railHeight(), targeted());
 const capNow = () => capFor(state.screen, window.innerHeight, railHeight(), targeted());
+// How far down a gesture may take it, which is peek on every screen that has a
+// map worth pulling open and the rest itself on one that is covering it.
+const lowNow = () => lowPxFor(state.screen, window.innerHeight, railHeight(), targeted());
 
 // The map's viewport is not the canvas box. `band` is the strip of canvas the
 // sheet is not covering, and the map centres on the middle of THAT, which is
@@ -312,7 +315,7 @@ function viewport() {
   return {
     width,
     height,
-    band: bandFor(state.screen, height, railHeight(), targeted()),
+    band: bandFor(state.screen, height, railHeight()),
     dpr: lastSize.dpr || Math.min(window.devicePixelRatio || 1, 2),
   };
 }
@@ -427,10 +430,10 @@ let sheetScreen = null;
 let syncPaneTouch = () => {};
 
 function setSheet(px, snap) {
-  // Both ends come from where this screen rests, not from PEEK and FULL: a
-  // screen covering the map rests at its own ceiling, so it cannot be pulled
-  // down onto an empty canvas, and the grip keeps its whole travel below that.
-  const h = Math.max(floorFor('grip', restNow()), Math.min(capNow(), px));
+  // Both ends come from this screen, not from PEEK and FULL. They are still
+  // peek and full wherever the map is on screen; a screen covering it cannot be
+  // pulled down onto an empty canvas, and the grip keeps its travel below that.
+  const h = Math.max(floorFor('grip', lowNow()), Math.min(capNow(), px));
   sheetH = h;
   sheetScreen = state.screen;
   const sheet = $('sheet');
@@ -544,7 +547,7 @@ function attachSheet() {
     swallow = true;
     if (drag.mode === 'scroll') drag.pane.scrollTop = Math.max(0, -dy);
     else {
-      const pulled = sheetAfterDrag(drag.h0, dy, drag.from, restNow(), capNow());
+      const pulled = sheetAfterDrag(drag.h0, dy, drag.from, lowNow(), capNow());
       drag.dismiss = pulled.dismiss;
       setSheet(pulled.h, false);
     }
@@ -582,10 +585,11 @@ function attachSheet() {
     state.dragging = false;
     syncTouch();
     if (mode !== 'sheet') return;
-    // The two snap points. While the map is covered they are the same number,
-    // so the sheet has no travel and the only thing left for a gesture to do is
-    // dismiss -- opening would open onto an empty canvas.
-    const peek = restNow();
+    // The two snap points. While the map is covered they are the same number, so
+    // the sheet has no travel and the only thing left for a gesture to do is
+    // dismiss -- opening would open onto an empty canvas. Everywhere else they
+    // are peek and full, unchanged.
+    const peek = lowNow();
     const full = capNow();
     // The grip, pulled through the whole travel below peek. A drag that started
     // on a pane bottoms out AT peek, so it never gets here.

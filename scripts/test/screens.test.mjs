@@ -44,6 +44,7 @@ import {
   bandFor,
   capFor,
   floorFor,
+  lowPxFor,
   openAt,
   restFor,
   restPxFor,
@@ -2178,12 +2179,12 @@ test('viewport() reads that one table rather than deciding a second time', () =>
   const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
   const at = src.indexOf('function viewport()');
   const body = src.slice(at, src.indexOf('\n}', at));
-  assert.match(body, /band: bandFor\(state\.screen, height, railHeight\(\), targeted\(\)\)/);
+  assert.match(body, /band: bandFor\(state\.screen, height, railHeight\(\)\)/);
   assert.equal(/state\.screen ===/.test(body), false, 'viewport() decides the resting height a second time');
-  // Same rule for the fourth argument: whether the map has a destination on it
-  // is answered once, by targeted(), and not re-derived from state.selected
-  // inside the function that has to agree with the sheet about it.
-  assert.equal(/state\.selected/.test(body), false, 'viewport() decides the map state a second time');
+  // And it does NOT ask whether anything is selected. The band is the strip the
+  // map is looked at through, which is the targeted one on every screen; the
+  // covered band is a strip nobody sees and clampView collapses on it.
+  assert.equal(/state\.selected|targeted\(\)/.test(body), false, 'viewport() composes for a band nobody sees');
 });
 
 test('a sheet dragged on one screen does not become another screen height', () => {
@@ -2220,6 +2221,19 @@ test('only the grip can pull the sheet far enough to throw the answer away', () 
   const H = 852;
   const peek = PEEK * H;
   const full = FULL_SHEET * H;
+  // Every screen showing a map can still be pulled down to peek, so peek is
+  // both the floor and the dismiss trigger on all of them. Reading the screen's
+  // REST here instead moved both up with it: measured at 393x852, an 88px pull
+  // on the room screen's grip went from sliding the sheet to 525 to throwing the
+  // answer away, and the room and picker sheets stopped going down at all,
+  // which puts their map band out of reach of a thumb.
+  for (const screen of ['list', 'room', 'pick', 'about']) {
+    assert.equal(lowPxFor(screen, H, 0, true), peek, `${screen} cannot be pulled down to the map`);
+    const rest = restPxFor(screen, H, 0, true);
+    const low = lowPxFor(screen, H, 0, true);
+    assert.equal(sheetAfterDrag(rest, DISMISS_PX, 'grip', low, full).dismiss, rest === peek);
+    assert.equal(sheetAfterDrag(rest, 400, 'pane', low, full).h, peek);
+  }
   // Driven at 393x852, the 44px version dismissed on a 60px pull started on a
   // row: the sheet went 324 to 0 and took the list, the selection and the
   // scroll position with it. The pane's floor is peek however hard it is pulled.
@@ -2239,28 +2253,31 @@ test('only the grip can pull the sheet far enough to throw the answer away', () 
 });
 
 test('a covered map has no travel to pull the sheet through, only a dismiss', () => {
-  // Resting at its own ceiling, so the two snap points are one number. A pull
-  // short of the dismiss travel goes nowhere -- there is nothing under the sheet
-  // to uncover -- and the grip still reaches the end and throws the list away.
+  // The one screen where the floor is NOT peek. It rests at its own ceiling and
+  // there is nothing under it to uncover, so all three numbers are one number: a
+  // pull short of the dismiss travel goes nowhere, and the grip still reaches
+  // the end and throws the list away, which is how Back has always worked here.
   const H = 852;
   const rest = restPxFor('list', H, 0, false);
   const cap = capFor('list', H, 0, false);
+  const low = lowPxFor('list', H, 0, false);
   assert.equal(rest, cap, 'the covered list rests below its own ceiling');
-  assert.equal(sheetAfterDrag(rest, 60, 'pane', rest, cap).h, rest);
-  assert.equal(sheetAfterDrag(rest, 60, 'pane', rest, cap).dismiss, false);
-  assert.equal(sheetAfterDrag(rest, 60, 'grip', rest, cap).dismiss, false);
-  assert.equal(sheetAfterDrag(rest, DISMISS_PX, 'grip', rest, cap).dismiss, true);
+  assert.equal(low, rest, 'the covered list can be pulled below where it rests');
+  assert.equal(sheetAfterDrag(rest, 60, 'pane', low, cap).h, rest);
+  assert.equal(sheetAfterDrag(rest, 60, 'pane', low, cap).dismiss, false);
+  assert.equal(sheetAfterDrag(rest, 60, 'grip', low, cap).dismiss, false);
+  assert.equal(sheetAfterDrag(rest, DISMISS_PX, 'grip', low, cap).dismiss, true);
   // And it cannot be pushed up past where it already is.
-  assert.equal(sheetAfterDrag(rest, -400, 'pane', rest, cap).h, cap);
+  assert.equal(sheetAfterDrag(rest, -400, 'pane', low, cap).h, cap);
 });
 
-test('the two floors are where the screen rests and the end of the grip travel', () => {
+test('the two floors are how far down the sheet goes and the end of the grip travel', () => {
   const H = 852;
   assert.equal(floorFor('pane', PEEK * H), PEEK * H);
   assert.equal(floorFor('grip', PEEK * H), PEEK * H - DISMISS_PX);
-  // Pixels in, pixels out: it assumed PEEK, which stopped holding the moment a
-  // screen could rest somewhere else.
-  const covered = restPxFor('list', H, 0, false);
+  // Pixels in, pixels out: it took a viewport height and assumed PEEK, which
+  // stopped holding the moment a screen could cover the map.
+  const covered = lowPxFor('list', H, 0, false);
   assert.equal(floorFor('pane', covered), covered);
   assert.equal(floorFor('grip', covered), covered - DISMISS_PX);
 });
@@ -2285,10 +2302,13 @@ test('a screen with nothing on the map covers it until a row is tapped', () => {
   // the table it always read.
   assert.equal(restFor('list'), REST.list);
 
-  // And the band the camera composes for follows, which is what makes the
-  // reveal land on a finished frame rather than one built while it is watched.
-  assert.equal(bandFor('list', 852, 0, false), Math.round(852 * (1 - COVER)));
-  assert.equal(bandFor('list', 852, 0, true), 528);
+  // The band does NOT follow. It is the strip the map is looked at through, so
+  // it stays the targeted one while the screen is covering it -- otherwise the
+  // camera composes for 68px nobody sees, and clampView collapses on that band
+  // and forces the centre to the middle of the basemap. Composing for 528 while
+  // covered is what makes the reveal a finished frame.
+  assert.equal(bandFor('list', 852), 528);
+  assert.equal(bandFor('list', 852, 80), 528 - 80);
 });
 
 test('the covered sheet stops where the back button and the install rail are', () => {
@@ -2302,9 +2322,16 @@ test('the covered sheet stops where the back button and the install rail are', (
   // COVER is the ceiling on the fraction, so a tall screen does not run the
   // sheet to within 76px of the top of a tablet.
   assert.equal(capFor('list', 2000, 0, false), COVER * 2000);
-  // Never below FULL, which is where every screen stopped before this: a rail
-  // taller than the headroom leaves the sheet where it always was.
-  assert.equal(capFor('list', H, 600, false), FULL_SHEET * H);
+  // Floored at PEEK, not at FULL. FULL is a HEIGHT and the rail sits under it,
+  // so flooring there put the sheet's top edge above the back button once the
+  // rail passed 134px and off the screen entirely past 187 -- the failure this
+  // cap exists to stop, reintroduced by its own guard. Checked as the property
+  // that matters rather than as a number: the button always clears the sheet.
+  assert.equal(capFor('list', H, 600, false), PEEK * H);
+  for (const rail of [0, 80, 111, 134, 187, 300]) {
+    const top = H - rail - capFor('list', H, rail, false);
+    assert.ok(top >= BACK_PX, `a ${rail}px rail leaves the sheet's top edge at ${top}`);
+  }
   // Nothing moves while the map is on screen.
   assert.equal(capFor('list', H, 0, true), FULL_SHEET * H);
   assert.equal(capFor('room', H, 0, true), FULL_SHEET * H);
@@ -2363,7 +2390,7 @@ test('the sheet asks where it rests rather than assuming peek and full', () => {
   // of which knows whether anything is on the map. restNow() and capNow() do,
   // and both constants are gone from the imports so a new call site cannot
   // quietly go back to the old answer.
-  assert.match(bodyOf('setSheet'), /Math\.max\(floorFor\('grip', restNow\(\)\), Math\.min\(capNow\(\), px\)\)/);
+  assert.match(bodyOf('setSheet'), /Math\.max\(floorFor\('grip', lowNow\(\)\), Math\.min\(capNow\(\), px\)\)/);
   const imports = APP.slice(0, APP.indexOf("from './sheet.js'"));
   assert.doesNotMatch(imports, /PEEK|FULL/, 'js/app.js imports a constant it stopped needing');
   assert.equal(/restFor\(state\.screen\)/.test(APP), false, 'a call site still ignores the selection');
@@ -2386,7 +2413,7 @@ test('the gesture asks js/sheet.js instead of deriving the rule again', () => {
   // Two copies of "how far is far enough" is how a threshold meant for the grip
   // came to fire on a drag that started on a row.
   const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
-  assert.match(src, /sheetAfterDrag\(drag\.h0, dy, drag\.from, restNow\(\), capNow\(\)\)/);
+  assert.match(src, /sheetAfterDrag\(drag\.h0, dy, drag\.from, lowNow\(\), capNow\(\)\)/);
   assert.equal(src.includes('DISMISS_PX'), false, 'app.js names the dismiss distance a second time');
 });
 

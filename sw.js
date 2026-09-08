@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 129,651 bytes, data 85,157.
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 130,432 bytes, data 85,157.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these sixteen files, which is most of a percent of
@@ -32,7 +32,7 @@
 // recomputes both now.
 //
 // It read 127,395 before the map learned to stay off screen until a row is
-// tapped, which cost 2,256 gzipped bytes over four files. 852 of them are on
+// tapped, which cost 3,037 gzipped bytes over four files. 1,510 of them are on
 // js/sheet.js, which was 1.5 KB: that file stopped assuming every screen rests
 // at PEEK and every ceiling is FULL, and gained the pixels a back button and an
 // install rail need on top of the fractions it already held.
@@ -84,8 +84,8 @@ const SHELL_DOC = SCOPE + 'index.html';
 // restating it, because the restatement is what drifted.
 //
 // They are in addAll rather than a second best-effort pass, and that is the
-// argued half: the four are 24,767 of the 129,651 gzipped bytes here, so
-// install does 23.6% more work before it resolves, and a strict tier that fails
+// argued half: the four are 25,425 of the 130,432 gzipped bytes here, so
+// install does 24.2% more work before it resolves, and a strict tier that fails
 // fails the whole install. It is still right. A best-effort tier is for things
 // the app is better with; js/app.js cannot evaluate without js/state.js. And a
 // rejected install is retried where a resolved lie is not.

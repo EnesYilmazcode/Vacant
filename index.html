@@ -97,10 +97,11 @@
     transition: filter .9s ease, transform .9s ease, opacity .28s ease;
   }
   #map.settled { filter: none; transform: none; }
-  /* No destination on it, so it is not on screen. It keeps rendering, so the
-     first tap reveals a finished frame rather than one built while you watch,
-     and js/sheet.js rests the sheet over the whole of it. pointer-events
-     because a pan on an invisible canvas still latches state.userMoved. */
+  /* No destination on it, so it is not on screen. It keeps rendering, composed
+     for the band it will have when it comes back, so the first tap reveals a
+     finished frame rather than one built while you watch; js/sheet.js rests the
+     sheet over the whole of it. pointer-events because a pan on an invisible
+     canvas still latches state.userMoved. */
   body.nomap #map { opacity: 0; pointer-events: none; }
   @media (prefers-reduced-motion: reduce) {
     #map { transition: none; }

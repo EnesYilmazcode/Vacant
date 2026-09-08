@@ -3293,5 +3293,51 @@ the screen, and that stopped being a second state the day the list started
 there. `scripts/shoot.mjs` spends the drag on a check instead: that the same
 pull moves nothing.
 
-**Cost.** The shell went 127,395 -> 129,651 gzipped bytes, +1.8%, 852 of it on
+### What the review caught, and what it did not
+
+Three of the six findings were real and all three were mine, made while moving
+the geometry. Each was reproduced before it was fixed.
+
+**Where a screen RESTS is not how far down it can be pulled.** Reading `restNow()`
+into `floorFor` and `sheetAfterDrag` moved the floor AND the dismiss trigger up
+with the rest. Measured at 393x852: an 88 px pull on the room screen's grip went
+from sliding the sheet to 525 to **throwing the answer away**, because the trigger
+travelled from 236 to 525 behind it; and the room and picker sheets stopped going
+down at all, which takes their map band out of reach of a thumb. `lowPxFor` is the
+third number now: peek on every screen showing a map, and the rest only on one
+covering it. Driven in the app: the 88 px pull leaves you on the room screen, and
+a pane drag opens it back to 324.
+
+**The band is the strip the map is LOOKED AT through.** Passing `targeted` to
+`bandFor` composed the camera for the covered band, 68 px at 393x852 and 1 px
+with the install rail up. `clampView` collapses there and forces the centre to
+the middle of the basemap: cx 19661 at bands 528, 239 and 187, cx **32768** at 68
+and 1. Reachable, because `frame()` stands down once the map has been panned by
+hand: pan on the room screen, press back, tap a row, and the map uncovers
+pointing at the middle of campus. `bandFor` lost the argument. Composing for 528
+while covered is what makes the reveal a finished frame, which is what the CSS
+comment claimed and did not yet do.
+
+**`Math.max(FULL * height, ...)` in the cap re-created the bug the cap exists to
+stop.** FULL looks like a safe floor and is not: it is a HEIGHT, and the rail
+sits under it. Measured across rail heights at 852, the sheet's top edge went
+76, 76, 76, **53, 0, -113** at rails of 0, 80, 111, 134, 187 and 300 -- the back
+button buried past 134 and the sheet off the screen past 187. The floor is PEEK,
+which is where these screens actually stopped before. The top edge is 76 at every
+one of those rails now.
+
+**And one in the instrument.** `scripts/shoot.mjs` read `ask.chosen.trim()` one
+line after recording that `ask.chosen` was missing, so the one failure that check
+exists for killed the run with a TypeError instead of being reported.
+
+**Two findings were not defects.** The rule is that the map is on screen when it
+has a DESTINATION on it, so reaching "What Vacant knows" or the picker from a lit
+room leaves the map up behind them, showing the room you came from -- which is
+also what pressing back returns you to. That is the rule, not an exception to it,
+and it is unchanged from before. And `answer()`'s `state.screen !== 'ask'` guard
+is wider than today's call graph needs: `refresh()` only reaches `answer()` on the
+list or the question screen, because `followAction` holds everywhere else and the
+room's footer buttons all go to About.
+
+**Cost.** The shell went 127,395 -> 130,432 gzipped bytes, +2.4%, 1,510 of it on
 js/sheet.js. Suite 819 -> 830 tests.

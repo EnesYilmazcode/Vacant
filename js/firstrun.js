@@ -22,7 +22,7 @@ const BASE = '/Vacant/';
 //
 // MEASURED, because the direction of the error is the point: too short and a
 // slow load that IS working gets called dead, which is the lie this app exists
-// not to tell. The 470,809 bytes boot() reads, uncompressed from the committed
+// not to tell. The 461,657 bytes boot() reads, uncompressed from the committed
 // files, includes the Room Matrix snapshot. The earlier five-file path, with
 // the worker out of the way, took 9.59 s over CDP at Chrome's Slow 3G
 // preset (51,200 B/s down, 2,000 ms latency) and 2.69 s at Fast 3G, worst of

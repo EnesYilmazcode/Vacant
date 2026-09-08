@@ -3210,3 +3210,79 @@ one, and the index was harvested on 08-27 against a term that began 08-25. That
 is ordinary one-week drift, and it means the matrix is an independent oracle for
 the weekly harvest, keyed by the same facility ids. Not wired up. Recorded so it
 is not rediscovered.
+
+## 2026-09-08  The map waits for a destination, and the list takes the screen back
+
+**Decided.** The canvas is faded out and made untouchable on every screen where
+nothing is selected, and those screens rest at their own ceiling over it instead
+of at `PEEK`. Tapping a row is what puts the map on screen, and the walk line
+now ends in an arrowhead. The question screen keeps its flyover: that is a
+blurred drifting background rather than a map anybody reads.
+
+**Measured, at 393x852 on the pinned clock and place `scripts/shoot.mjs` uses.**
+The list rested at `PEEK`, so 528 px of the 852 -- 62% of the screen -- was
+campus carrying nothing but the blue dot, and the sheet under it held **three
+whole rooms**. It holds **ten** now. The band that was there to frame a lit
+footprint and a walk line was framing neither.
+
+Driven through every screen, reading the class and the sheet's box back off the
+page: question, flyover on and no sheet; list browsing, covered at 776 px with
+its top at 76 and ten whole rows; one row tapped, map on and the sheet back to
+324; room, 613; Back to the list, covered again at 776, so a height dragged over
+a lit room does not come back over a blank canvas; "What Vacant knows", covered
+at 776; the buildings screen, covered at 776 and back to 324 the moment a
+building is picked. The back button clears the sheet's top edge in all eight,
+and the page logged no errors.
+
+**FULL was not far enough.** The first version of this rested the covered
+screens at `FULL`, which left 187 px of empty ground above the list at 393x852:
+the map was gone and two rows of rooms went with it. So a covered screen stops
+where the back button is instead -- 44 px of button on a 0.6 rem inset plus air,
+`BACK_PX = 76` -- and that is 776 px of sheet, or 696 with the install rail up.
+`COVER = 0.92` is the ceiling on the fraction, so a tablet does not run the sheet
+to within 76 px of the top of a 2000 px screen.
+
+**That put pixels into js/sheet.js, which only held fractions.** A button is a
+fixed size and a phone is not, so `capFor` and `restPxFor` return pixels and
+`floorFor` and `sheetAfterDrag` take them. The assumption they replaced -- every
+screen rests at `PEEK` and every ceiling is `FULL` -- was true until a screen
+could rest somewhere else, and it is the assumption `viewport()` was already
+caught making once, five entries up.
+
+**The install rail resizes the sheet now, not just the map band.** `--bar-h` is
+the one layout change nothing announces, and the `MutationObserver` that existed
+for the band only woke the frame loop. Left there, the rail arriving under a
+776 px list put the sheet's top edge at **-4 px** and took the grip and the back
+button off screen with it. Caught by the drag check in `scripts/shoot.mjs`,
+which reported the sheet moving 776 -> 696 under a 60 px pull that should have
+moved nothing.
+
+**A covered screen has no travel, only a dismiss.** Its two snap points are one
+number, so a pane drag has nowhere to go -- there is nothing under the sheet to
+uncover -- and the grip still has its whole 88 px below that, so pull-down-to-go-
+back is untouched. Driven in the app: a 60 px pull on the grip leaves the sheet
+at 696, and the dismiss still fires at 88.
+
+**The head on the walk line.** The line is symmetrical and says which two points
+matter, not which one is the answer; the lit footprint said that, and a fitted
+view can push it to the edge of the band or under the sheet. 11 screen pixels at
+0.42 rad, solid where the shaft is dashed, and not drawn at all below 26 px of
+line -- the case where you are standing at the building, and where the head
+would be as long as the thing it ends.
+
+**Two lines came off the question screen with it.** "How long?" was a label for
+four buttons that read 30 min, 1 hour, 2 hours and rest of day; it survives as
+the group's `aria-label`, where a reader landing on a bare button row still needs
+the durations attached to something. The term line ("Autumn 2026") is a fact
+about the DATA that was on screen every single load and that nobody acts on --
+the case it looked like it was guarding, an index from a term that has ended, is
+`#stale`'s job and `staleness()` already shouts at 14 days and 35. The term is
+still on the record, in the diagnostics block behind "What Vacant knows".
+
+**`docs/media/list-full.webp` is deleted.** It was the list dragged up to fill
+the screen, and that stopped being a second state the day the list started
+there. `scripts/shoot.mjs` spends the drag on a check instead: that the same
+pull moves nothing.
+
+**Cost.** The shell went 127,395 -> 129,472 gzipped bytes, +1.6%, 852 of it on
+js/sheet.js. Suite 819 -> 829 tests.

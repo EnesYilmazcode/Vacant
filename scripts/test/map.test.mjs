@@ -7,6 +7,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  ARROW_MIN_PX,
+  ARROW_PX,
+  ARROW_SPREAD,
   FIT_PAD,
   MAX_MAGNIFICATION,
   SETTLED_SPAN,
@@ -433,6 +436,94 @@ test('neither the map nor its caller has a text-drawing seam left', () => {
   const call = read('js/app.js').match(/drawTarget\(\s*ctx,\s*\{[^}]*\}/);
   assert.ok(call, 'the drawTarget call in js/app.js moved; this test needs to follow it');
   assert.ok(!/label/.test(call[0]), `js/app.js passes a label again: ${call[0]}`);
+});
+
+// --- the head on the walk line ---
+
+// The last path drawn, as points. The head is the only three-point path
+// drawTarget emits, so reading back from the final beginPath is enough to find
+// it without the test knowing the order of everything before it.
+const lastPath = (ctx) => {
+  const start = ctx.calls.map((c) => c[0]).lastIndexOf('beginPath');
+  return ctx.calls
+    .slice(start)
+    .filter((c) => c[0] === 'moveTo' || c[0] === 'lineTo')
+    .map((c) => [c[1], c[2]]);
+};
+
+const walk = (from, to, viewport = PEEK) => {
+  const ctx = stubCtx();
+  drawTarget(ctx, { footprint: null, from, to }, BASEMAP, CENTRE, viewport);
+  return ctx;
+};
+
+test('the walk line carries a head, and it is on the destination end', () => {
+  // Which end of the line is the answer. Without a head the line is symmetrical
+  // and the only thing naming the destination is the lit footprint, which a
+  // fitted view can push under the sheet or off the side of the band.
+  const from = [33000, 33000];
+  const to = [34560, 33000];
+  const head = lastPath(walk(from, to));
+  assert.equal(head.length, 3, `the head is ${head.length} points`);
+
+  const b = project(to, BASEMAP, CENTRE, PEEK);
+  const a = project(from, BASEMAP, CENTRE, PEEK);
+  near(head[1][0], b[0], 1e-9, 'the point of the head is the destination');
+  near(head[1][1], b[1], 1e-9, 'the point of the head is the destination');
+
+  for (const wing of [head[0], head[2]]) {
+    near(Math.hypot(wing[0] - b[0], wing[1] - b[1]), ARROW_PX, 1e-9, 'wing length');
+    // Behind the point, which is what makes it an arrow rather than a cross:
+    // each wing is nearer the origin than the destination is.
+    assert.ok(
+      Math.hypot(wing[0] - a[0], wing[1] - a[1]) < Math.hypot(b[0] - a[0], b[1] - a[1]),
+      `a wing at ${wing} is past the destination`,
+    );
+  }
+  // Symmetric about the shaft, at the spread the module names.
+  const half = Math.hypot(head[0][0] - head[2][0], head[0][1] - head[2][1]) / 2;
+  near(half, ARROW_PX * Math.sin(ARROW_SPREAD), 1e-9, 'half the head width');
+});
+
+test('the head is solid where the shaft is dashed', () => {
+  // The dashes say this is a bearing and not a route through doors. The head
+  // says which end of it to walk to, and a dashed head is a dotted smudge at
+  // 11px.
+  const ctx = walk([33000, 33000], [34560, 33000]);
+  const start = ctx.calls.map((c) => c[0]).lastIndexOf('beginPath');
+  const dashes = ctx.calls.slice(0, start).filter((c) => c[0] === 'setLineDash');
+  assert.deepEqual(dashes.at(-1)[1], [], 'the head is drawn with the shaft dash still set');
+});
+
+test('a head is the same size at any zoom, like the dashes it ends', () => {
+  // Screen pixels, not metres. The fit widens span from 0.113 to 0.431 across
+  // the ranked rows, and a head measured on the ground would be four times the
+  // size at one end of that than at the other.
+  // Far enough apart to clear ARROW_MIN_PX at the widest span the fit can
+  // reach: the pair the other tests use is 40.1 px at settled and 24.9 at
+  // SPAN_MAX, which is the short line the test below is about.
+  const from = [33000, 33000];
+  const to = [37000, 33000];
+  const wide = makeView({ ...CENTRE, span: SPAN_MAX });
+  const ctx = stubCtx();
+  drawTarget(ctx, { footprint: null, from, to }, BASEMAP, wide, PEEK);
+  const head = lastPath(ctx);
+  const b = project(to, BASEMAP, wide, PEEK);
+  near(Math.hypot(head[0][0] - b[0], head[0][1] - b[1]), ARROW_PX, 1e-9, 'wing length, zoomed out');
+});
+
+test('a line too short to hold a head does not get one', () => {
+  // Standing at the building. The head would be as long as the line and would
+  // draw as a scribble over the footprint, and a line with no head still says
+  // the building is right there.
+  const from = [33000, 33000];
+  const short = [33000 + 20 * (BASEMAP.metresPerPx / 6), 33000];
+  const ctx = walk(from, short);
+  const a = project(from, BASEMAP, CENTRE, PEEK);
+  const b = project(short, BASEMAP, CENTRE, PEEK);
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  assert.ok(len < ARROW_MIN_PX, `the fixture line is ${len.toFixed(1)} px, not short`);
+  assert.equal(lastPath(ctx).length, 2, 'a head was drawn on a line that cannot hold one');
 });
 
 test('the dashes stay readable on a line the fit has zoomed right in on', () => {

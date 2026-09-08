@@ -390,9 +390,21 @@ export function drawFrame(ctx, basemap, view, viewport) {
   ctx.restore();
 }
 
-// The room you are being sent to: its footprint lit, and a line from you to it.
-// The caller passes the footprint, so which building lights up is decided where
-// the building code is known rather than guessed here.
+// The head on the walk line, in SCREEN pixels so it holds at any zoom, and its
+// half-angle in radians. Below ARROW_MIN_PX the head is as long as the line and
+// draws as a scribble over the footprint, which is the case where you are
+// already standing at the building.
+export const ARROW_PX = 11;
+export const ARROW_SPREAD = 0.42;
+export const ARROW_MIN_PX = 26;
+
+// The room you are being sent to: its footprint lit, and an arrow from you to
+// it. The caller passes the footprint, so which building lights up is decided
+// where the building code is known rather than guessed here.
+//
+// Dashed shaft, solid head. The dashes say bearing rather than route; the head
+// says which end is the answer, which the line alone cannot -- it is
+// symmetrical, and a fitted view can push the lit footprint under the sheet.
 //
 // Widths and dashes are in screen pixels and so do not change with zoom. The
 // dash length is tied to the line, because a fitted view can put you 40 px from
@@ -440,6 +452,22 @@ export function drawTarget(ctx, { footprint, from, to }, basemap, view, viewport
     ctx.lineTo(b[0], b[1]);
     ctx.stroke();
     ctx.setLineDash([]);
+
+    if (len >= ARROW_MIN_PX) {
+      const th = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      const wing = (turn) => [
+        b[0] - ARROW_PX * Math.cos(th + turn),
+        b[1] - ARROW_PX * Math.sin(th + turn),
+      ];
+      const left = wing(-ARROW_SPREAD);
+      const right = wing(ARROW_SPREAD);
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(left[0], left[1]);
+      ctx.lineTo(b[0], b[1]);
+      ctx.lineTo(right[0], right[1]);
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }

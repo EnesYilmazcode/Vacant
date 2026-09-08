@@ -72,7 +72,7 @@ import {
   pixelsPerGridFor,
   zoomBy,
 } from './map.js';
-import { FULL, PEEK, bandFor, floorFor, openAt, restFor, sheetAfterDrag } from './sheet.js';
+import { bandFor, capFor, floorFor, openAt, restPxFor, sheetAfterDrag } from './sheet.js';
 
 const BASE = new URL('.', import.meta.url).pathname.replace(/js\/$/, '');
 
@@ -279,6 +279,17 @@ function surface() {
 // rect, for the same reason viewport() is cached.
 const railHeight = () => parseFloat(document.body.style.getPropertyValue('--bar-h')) || 0;
 
+// Whether the canvas has a DESTINATION on it, which is the only reason to show
+// a map. Your own dot is not one. js/sheet.js has the rest of this.
+const targeted = () => Boolean(state.selected);
+
+// Where the sheet rests and how high it may go THIS second, in pixels.
+// Everything that used to write PEEK or FULL asks these, so the sheet's height
+// and the map's visibility cannot come apart. The rail is in them because the
+// sheet stands on it and it is the same headroom.
+const restNow = () => restPxFor(state.screen, window.innerHeight, railHeight(), targeted());
+const capNow = () => capFor(state.screen, window.innerHeight, railHeight(), targeted());
+
 // The map's viewport is not the canvas box. `band` is the strip of canvas the
 // sheet is not covering, and the map centres on the middle of THAT, which is
 // what puts the you-dot back on screen.
@@ -301,7 +312,7 @@ function viewport() {
   return {
     width,
     height,
-    band: bandFor(state.screen, height, railHeight()),
+    band: bandFor(state.screen, height, railHeight(), targeted()),
     dpr: lastSize.dpr || Math.min(window.devicePixelRatio || 1, 2),
   };
 }
@@ -416,13 +427,27 @@ let sheetScreen = null;
 let syncPaneTouch = () => {};
 
 function setSheet(px, snap) {
-  const H = window.innerHeight;
-  const h = Math.max(floorFor('grip', H), Math.min(FULL * H, px));
+  // Both ends come from where this screen rests, not from PEEK and FULL: a
+  // screen covering the map rests at its own ceiling, so it cannot be pulled
+  // down onto an empty canvas, and the grip keeps its whole travel below that.
+  const h = Math.max(floorFor('grip', restNow()), Math.min(capNow(), px));
   sheetH = h;
   sheetScreen = state.screen;
   const sheet = $('sheet');
   sheet.classList.toggle('snap', Boolean(snap));
   sheet.style.height = `${Math.round(h)}px`;
+  paintMap();
+}
+
+// The map is on screen when it has an answer on it. The question screen is the
+// exception: that is a blurred drifting background, not a map anybody reads.
+//
+// Written here because every screen change and every selection ends in a
+// setSheet, so one call covers all of them and the class cannot lag a screen
+// behind. showAsk() calls it directly, being the one transition that hides the
+// sheet instead of sizing it.
+function paintMap() {
+  document.body.classList.toggle('nomap', state.screen !== 'ask' && !targeted());
 }
 
 function attachSheet() {
@@ -507,7 +532,7 @@ function attachSheet() {
       // At full height a pull upward is the list, not the sheet. touch-action
       // is none at the top, so that one scroll is driven by hand; the next is
       // native again because scrollTop is no longer zero.
-      drag.mode = dy < 0 && drag.h0 >= FULL * window.innerHeight - 2 ? 'scroll' : 'sheet';
+      drag.mode = dy < 0 && drag.h0 >= capNow() - 2 ? 'scroll' : 'sheet';
       capture(sheet, e.pointerId);
     }
     if (Math.abs(dy) >= 8) drag.travelled = true;
@@ -519,7 +544,7 @@ function attachSheet() {
     swallow = true;
     if (drag.mode === 'scroll') drag.pane.scrollTop = Math.max(0, -dy);
     else {
-      const pulled = sheetAfterDrag(drag.h0, dy, drag.from, window.innerHeight);
+      const pulled = sheetAfterDrag(drag.h0, dy, drag.from, restNow(), capNow());
       drag.dismiss = pulled.dismiss;
       setSheet(pulled.h, false);
     }
@@ -557,9 +582,11 @@ function attachSheet() {
     state.dragging = false;
     syncTouch();
     if (mode !== 'sheet') return;
-    const H = window.innerHeight;
-    const peek = PEEK * H;
-    const full = FULL * H;
+    // The two snap points. While the map is covered they are the same number,
+    // so the sheet has no travel and the only thing left for a gesture to do is
+    // dismiss -- opening would open onto an empty canvas.
+    const peek = restNow();
+    const full = capNow();
     // The grip, pulled through the whole travel below peek. A drag that started
     // on a pane bottoms out AT peek, so it never gets here.
     if (dismiss) {
@@ -1088,7 +1115,7 @@ function select(i) {
   }
   state.selected = r;
   markRows();
-  setSheet(restFor(state.screen) * window.innerHeight, true);
+  setSheet(restNow(), true);
   frame(r);
   say(`${roomLabel(r)}, ${r.walk} minute walk, shown on the map.`);
 }
@@ -1266,7 +1293,7 @@ function selectBuilding(code) {
   if (!b) return;
   const found = [...state.groups.open, ...state.groups.unknown, ...state.groups.closed].find((x) => x.code === code);
   state.selected = { id: code, building: code, walk: found?.walk ?? null };
-  setSheet(restFor(state.screen) * window.innerHeight, true);
+  setSheet(restNow(), true);
   frame(state.selected);
   say(`${shortName(b.name)}, shown on the map.`);
 }
@@ -2043,9 +2070,11 @@ function showAsk() {
   state.selected = null;
   state.listScroll = 0;
   state.userMoved = false;
-  // The next answer opens at peek, whatever height the last one was dragged to.
+  // The next answer opens where it rests, whatever height the last one was
+  // dragged to.
   sheetH = 0;
   $('map').classList.remove('settled');
+  paintMap();
   flyoverStart = performance.now();
   // Back to the question restarts the drift, which is the loop's own reason to
   // keep running.
@@ -2054,12 +2083,14 @@ function showAsk() {
 }
 
 function sheetHeight() {
-  const h = openAt(state.screen, { screen: sheetScreen, h: sheetH }, window.innerHeight);
+  const h = openAt(state.screen, { screen: sheetScreen, h: sheetH }, restNow(), targeted());
   setSheet(h, sheetScreen !== state.screen);
 }
 
 function showList() {
-  showPane('list');
+  // Cleared before showPane, because reframe() in there composes the camera
+  // for the band this screen leaves and the band now depends on it.
+  //
   // Nothing else clears it on the way back. followAction reads state.selected
   // as "a finger is on a row somebody is reaching for" and returns 'hold', and
   // under 'hold' refresh() never runs, so answer() -- the only other thing that
@@ -2068,6 +2099,7 @@ function showList() {
   // session, which is exactly the staleness #87 exists to remove. Selection is
   // a property of the room screen; coming back to the list ends it.
   state.selected = null;
+  showPane('list');
   $('back').setAttribute('aria-label', 'Back to the question');
   $('list').scrollTop = state.listScroll;
   sheetHeight();
@@ -2090,14 +2122,14 @@ function showPick() {
   $('back').setAttribute('aria-label', 'Back without picking a building');
   paintPick();
   $('pick').scrollTop = 0;
-  setSheet(restFor(state.screen) * window.innerHeight, true);
+  setSheet(restNow(), true);
   focusHeading($('pick-h'));
 }
 
 function showAbout() {
   showPane('about');
   $('back').setAttribute('aria-label', 'Back');
-  setSheet(restFor(state.screen) * window.innerHeight, true);
+  setSheet(restNow(), true);
   paintAbout();
 }
 
@@ -2174,6 +2206,10 @@ function showRoom(id, { keepDay = false } = {}) {
   if (!keepDay) roomDayOffset = 0;
   if (!$('list').hidden) state.listScroll = $('list').scrollTop;
   $('room').innerHTML = roomHtml(id);
+  // Before showPane, for the same reason showList clears it before showPane:
+  // reframe() composes the camera for a band this decides.
+  const r = state.results.find((x) => x.id === id);
+  state.selected = r ?? { id, building: room.b, walk: null };
   // Both panes stay in the DOM. That is the whole scroll-restoration
   // mechanism: #list keeps its scrollTop because it was never destroyed.
   showPane('room');
@@ -2186,8 +2222,6 @@ function showRoom(id, { keepDay = false } = {}) {
     history.state?.from === 'near' ? 'Back to the nearest buildings' : 'Back to the room list',
   );
 
-  const r = state.results.find((x) => x.id === id);
-  state.selected = r ?? { id, building: room.b, walk: null };
   // frame() below runs only when the room is one of the ranked rows. Opened
   // from a link or out of hours it is not, and the footprint still has to light.
   frames.wake();
@@ -2198,7 +2232,7 @@ function showRoom(id, { keepDay = false } = {}) {
   // whose first two hours are the only ones above the fold is a calendar
   // nobody scrolls. REST carries that height to viewport() as well, so the map
   // composes for the 239px this screen leaves rather than the list's 528.
-  setSheet(restFor(state.screen) * window.innerHeight, true);
+  setSheet(restNow(), true);
   if (r) {
     markRows();
     frame(r);
@@ -2523,19 +2557,6 @@ function follow(origin) {
 
 // ---------------------------------------------------------------- boot
 
-// The term label used to sit in the corner of the result list. It says more
-// here, before any answer exists.
-function provenance(current) {
-  const term = current?.termName;
-  if (!term) return;
-  // The term, and nothing else. The read date sat here on every load and only
-  // matters when it is OLD, which staleness() already reports on its own at 14
-  // days and shouts at 35. scripts/shoot.mjs fails if this line goes empty, so
-  // it is trimmed rather than removed.
-  $('prov').innerHTML = `<b>${esc(term)}</b>`;
-  $('prov').hidden = false;
-}
-
 // The abbreviation on the door lives in the full building table, which is 167 KB
 // and has nothing else the app wants. It is fetched only when the picker opens,
 // so it never sits on the path to a first answer, and the picker works without
@@ -2623,7 +2644,6 @@ async function boot() {
 
   const current = await json('current.json');
   state.current = current;
-  provenance(current);
 
   const [rooms, buildings, hours, located] = await Promise.all([
     parsedIndex(`${BASE}${current.rooms}`, signal),
@@ -2746,7 +2766,16 @@ window.addEventListener('DOMContentLoaded', () => {
   // dismissed, and railHeight() feeds the band the map centres in. That is the
   // one layout change the app makes that no event announces, and --bar-h is the
   // only inline style anything sets on the body.
-  new MutationObserver(() => frames.wake()).observe(document.body, {
+  //
+  // It resizes the SHEET as well now, not just the map: a screen covering the
+  // map stops where the back button is, the rail stands the sheet on top of
+  // itself, and both come out of the same headroom. Left out, the rail arriving
+  // under a 776px list at 393x852 put the sheet's top edge at -4px and took the
+  // grip and the back button off screen with it.
+  new MutationObserver(() => {
+    if (state.screen !== 'ask') sheetHeight();
+    frames.wake();
+  }).observe(document.body, {
     attributes: true,
     attributeFilter: ['style'],
   });

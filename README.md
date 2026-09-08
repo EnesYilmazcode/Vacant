@@ -7,10 +7,10 @@ Find an empty classroom near you at Ohio State, free for as long as you need it.
 It is a web page. No account, no search box, nothing to sign up for. It finds you,
 asks one question, and hands you rooms you can walk to, nearest first.
 
-| | | |
-| :--: | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark campus map, the question "How long?", and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![The ranked list over the map, with a blue dot showing where you are. One room per building, under a line reading "You asked for 2h00." Cunz Hall 160, 4 min walk, no class rest of today, 42 seats. PAES A111, 4 min, free till 4:00pm, 34 seats.](docs/media/list.webp) | ![One room picked, Cunz Hall 160. Its building footprint is outlined in red on the map, a dashed line runs from the blue dot to it, and its row is lit in the list below.](docs/media/room.webp) |
-| One question. | The answer. | Where it is. |
+| | |
+| :--: | :--: |
+| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![The ranked list, filling the screen with no map behind it. One room per building, under a line reading "You asked for 2h00." Cunz Hall 160, 4 min walk, no class rest of today, 42 seats. PAES A111, 4 min, free till 4:00pm, 34 seats. Seven more below them.](docs/media/list.webp) |
+| One question. | The answer, and nothing else. |
 
 ## Yours for, not free until
 
@@ -37,8 +37,8 @@ coming at all, and the timeline behind it ends where the building locks.
 
 | | |
 | :--: | :--: |
-| ![The list dragged up to fill the screen, showing eight rooms in eight different buildings, 3 min to 7 min away](docs/media/list-full.webp) | ![The room screen for Cunz Hall 160: no class in here for the rest of today, yours for 8h26 once you get there, 4 min walk, 42 seats, classroom, then Wednesday drawn as a calendar from 6 AM with two red blocks, KNSISM 3208 from 8:00am to 8:55am and KNSISM 3550 from 9:10am to 10:05am, and everything else empty](docs/media/timeline.webp) |
-| Drag the sheet up for the rest. | Tap a room twice for its whole day, doors included. |
+| ![The same list after one tap, dropped to make room for the map. Cunz Hall 160's building footprint is outlined in red, a dashed line runs from the blue dot to it with an arrowhead pointing into the building, and its row is lit in the list below.](docs/media/room.webp) | ![The room screen for Cunz Hall 160: no class in here for the rest of today, yours for 8h26 once you get there, 4 min walk, 42 seats, classroom, then Wednesday drawn as a calendar from 6 AM with two red blocks, KNSISM 3208 from 8:00am to 8:55am and KNSISM 3550 from 9:10am to 10:05am, and everything else empty](docs/media/timeline.webp) |
+| Tap a room and the map comes up pointing at it. | Tap it again for its whole day, doors included. |
 
 ## Put it on your home screen
 

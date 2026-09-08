@@ -820,11 +820,20 @@ test('the room deep link is gated on scheduled hours, not only on rankable', () 
   // leaving 40 rows one back press from a link, on a screen the front door
   // refuses to show at all.
   const src = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
-  const branch = src.slice(src.indexOf('const wanted = new URLSearchParams'));
+  const branch = src.slice(src.indexOf('function openWantedRoom()'));
   assert.ok(branch.length > 0, 'the deep link branch moved');
-  const head = branch.slice(0, 700);
+  const head = branch.slice(0, 1200);
   assert.match(head, /if \(state\.scheduled\)/);
   assert.match(head, /showNear\(\)/);
+});
+
+test('dev clock restoration retries a room link refused by the live date', () => {
+  // Dev mode restores its saved clock after boot. When the live date is a
+  // holiday, boot has to leave the link pending and devApply must retry it
+  // after refresh() makes the simulated instructional date rankable.
+  const src = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
+  const seam = src.slice(src.indexOf('export function devApply'), src.indexOf('export function devReadout'));
+  assert.match(seam, /refresh\(\);[\s\S]*openWantedRoom\(\)/);
 });
 
 // ------------------------------------------------------------ #17 the picker
@@ -1154,22 +1163,22 @@ test('the screen hands one date to the grid, the timeline and the claim', () => 
   const tl = bodyOf('timelineRows');
   assert.match(tl, /function timelineRows\([^)]*\bdate\b/, 'timelineRows takes no date');
   assert.match(tl, /hoursFor\(room\.b, date\.getDay\(\)\)/);
-  assert.match(tl, /blocksOn\(room, date, state\.rooms\.sessions\)/);
+  assert.match(tl, /blocksOn\(room, date, schedule\.sessions\)/);
   assert.equal((tl.match(/state\.day/g) ?? []).length, 0, 'timelineRows still reads state.day');
 
   const room = bodyOf('roomHtml');
   assert.match(room, /const date = dayShown\(\)/);
-  assert.match(room, /timelineRows\([^)]*\bdate\)/);
+  assert.match(room, /timelineRows\([^)]*\bdate, schedule\)/);
   // An equality and nothing else. `roomDayOffset === 0 || true` still reads as
   // a day check and still matches a looser pattern, and it puts today's
   // sentence back over every stepped day.
   assert.match(room, /const today = roomDayOffset === 0;\n/);
-  assert.match(room, /!today\s*\?\s*shapeFor\(tl, date\)/, 'claimFor is still reachable off today');
+  assert.match(room, /!today\s*\?\s*shapeFor\(tl, date, schedule\)/, 'claimFor is still reachable off today');
 
   // The calendar is half the verdict, so the screen has to go and get it.
   const shape = bodyOf('shapeFor');
-  assert.match(shape, /calendarOn\(iso, state\.rooms, state\.current\)/);
-  assert.match(shape, /inTermOn\(iso, state\.current, state\.rooms\)/);
+  assert.match(shape, /calendarOn\(iso, schedule, state\.current\)/);
+  assert.match(shape, /inTermOn\(iso, state\.current, schedule\)/);
 });
 
 test('one weekday runs the whole remembered pick', () => {

@@ -2060,12 +2060,10 @@ test('shape holds the committed index to a walk you would actually make', () => 
   assert.equal(usable[0].walk, 71, 'the unbounded ranking still leads with a 71 minute walk');
   const far = shape(usable);
   assert.equal(far.rows.length, 0);
-  // 280, 162 and 118, down from 306, 173 and 133. The difference is exactly the
-  // computer labs leaving OFFERABLE: 26 of them ranked from this origin, 11 free
-  // at this minute and 15 waiting. 306 - 26 = 280, 173 - 11 = 162,
-  // 133 - 15 = 118, and 162 + 118 = 280 as it did before. The walk bound this
-  // test is about did not move, and neither did the room it names.
-  assert.equal(far.beyond.count + far.beyond.waiting.count, 280, 'every usable row is past the bound');
+  // The weekly room index now yields 278 eligible rows: 162 free now and 116
+  // opening within 90 minutes. All are past the bound. This count changes when
+  // the Registrar's weekly snapshot changes; the walk rule and named room do not.
+  assert.equal(far.beyond.count + far.beyond.waiting.count, 278, 'every usable row is past the bound');
   assert.equal(far.beyond.count, 162, 'and only these are free right now');
   assert.equal(far.beyond.nearest.walk, 71);
   // The screenshot named Pomerene Hall. 8 rooms tie at exactly 71 minutes,
@@ -2081,7 +2079,7 @@ test('shape holds the committed index to a walk you would actually make', () => 
     if (r.wait === 0) continue;
     assert.notEqual(r.id, far.beyond.nearest.id, 'the named room is not free');
   }
-  assert.equal(far.beyond.waiting.count, 118);
+  assert.equal(far.beyond.waiting.count, 116);
 });
 
 test('a rest-of-day ask is named, not priced, in the strip too', () => {

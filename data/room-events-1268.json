@@ -1,32 +1,35 @@
 {
  "_meta": {
   "term": "1268",
-  "week": "08/31/2026",
-  "weekStart": "2026-08-31",
-  "weekEnd": "2026-09-06",
-  "generated": "2026-09-03",
+  "week": "09/07/2026",
+  "weekStart": "2026-09-07",
+  "weekEnd": "2026-09-13",
+  "generated": "2026-09-07",
   "source": "https://courses.erppub.osu.edu/psc/ps/EMPLOYEE/PUB/c/OSR_CUSTOM_MENU.OSR_ROOM_MATRIX.GBL",
-  "requests": 427,
-  "wallClockSeconds": 211.7,
+  "requests": 428,
+  "wallClockSeconds": 516.4,
   "counts": {
    "roomsRequested": 425,
    "roomsParsed": 425,
-   "events": 327,
-   "distinctEventIds": 209,
-   "roomsWithEvents": 174,
+   "events": 307,
+   "distinctEventIds": 198,
+   "roomsWithEvents": 165,
    "eventTypes": {
-    "MTG": 236,
-    "INFO": 8,
-    "TOUR": 76,
+    "MTG": 215,
+    "TOUR": 67,
+    "INFO": 10,
     "WRKS": 6,
-    "SMNR": 1
+    "SMNR": 1,
+    "RCPT": 1,
+    "INTV": 1,
+    "FAIR": 6
    },
-   "blockCells": 347,
+   "blockCells": 289,
    "distinctBlockIds": 8,
    "roomsWithBlocks": 56,
-   "classCellsSeenAndDiscarded": 8288,
-   "classBookingsSeenAndDiscarded": 9647,
-   "combinedSectionCells": 1124,
+   "classCellsSeenAndDiscarded": 6875,
+   "classBookingsSeenAndDiscarded": 8024,
+   "combinedSectionCells": 955,
    "invalidValue": 0,
    "noGrid": 0
   },
@@ -34,23 +37,23 @@
   "invalidValueRooms": [],
   "noGridRooms": [],
   "schema": "rooms[facilityId] = [{kind event|block, day 0=Sun..6=Sat, start/end minutes from midnight, type, eventId}]. A facilityId present with an empty array was swept and had no non-class occupancy. Class cells are counted in counts and dropped; Vacant harvests those already.",
-  "labels": "The Registrar names each booking in free text and 23 of the 189 distinct labels on this week name a person. That text is discarded at the parse boundary and is not in this file. Only `type` survives: MTG, TOUR, INFO, WRKS or SMNR for an event, null for a block.",
+  "labels": "The Registrar names each booking in free text and 23 of the 189 distinct labels on this week name a person. That text is discarded at the parse boundary and is not in this file. Only `type` survives: MTG, TOUR, INFO, WRKS, SMNR, RCPT, INTV or FAIR for an event, null for a block.",
   "windowNote": "The grid was queried 7:00AM-11:00PM. Times are read from the booking own text, not from the grid rows, so a booking that starts before 7am keeps its real start (KN0250 is 6:30AM here). What the window decides is which bookings the page renders at all: one lying entirely outside it is not shown and so is not in this file. The page defaults to 8:00AM-10:00PM, which would have hidden the evening bookings this file exists for.",
   "eventIdNote": "eventId is the parenthesised 9-digit reservation id for an event and the ROOM BLOCK number for a block. They are different id spaces."
  },
  "_analysis": {
-  "week": "08/31/2026",
-  "weekStart": "2026-08-31",
-  "weekEnd": "2026-09-06",
+  "week": "09/07/2026",
+  "weekStart": "2026-09-07",
+  "weekEnd": "2026-09-13",
   "activeSessions": [
    0,
    1
   ],
   "landInFreeWindow": {
-   "events": "323/327",
-   "blocks": "343/347",
-   "eventsSessionScoped": "327/327",
-   "blocksSessionScoped": "343/347"
+   "events": "304/307",
+   "blocks": "286/289",
+   "eventsSessionScoped": "307/307",
+   "blocksSessionScoped": "286/289"
   },
   "windows": [
    {
@@ -65,15 +68,15 @@
     "from": 1020,
     "to": 1320,
     "windowMinutes": 637500,
-    "freeMinutes": 588395,
-    "blockMinutesInWindow": 62985,
-    "eventMinutesInWindow": 7705,
-    "blockMinutesInsideFreeGaps": 62265,
-    "eventMinutesInsideFreeGaps": 7620,
-    "blockPctOfFree": 10.7,
-    "eventPctOfFree": 1.31,
-    "blockPctOfFreeStrict": 10.58,
-    "eventPctOfFreeStrict": 1.3
+    "freeMinutes": 588265,
+    "blockMinutesInWindow": 50040,
+    "eventMinutesInWindow": 8715,
+    "blockMinutesInsideFreeGaps": 49500,
+    "eventMinutesInsideFreeGaps": 8540,
+    "blockPctOfFree": 8.51,
+    "eventPctOfFree": 1.48,
+    "blockPctOfFreeStrict": 8.41,
+    "eventPctOfFreeStrict": 1.45
    },
    {
     "name": "Saturday 8am-10pm",
@@ -85,13 +88,13 @@
     "windowMinutes": 357000,
     "freeMinutes": 356580,
     "blockMinutesInWindow": 31920,
-    "eventMinutesInWindow": 0,
+    "eventMinutesInWindow": 6450,
     "blockMinutesInsideFreeGaps": 31920,
-    "eventMinutesInsideFreeGaps": 0,
+    "eventMinutesInsideFreeGaps": 6450,
     "blockPctOfFree": 8.95,
-    "eventPctOfFree": 0,
+    "eventPctOfFree": 1.81,
     "blockPctOfFreeStrict": 8.95,
-    "eventPctOfFreeStrict": 0
+    "eventPctOfFreeStrict": 1.81
    }
   ],
   "definitions": "landInFreeWindow counts an occurrence as landing in free time when NO busy row in rooms-<term>.json overlaps it on that weekday, using every session. The *SessionScoped pair repeats that against only the sessions meeting this week. blockPctOfFree divides all block minutes inside the window by the free room-minutes in it; *Strict counts only block minutes that fall inside a free gap."
@@ -103,9 +106,34 @@
   "AA0211": [],
   "AA0246": [],
   "AA0247": [],
-  "AE0100": [],
+  "AE0100": [
+   {
+    "kind": "event",
+    "day": 3,
+    "start": 1080,
+    "end": 1140,
+    "type": "MTG",
+    "eventId": "000653362"
+   }
+  ],
   "AE0103": [],
   "AE0104": [
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 1095,
+    "end": 1200,
+    "type": "MTG",
+    "eventId": "000652307"
+   },
+   {
+    "kind": "event",
+    "day": 3,
+    "start": 1065,
+    "end": 1170,
+    "type": "MTG",
+    "eventId": "000652307"
+   },
    {
     "kind": "event",
     "day": 4,
@@ -118,16 +146,7 @@
   "AE0219": [],
   "AE0245": [],
   "AP0002": [],
-  "AP0012": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 1080,
-    "end": 1170,
-    "type": "MTG",
-    "eventId": "000652352"
-   }
-  ],
+  "AP0012": [],
   "AP0243": [],
   "AP0269": [
    {
@@ -151,35 +170,34 @@
   "AP0386": [
    {
     "kind": "event",
-    "day": 4,
-    "start": 870,
-    "end": 960,
+    "day": 3,
+    "start": 960,
+    "end": 1035,
     "type": "MTG",
-    "eventId": "000656710"
+    "eventId": "000657076"
    }
   ],
   "AP0388": [],
-  "AS0202": [],
-  "AS0210": [
-   {
-    "kind": "event",
-    "day": 4,
-    "start": 1170,
-    "end": 1230,
-    "type": "MTG",
-    "eventId": "000653363"
-   }
-  ],
-  "BE0120": [
+  "AS0202": [
    {
     "kind": "event",
     "day": 2,
-    "start": 1180,
-    "end": 1260,
-    "type": "INFO",
-    "eventId": "000652947"
+    "start": 1065,
+    "end": 1155,
+    "type": "MTG",
+    "eventId": "000653186"
+   },
+   {
+    "kind": "event",
+    "day": 4,
+    "start": 1080,
+    "end": 1140,
+    "type": "MTG",
+    "eventId": "000656977"
    }
   ],
+  "AS0210": [],
+  "BE0120": [],
   "BE0128": [
    {
     "kind": "event",
@@ -233,22 +251,6 @@
   "BE0130": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 570,
-    "end": 720,
-    "type": "TOUR",
-    "eventId": "000651917"
-   },
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 810,
-    "end": 960,
-    "type": "TOUR",
-    "eventId": "000653434"
-   },
-   {
-    "kind": "event",
     "day": 2,
     "start": 570,
     "end": 660,
@@ -284,14 +286,6 @@
   "BE0140": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 830,
-    "end": 885,
-    "type": "MTG",
-    "eventId": "000653905"
-   },
-   {
-    "kind": "event",
     "day": 3,
     "start": 830,
     "end": 885,
@@ -307,17 +301,16 @@
     "eventId": "000653905"
    }
   ],
-  "BE0144": [
+  "BE0144": [],
+  "BE0148": [
    {
     "kind": "event",
-    "day": 2,
-    "start": 1050,
-    "end": 1200,
-    "type": "MTG",
-    "eventId": "000656719"
-   }
-  ],
-  "BE0148": [
+    "day": 3,
+    "start": 830,
+    "end": 885,
+    "type": "INFO",
+    "eventId": "000657084"
+   },
    {
     "kind": "event",
     "day": 5,
@@ -340,17 +333,17 @@
     "end": 1170,
     "type": "MTG",
     "eventId": "000652992"
+   },
+   {
+    "kind": "event",
+    "day": 5,
+    "start": 750,
+    "end": 810,
+    "type": "MTG",
+    "eventId": "000656932"
    }
   ],
   "BE0285": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 825,
-    "end": 885,
-    "type": "MTG",
-    "eventId": "000655225"
-   },
    {
     "kind": "event",
     "day": 3,
@@ -390,14 +383,6 @@
   "BI0668": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 900,
-    "end": 960,
-    "type": "MTG",
-    "eventId": "000652678"
-   },
-   {
-    "kind": "event",
     "day": 5,
     "start": 660,
     "end": 720,
@@ -409,6 +394,14 @@
   "BI0684": [],
   "BI0984": [],
   "BO0116": [
+   {
+    "kind": "event",
+    "day": 3,
+    "start": 1050,
+    "end": 1140,
+    "type": "INFO",
+    "eventId": "000655247"
+   },
    {
     "kind": "event",
     "day": 5,
@@ -429,31 +422,13 @@
     "eventId": "000652658"
    }
   ],
-  "BO0124": [
-   {
-    "kind": "event",
-    "day": 5,
-    "start": 840,
-    "end": 900,
-    "type": "MTG",
-    "eventId": "000655219"
-   }
-  ],
-  "BO0128": [
-   {
-    "kind": "event",
-    "day": 3,
-    "start": 900,
-    "end": 1020,
-    "type": "MTG",
-    "eventId": "000653530"
-   }
-  ],
+  "BO0124": [],
+  "BO0128": [],
   "BO0311": [],
   "BO0313": [
    {
     "kind": "event",
-    "day": 1,
+    "day": 5,
     "start": 840,
     "end": 900,
     "type": "MTG",
@@ -463,11 +438,11 @@
   "BO0314": [
    {
     "kind": "event",
-    "day": 5,
-    "start": 620,
-    "end": 745,
-    "type": "MTG",
-    "eventId": "000656911"
+    "day": 4,
+    "start": 720,
+    "end": 765,
+    "type": "INFO",
+    "eventId": "000653393"
    }
   ],
   "BO0316": [],
@@ -478,22 +453,14 @@
     "kind": "event",
     "day": 3,
     "start": 1080,
-    "end": 1140,
+    "end": 1260,
     "type": "MTG",
-    "eventId": "000654084"
+    "eventId": "000657021"
    }
   ],
   "CH0015": [],
   "CH0218": [],
   "CH0228": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 760,
-    "end": 815,
-    "type": "MTG",
-    "eventId": "000652323"
-   },
    {
     "kind": "event",
     "day": 4,
@@ -541,6 +508,22 @@
    }
   ],
   "CL0102": [
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 960,
+    "end": 1110,
+    "type": "MTG",
+    "eventId": "000657017"
+   },
+   {
+    "kind": "event",
+    "day": 3,
+    "start": 690,
+    "end": 745,
+    "type": "MTG",
+    "eventId": "000657231"
+   },
    {
     "kind": "event",
     "day": 4,
@@ -610,6 +593,14 @@
   "CL0135": [
    {
     "kind": "event",
+    "day": 2,
+    "start": 1110,
+    "end": 1170,
+    "type": "MTG",
+    "eventId": "000657232"
+   },
+   {
+    "kind": "event",
     "day": 3,
     "start": 720,
     "end": 840,
@@ -640,6 +631,14 @@
    {
     "kind": "event",
     "day": 4,
+    "start": 960,
+    "end": 1020,
+    "type": "MTG",
+    "eventId": "000656909"
+   },
+   {
+    "kind": "event",
+    "day": 4,
     "start": 1080,
     "end": 1200,
     "type": "MTG",
@@ -659,26 +658,18 @@
   "CM0100": [
    {
     "kind": "event",
-    "day": 2,
-    "start": 1035,
-    "end": 1130,
-    "type": "MTG",
-    "eventId": "000656965"
-   },
-   {
-    "kind": "event",
     "day": 3,
     "start": 900,
-    "end": 1080,
-    "type": "INFO",
-    "eventId": "000643409"
+    "end": 960,
+    "type": "MTG",
+    "eventId": "000653953"
    }
   ],
   "CM0107": [],
   "CM0193": [
    {
     "kind": "event",
-    "day": 1,
+    "day": 3,
     "start": 780,
     "end": 810,
     "type": "MTG",
@@ -686,11 +677,11 @@
    },
    {
     "kind": "event",
-    "day": 3,
-    "start": 780,
-    "end": 810,
+    "day": 5,
+    "start": 840,
+    "end": 900,
     "type": "MTG",
-    "eventId": "000655514"
+    "eventId": "000657121"
    }
   ],
   "CM0200": [],
@@ -699,42 +690,16 @@
   "CM0293": [],
   "CM0307": [],
   "CM0393": [],
-  "CZ0140": [
+  "CZ0140": [],
+  "CZ0150": [],
+  "CZ0160": [
    {
     "kind": "event",
     "day": 2,
-    "start": 1020,
-    "end": 1110,
+    "start": 1110,
+    "end": 1170,
     "type": "MTG",
-    "eventId": "000644668"
-   }
-  ],
-  "CZ0150": [
-   {
-    "kind": "event",
-    "day": 3,
-    "start": 690,
-    "end": 750,
-    "type": "MTG",
-    "eventId": "000652348"
-   },
-   {
-    "kind": "event",
-    "day": 5,
-    "start": 780,
-    "end": 960,
-    "type": "MTG",
-    "eventId": "000652879"
-   }
-  ],
-  "CZ0160": [
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 690,
-    "end": 1125,
-    "type": null,
-    "eventId": "33544"
+    "eventId": "000657177"
    },
    {
     "kind": "event",
@@ -772,14 +737,6 @@
   "CZ0180": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 570,
-    "end": 720,
-    "type": "TOUR",
-    "eventId": "000651917"
-   },
-   {
-    "kind": "event",
     "day": 2,
     "start": 615,
     "end": 675,
@@ -808,22 +765,14 @@
    {
     "kind": "event",
     "day": 3,
-    "start": 810,
-    "end": 870,
+    "start": 780,
+    "end": 840,
     "type": "MTG",
-    "eventId": "000654051"
+    "eventId": "000653097"
    }
   ],
   "DB0024": [],
   "DB0029": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 570,
-    "end": 720,
-    "type": "TOUR",
-    "eventId": "000651917"
-   },
    {
     "kind": "event",
     "day": 2,
@@ -842,14 +791,6 @@
    }
   ],
   "DB0030": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 810,
-    "end": 960,
-    "type": "TOUR",
-    "eventId": "000652084"
-   },
    {
     "kind": "event",
     "day": 5,
@@ -992,37 +933,20 @@
     "eventId": "000652275"
    }
   ],
-  "DE0206": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 570,
-    "end": 720,
-    "type": "TOUR",
-    "eventId": "000651917"
-   },
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 810,
-    "end": 960,
-    "type": "TOUR",
-    "eventId": "000653434"
-   }
-  ],
+  "DE0206": [],
   "DE0207": [],
-  "DE0209": [],
-  "DE0213": [],
-  "DE0214": [
+  "DE0209": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 570,
-    "end": 660,
+    "day": 4,
+    "start": 960,
+    "end": 1020,
     "type": "MTG",
-    "eventId": "000652287"
+    "eventId": "000655160"
    }
   ],
+  "DE0213": [],
+  "DE0214": [],
   "DE0238": [],
   "DE0245": [
    {
@@ -1054,14 +978,6 @@
   "DE0253": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 970,
-    "end": 1030,
-    "type": "MTG",
-    "eventId": "000652824"
-   },
-   {
-    "kind": "event",
     "day": 4,
     "start": 1050,
     "end": 1110,
@@ -1070,17 +986,17 @@
    }
   ],
   "DE0262": [],
-  "DE0265": [],
-  "DE0268": [
+  "DE0265": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 550,
-    "end": 675,
+    "day": 4,
+    "start": 960,
+    "end": 1050,
     "type": "MTG",
-    "eventId": "000644096"
+    "eventId": "000656937"
    }
   ],
+  "DE0268": [],
   "DE0447": [],
   "DL0113": [
    {
@@ -1100,14 +1016,6 @@
   "DL0357": [],
   "DL0369": [],
   "DU0012": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 840,
-    "end": 960,
-    "type": "MTG",
-    "eventId": "000655910"
-   },
    {
     "kind": "event",
     "day": 3,
@@ -1175,14 +1083,6 @@
   "EA0160": [
    {
     "kind": "event",
-    "day": 2,
-    "start": 1020,
-    "end": 1080,
-    "type": "MTG",
-    "eventId": "000656786"
-   },
-   {
-    "kind": "event",
     "day": 3,
     "start": 1125,
     "end": 1200,
@@ -1190,21 +1090,21 @@
     "eventId": "000651770"
    }
   ],
-  "EA0170": [
-   {
-    "kind": "event",
-    "day": 3,
-    "start": 1080,
-    "end": 1140,
-    "type": "MTG",
-    "eventId": "000651552"
-   }
-  ],
+  "EA0170": [],
   "EA0275": [],
   "EA0285": [],
   "EA0295": [],
   "EC0014": [],
-  "EC0015": [],
+  "EC0015": [
+   {
+    "kind": "event",
+    "day": 4,
+    "start": 960,
+    "end": 1020,
+    "type": "MTG",
+    "eventId": "000657134"
+   }
+  ],
   "EC0017": [],
   "EC0018": [],
   "EC0202": [
@@ -1218,27 +1118,11 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1080,
-    "end": 1380,
-    "type": null,
-    "eventId": "38762"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1080,
     "end": 1380,
     "type": null,
     "eventId": "38762"
-   },
-   {
-    "kind": "event",
-    "day": 3,
-    "start": 660,
-    "end": 720,
-    "type": "SMNR",
-    "eventId": "000654191"
    },
    {
     "kind": "block",
@@ -1278,14 +1162,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38762"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38762"
@@ -1336,14 +1212,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38762"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1080,
     "end": 1380,
     "type": null,
     "eventId": "38762"
@@ -1410,14 +1278,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38762"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1080,
     "end": 1380,
     "type": null,
     "eventId": "38762"
@@ -1490,14 +1350,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38762"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -1542,22 +1394,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38762"
-   },
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 960,
-    "end": 1020,
-    "type": "MTG",
-    "eventId": "000654616"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38762"
@@ -1622,14 +1458,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38762"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -1674,14 +1502,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38762"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38762"
@@ -1737,12 +1557,12 @@
     "eventId": "38762"
    },
    {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38762"
+    "kind": "event",
+    "day": 2,
+    "start": 540,
+    "end": 600,
+    "type": "MTG",
+    "eventId": "000657178"
    },
    {
     "kind": "block",
@@ -1759,6 +1579,14 @@
     "end": 1380,
     "type": null,
     "eventId": "38762"
+   },
+   {
+    "kind": "event",
+    "day": 4,
+    "start": 540,
+    "end": 600,
+    "type": "MTG",
+    "eventId": "000657178"
    },
    {
     "kind": "block",
@@ -1790,14 +1618,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38762"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38762"
@@ -1854,14 +1674,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38762"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -1906,14 +1718,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38762"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1140,
     "end": 1380,
     "type": null,
     "eventId": "38762"
@@ -1978,14 +1782,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38763"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -2030,14 +1826,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38763"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38763"
@@ -2094,14 +1882,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38763"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -2146,14 +1926,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38763"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38763"
@@ -2210,14 +1982,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38763"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1170,
     "end": 1380,
@@ -2262,14 +2026,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38763"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38763"
@@ -2326,14 +2082,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38763"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -2384,14 +2132,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38763"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -2434,14 +2174,6 @@
   "EC0306": [
    {
     "kind": "block",
-    "day": 1,
-    "start": 1230,
-    "end": 1380,
-    "type": null,
-    "eventId": "38763"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1170,
     "end": 1380,
@@ -2478,14 +2210,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38763"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38763"
@@ -2542,14 +2266,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38764"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1170,
     "end": 1380,
@@ -2594,14 +2310,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38764"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1080,
     "end": 1380,
     "type": null,
     "eventId": "38764"
@@ -2658,14 +2366,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1170,
-    "end": 1380,
-    "type": null,
-    "eventId": "38764"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1170,
     "end": 1380,
@@ -2710,14 +2410,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38764"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38764"
@@ -2774,14 +2466,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38764"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -2832,14 +2516,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1080,
-    "end": 1380,
-    "type": null,
-    "eventId": "38764"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1080,
     "end": 1380,
@@ -2884,14 +2560,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38764"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38764"
@@ -2964,14 +2632,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1080,
-    "end": 1380,
-    "type": null,
-    "eventId": "38764"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1080,
     "end": 1380,
@@ -3016,14 +2676,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38764"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1080,
     "end": 1380,
     "type": null,
     "eventId": "38764"
@@ -3080,14 +2732,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38764"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -3132,14 +2776,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38764"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38764"
@@ -3196,14 +2832,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38764"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -3246,14 +2874,6 @@
   "EL1008": [
    {
     "kind": "block",
-    "day": 1,
-    "start": 1080,
-    "end": 1380,
-    "type": null,
-    "eventId": "33544"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1200,
     "end": 1380,
@@ -3286,22 +2906,6 @@
    }
   ],
   "EL2001": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 840,
-    "end": 900,
-    "type": "MTG",
-    "eventId": "000655853"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "33544"
-   },
    {
     "kind": "block",
     "day": 2,
@@ -3337,30 +2941,6 @@
   ],
   "EL2002": [
    {
-    "kind": "event",
-    "day": 1,
-    "start": 690,
-    "end": 750,
-    "type": "MTG",
-    "eventId": "000653930"
-   },
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 840,
-    "end": 930,
-    "type": "WRKS",
-    "eventId": "000655852"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1140,
-    "end": 1380,
-    "type": null,
-    "eventId": "33544"
-   },
-   {
     "kind": "block",
     "day": 2,
     "start": 1050,
@@ -3385,14 +2965,6 @@
     "eventId": "33544"
    },
    {
-    "kind": "event",
-    "day": 5,
-    "start": 840,
-    "end": 960,
-    "type": "MTG",
-    "eventId": "000652132"
-   },
-   {
     "kind": "block",
     "day": 5,
     "start": 1050,
@@ -3402,14 +2974,6 @@
    }
   ],
   "EL2003": [
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "33544"
-   },
    {
     "kind": "event",
     "day": 2,
@@ -3462,14 +3026,6 @@
   "EL2004": [
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "33544"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -3515,44 +3071,52 @@
    {
     "kind": "event",
     "day": 2,
-    "start": 1035,
-    "end": 1125,
-    "type": "INFO",
-    "eventId": "000655173"
+    "start": 1050,
+    "end": 1200,
+    "type": "MTG",
+    "eventId": "000653864"
    },
    {
     "kind": "event",
     "day": 3,
-    "start": 1020,
+    "start": 965,
+    "end": 1050,
+    "type": "SMNR",
+    "eventId": "000653019"
+   },
+   {
+    "kind": "event",
+    "day": 3,
+    "start": 1080,
     "end": 1170,
     "type": "MTG",
-    "eventId": "000644860"
+    "eventId": "000656090"
    },
    {
     "kind": "event",
     "day": 4,
-    "start": 955,
-    "end": 1035,
-    "type": "INFO",
-    "eventId": "000650842"
-   },
-   {
-    "kind": "event",
-    "day": 4,
-    "start": 1045,
-    "end": 1120,
+    "start": 1050,
+    "end": 1200,
     "type": "MTG",
-    "eventId": "000657089"
+    "eventId": "000655167"
    }
   ],
   "FL2040": [
    {
     "kind": "event",
     "day": 4,
-    "start": 1050,
-    "end": 1140,
-    "type": "MTG",
-    "eventId": "000653044"
+    "start": 870,
+    "end": 990,
+    "type": "RCPT",
+    "eventId": "000652965"
+   },
+   {
+    "kind": "event",
+    "day": 4,
+    "start": 1110,
+    "end": 1200,
+    "type": "INTV",
+    "eventId": "000653469"
    }
   ],
   "FL2100": [
@@ -3563,14 +3127,6 @@
     "end": 1260,
     "type": "MTG",
     "eventId": "000652904"
-   },
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 930,
-    "end": 1050,
-    "type": "MTG",
-    "eventId": "000652903"
    },
    {
     "kind": "event",
@@ -3633,10 +3189,18 @@
    {
     "kind": "event",
     "day": 3,
-    "start": 1080,
-    "end": 1170,
+    "start": 1075,
+    "end": 1140,
     "type": "MTG",
-    "eventId": "000656090"
+    "eventId": "000657023"
+   },
+   {
+    "kind": "event",
+    "day": 4,
+    "start": 1050,
+    "end": 1110,
+    "type": "MTG",
+    "eventId": "000657002"
    }
   ],
   "FL2125/35": [],
@@ -3651,16 +3215,7 @@
     "eventId": "000652277"
    }
   ],
-  "HA0012": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 570,
-    "end": 720,
-    "type": "TOUR",
-    "eventId": "000651917"
-   }
-  ],
+  "HA0012": [],
   "HA0024": [
    {
     "kind": "event",
@@ -3698,11 +3253,11 @@
   "HH0046": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 570,
-    "end": 720,
-    "type": "TOUR",
-    "eventId": "000651917"
+    "day": 2,
+    "start": 1050,
+    "end": 1110,
+    "type": "MTG",
+    "eventId": "000652355"
    }
   ],
   "HH0050": [
@@ -3713,17 +3268,18 @@
     "end": 1230,
     "type": "MTG",
     "eventId": "000653357"
-   },
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 810,
-    "end": 960,
-    "type": "TOUR",
-    "eventId": "000652084"
    }
   ],
-  "HH0056": [],
+  "HH0056": [
+   {
+    "kind": "event",
+    "day": 3,
+    "start": 970,
+    "end": 1030,
+    "type": "INFO",
+    "eventId": "000651125"
+   }
+  ],
   "HH0062": [],
   "HH0071": [
    {
@@ -3754,46 +3310,20 @@
   "HH0120": [],
   "HH0120C": [],
   "HH0145": [],
-  "HH0159": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 1050,
-    "end": 1140,
-    "type": "MTG",
-    "eventId": "000653156"
-   }
-  ],
+  "HH0159": [],
   "HH0160": [],
-  "HH0180": [],
-  "HH0186": [
+  "HH0180": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 825,
-    "end": 880,
+    "day": 2,
+    "start": 1040,
+    "end": 1220,
     "type": "MTG",
-    "eventId": "000654407"
-   },
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 900,
-    "end": 975,
-    "type": "MTG",
-    "eventId": "000655234"
+    "eventId": "000642869"
    }
   ],
-  "HH0251": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 570,
-    "end": 690,
-    "type": "MTG",
-    "eventId": "000654097"
-   }
-  ],
+  "HH0186": [],
+  "HH0251": [],
   "HH0259": [],
   "HH0306": [],
   "HH0351": [
@@ -3814,16 +3344,7 @@
     "eventId": "000653658"
    }
   ],
-  "HH0359": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 570,
-    "end": 690,
-    "type": "MTG",
-    "eventId": "000654097"
-   }
-  ],
+  "HH0359": [],
   "HH0451": [],
   "HH0488": [],
   "HI0030": [
@@ -3831,14 +3352,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38774"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38774"
@@ -3895,14 +3408,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1110,
-    "end": 1380,
-    "type": null,
-    "eventId": "38774"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1110,
     "end": 1380,
@@ -3947,14 +3452,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38774"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1110,
     "end": 1380,
     "type": null,
     "eventId": "38774"
@@ -4011,14 +3508,6 @@
    },
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "38774"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -4067,22 +3556,6 @@
     "end": 1025,
     "type": "MTG",
     "eventId": "000648248"
-   },
-   {
-    "kind": "event",
-    "day": 4,
-    "start": 960,
-    "end": 1020,
-    "type": "MTG",
-    "eventId": "000654979"
-   },
-   {
-    "kind": "event",
-    "day": 4,
-    "start": 1050,
-    "end": 1140,
-    "type": "MTG",
-    "eventId": "000655650"
    }
   ],
   "HI0446": [],
@@ -4091,14 +3564,6 @@
     "kind": "block",
     "day": 0,
     "start": 420,
-    "end": 1380,
-    "type": null,
-    "eventId": "38761"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
     "end": 1380,
     "type": null,
     "eventId": "38761"
@@ -4166,6 +3631,14 @@
    },
    {
     "kind": "event",
+    "day": 3,
+    "start": 900,
+    "end": 960,
+    "type": "MTG",
+    "eventId": "000657191"
+   },
+   {
+    "kind": "event",
     "day": 4,
     "start": 550,
     "end": 655,
@@ -4205,14 +3678,6 @@
    }
   ],
   "JE0164": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 550,
-    "end": 605,
-    "type": "MTG",
-    "eventId": "000652866"
-   },
    {
     "kind": "event",
     "day": 3,
@@ -4268,6 +3733,14 @@
    },
    {
     "kind": "event",
+    "day": 4,
+    "start": 1050,
+    "end": 1140,
+    "type": "MTG",
+    "eventId": "000657073"
+   },
+   {
+    "kind": "event",
     "day": 5,
     "start": 840,
     "end": 960,
@@ -4275,38 +3748,12 @@
     "eventId": "000651195"
    }
   ],
-  "JR0139": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 570,
-    "end": 720,
-    "type": "TOUR",
-    "eventId": "000651917"
-   }
-  ],
-  "JR0143": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 810,
-    "end": 960,
-    "type": "TOUR",
-    "eventId": "000652084"
-   }
-  ],
+  "JR0139": [],
+  "JR0143": [],
   "JR0216": [],
   "JR0221": [],
   "JR0224": [],
   "JR0239": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 830,
-    "end": 885,
-    "type": "MTG",
-    "eventId": "000653891"
-   },
    {
     "kind": "event",
     "day": 5,
@@ -4316,7 +3763,16 @@
     "eventId": "000653891"
    }
   ],
-  "JR0251": [],
+  "JR0251": [
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 960,
+    "end": 1035,
+    "type": "MTG",
+    "eventId": "000654838"
+   }
+  ],
   "JR0270": [],
   "JR0274": [],
   "JR0291": [
@@ -4330,7 +3786,16 @@
    }
   ],
   "JR0295": [],
-  "JR0300": [],
+  "JR0300": [
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 1050,
+    "end": 1230,
+    "type": "MTG",
+    "eventId": "000644843"
+   }
+  ],
   "JR0304": [],
   "JR0353": [
    {
@@ -4353,19 +3818,19 @@
     "eventId": "000652112"
    }
   ],
-  "JR0375": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 540,
-    "end": 960,
-    "type": "MTG",
-    "eventId": "000652303"
-   }
-  ],
+  "JR0375": [],
   "JR0387": [],
   "KH0102": [],
-  "KH0103": [],
+  "KH0103": [
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 1125,
+    "end": 1275,
+    "type": "MTG",
+    "eventId": "000652993"
+   }
+  ],
   "KH0104": [],
   "KH0112": [],
   "KH0114": [],
@@ -4380,29 +3845,21 @@
   "KN0176": [],
   "KN0177": [],
   "KN0190": [],
-  "KN0195": [],
-  "KN0250": [
+  "KN0195": [
    {
     "kind": "event",
-    "day": 2,
-    "start": 390,
-    "end": 540,
+    "day": 3,
+    "start": 975,
+    "end": 1035,
     "type": "MTG",
-    "eventId": "000643830"
+    "eventId": "000656964"
    }
   ],
+  "KN0250": [],
   "KN0258": [],
   "KN0269": [],
   "KN0430": [],
   "LZ0001": [
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "35693"
-   },
    {
     "kind": "event",
     "day": 2,
@@ -4489,14 +3946,6 @@
   "LZ0018": [
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "35693"
-   },
-   {
-    "kind": "block",
     "day": 3,
     "start": 1050,
     "end": 1380,
@@ -4531,14 +3980,6 @@
   "LZ0021": [
    {
     "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "35693"
-   },
-   {
-    "kind": "block",
     "day": 2,
     "start": 1050,
     "end": 1380,
@@ -4571,14 +4012,6 @@
    }
   ],
   "LZ0034": [
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 1050,
-    "end": 1380,
-    "type": null,
-    "eventId": "35693"
-   },
    {
     "kind": "event",
     "day": 3,
@@ -4623,21 +4056,21 @@
   "LZ0120": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 840,
-    "end": 900,
+    "day": 4,
+    "start": 630,
+    "end": 660,
     "type": "MTG",
-    "eventId": "000634690"
+    "eventId": "000653181"
    }
   ],
   "ML0100": [
    {
     "kind": "event",
-    "day": 4,
-    "start": 1110,
-    "end": 1200,
+    "day": 6,
+    "start": 420,
+    "end": 1020,
     "type": "MTG",
-    "eventId": "000656095"
+    "eventId": "000652196"
    }
   ],
   "ML0115": [
@@ -4648,10 +4081,36 @@
     "end": 1110,
     "type": "MTG",
     "eventId": "000656891"
+   },
+   {
+    "kind": "event",
+    "day": 6,
+    "start": 420,
+    "end": 1020,
+    "type": "TOUR",
+    "eventId": "000656904"
    }
   ],
-  "ML0125": [],
-  "ML0129": [],
+  "ML0125": [
+   {
+    "kind": "event",
+    "day": 6,
+    "start": 420,
+    "end": 1020,
+    "type": "TOUR",
+    "eventId": "000656904"
+   }
+  ],
+  "ML0129": [
+   {
+    "kind": "event",
+    "day": 6,
+    "start": 420,
+    "end": 1020,
+    "type": "TOUR",
+    "eventId": "000656904"
+   }
+  ],
   "ML0131": [
    {
     "kind": "event",
@@ -4660,6 +4119,14 @@
     "end": 720,
     "type": "TOUR",
     "eventId": "000652277"
+   },
+   {
+    "kind": "event",
+    "day": 6,
+    "start": 420,
+    "end": 1020,
+    "type": "TOUR",
+    "eventId": "000656904"
    }
   ],
   "ML0173": [],
@@ -4671,6 +4138,14 @@
     "end": 660,
     "type": "INFO",
     "eventId": "000656073"
+   },
+   {
+    "kind": "event",
+    "day": 3,
+    "start": 720,
+    "end": 780,
+    "type": "MTG",
+    "eventId": "000655160"
    },
    {
     "kind": "event",
@@ -4699,17 +4174,35 @@
     "eventId": "000652277"
    }
   ],
-  "ML0185": [],
-  "ML0191": [],
-  "MP1000": [
+  "ML0185": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 1040,
-    "end": 1090,
+    "day": 2,
+    "start": 1020,
+    "end": 1080,
     "type": "MTG",
-    "eventId": "000654134"
+    "eventId": "000655160"
    },
+   {
+    "kind": "event",
+    "day": 6,
+    "start": 420,
+    "end": 1020,
+    "type": "TOUR",
+    "eventId": "000656904"
+   }
+  ],
+  "ML0191": [
+   {
+    "kind": "event",
+    "day": 6,
+    "start": 420,
+    "end": 1020,
+    "type": "TOUR",
+    "eventId": "000656904"
+   }
+  ],
+  "MP1000": [
    {
     "kind": "event",
     "day": 3,
@@ -4758,30 +4251,6 @@
    }
   ],
   "MP1021": [
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 480,
-    "end": 675,
-    "type": null,
-    "eventId": "33541"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 685,
-    "end": 820,
-    "type": null,
-    "eventId": "33541"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 830,
-    "end": 1140,
-    "type": null,
-    "eventId": "33541"
-   },
    {
     "kind": "event",
     "day": 2,
@@ -4842,14 +4311,6 @@
   "MP1035": [
    {
     "kind": "block",
-    "day": 1,
-    "start": 480,
-    "end": 1140,
-    "type": null,
-    "eventId": "33541"
-   },
-   {
-    "kind": "block",
     "day": 3,
     "start": 480,
     "end": 1140,
@@ -4866,14 +4327,6 @@
    }
   ],
   "MP1040": [
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 480,
-    "end": 1140,
-    "type": null,
-    "eventId": "33541"
-   },
    {
     "kind": "block",
     "day": 3,
@@ -4894,14 +4347,6 @@
   "MP1041": [
    {
     "kind": "block",
-    "day": 1,
-    "start": 480,
-    "end": 1140,
-    "type": null,
-    "eventId": "33541"
-   },
-   {
-    "kind": "block",
     "day": 3,
     "start": 480,
     "end": 1140,
@@ -4920,14 +4365,6 @@
   "MP1045": [
    {
     "kind": "block",
-    "day": 1,
-    "start": 760,
-    "end": 1140,
-    "type": null,
-    "eventId": "33541"
-   },
-   {
-    "kind": "block",
     "day": 3,
     "start": 760,
     "end": 1140,
@@ -4944,22 +4381,6 @@
    }
   ],
   "MP1046": [
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 480,
-    "end": 605,
-    "type": null,
-    "eventId": "33541"
-   },
-   {
-    "kind": "block",
-    "day": 1,
-    "start": 690,
-    "end": 1140,
-    "type": null,
-    "eventId": "33541"
-   },
    {
     "kind": "block",
     "day": 3,
@@ -5012,14 +4433,6 @@
   "MP2015": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 810,
-    "end": 870,
-    "type": "MTG",
-    "eventId": "000653829"
-   },
-   {
-    "kind": "event",
     "day": 3,
     "start": 540,
     "end": 660,
@@ -5028,14 +4441,6 @@
    }
   ],
   "MP2017": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 735,
-    "end": 795,
-    "type": "MTG",
-    "eventId": "000653737"
-   },
    {
     "kind": "event",
     "day": 3,
@@ -5054,26 +4459,34 @@
    }
   ],
   "MP2019": [],
-  "OR0110": [
+  "OR0110": [],
+  "PA0010": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 810,
-    "end": 960,
-    "type": "TOUR",
-    "eventId": "000652084"
+    "day": 0,
+    "start": 480,
+    "end": 1200,
+    "type": "FAIR",
+    "eventId": "000644235"
    },
    {
     "kind": "event",
-    "day": 3,
-    "start": 1080,
-    "end": 1140,
-    "type": "MTG",
-    "eventId": "000653463"
+    "day": 6,
+    "start": 480,
+    "end": 1200,
+    "type": "FAIR",
+    "eventId": "000644235"
    }
   ],
-  "PA0010": [],
   "PA0020": [
+   {
+    "kind": "event",
+    "day": 0,
+    "start": 480,
+    "end": 1200,
+    "type": "FAIR",
+    "eventId": "000644235"
+   },
    {
     "kind": "event",
     "day": 2,
@@ -5081,10 +4494,43 @@
     "end": 1230,
     "type": "MTG",
     "eventId": "000651970"
+   },
+   {
+    "kind": "event",
+    "day": 4,
+    "start": 960,
+    "end": 1050,
+    "type": "INFO",
+    "eventId": "000655174"
+   },
+   {
+    "kind": "event",
+    "day": 6,
+    "start": 480,
+    "end": 1200,
+    "type": "FAIR",
+    "eventId": "000644235"
    }
   ],
   "PA0040": [],
-  "PA0060": [],
+  "PA0060": [
+   {
+    "kind": "event",
+    "day": 0,
+    "start": 480,
+    "end": 1200,
+    "type": "FAIR",
+    "eventId": "000644235"
+   },
+   {
+    "kind": "event",
+    "day": 6,
+    "start": 480,
+    "end": 1200,
+    "type": "FAIR",
+    "eventId": "000644235"
+   }
+  ],
   "PEA0006": [],
   "PEA0019": [],
   "PEA0103": [
@@ -5098,22 +4544,6 @@
    }
   ],
   "PEA0105": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 810,
-    "end": 960,
-    "type": "TOUR",
-    "eventId": "000652084"
-   },
-   {
-    "kind": "event",
-    "day": 3,
-    "start": 1145,
-    "end": 1305,
-    "type": "MTG",
-    "eventId": "000644830"
-   },
    {
     "kind": "event",
     "day": 5,
@@ -5141,25 +4571,9 @@
     "end": 690,
     "type": "MTG",
     "eventId": "000643163"
-   },
-   {
-    "kind": "event",
-    "day": 3,
-    "start": 1110,
-    "end": 1170,
-    "type": "MTG",
-    "eventId": "000652698"
    }
   ],
   "PEA0111": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 810,
-    "end": 960,
-    "type": "TOUR",
-    "eventId": "000652084"
-   },
    {
     "kind": "event",
     "day": 3,
@@ -5188,22 +4602,14 @@
   "PEA0143": [
    {
     "kind": "event",
-    "day": 4,
-    "start": 1020,
-    "end": 1080,
+    "day": 3,
+    "start": 660,
+    "end": 705,
     "type": "MTG",
-    "eventId": "000652929"
+    "eventId": "000655211"
    }
   ],
   "PEA0145": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 420,
-    "end": 510,
-    "type": "MTG",
-    "eventId": "000656708"
-   },
    {
     "kind": "event",
     "day": 2,
@@ -5227,23 +4633,41 @@
     "end": 690,
     "type": "MTG",
     "eventId": "000643163"
+   },
+   {
+    "kind": "event",
+    "day": 5,
+    "start": 690,
+    "end": 780,
+    "type": "MTG",
+    "eventId": "000652933"
    }
   ],
   "PEA0151": [],
   "PEA0476": [],
-  "PO0150": [],
-  "PO0160": [],
+  "PO0150": [
+   {
+    "kind": "event",
+    "day": 3,
+    "start": 930,
+    "end": 1080,
+    "type": "INFO",
+    "eventId": "000655019"
+   }
+  ],
+  "PO0160": [
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 1020,
+    "end": 1200,
+    "type": "MTG",
+    "eventId": "000656938"
+   }
+  ],
   "PO0250": [],
   "PO0260": [],
   "PO0280": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 1150,
-    "end": 1290,
-    "type": "MTG",
-    "eventId": "000651364"
-   },
    {
     "kind": "event",
     "day": 2,
@@ -5259,14 +4683,6 @@
     "end": 1290,
     "type": "MTG",
     "eventId": "000651365"
-   },
-   {
-    "kind": "event",
-    "day": 3,
-    "start": 1050,
-    "end": 1135,
-    "type": "MTG",
-    "eventId": "000655516"
    },
    {
     "kind": "event",
@@ -5304,40 +4720,15 @@
    }
   ],
   "PS0010": [],
-  "PS0014": [
-   {
-    "kind": "event",
-    "day": 3,
-    "start": 1020,
-    "end": 1200,
-    "type": "MTG",
-    "eventId": "000652921"
-   }
-  ],
+  "PS0014": [],
   "PS0035": [
    {
     "kind": "event",
     "day": 2,
-    "start": 930,
+    "start": 945,
     "end": 1050,
     "type": "MTG",
-    "eventId": "000654061"
-   },
-   {
-    "kind": "event",
-    "day": 3,
-    "start": 970,
-    "end": 1080,
-    "type": "INFO",
-    "eventId": "000652686"
-   },
-   {
-    "kind": "event",
-    "day": 4,
-    "start": 540,
-    "end": 690,
-    "type": "MTG",
-    "eventId": "000654033"
+    "eventId": "000650996"
    }
   ],
   "PS0115": [
@@ -5359,14 +4750,6 @@
    },
    {
     "kind": "event",
-    "day": 3,
-    "start": 960,
-    "end": 1020,
-    "type": "MTG",
-    "eventId": "000656967"
-   },
-   {
-    "kind": "event",
     "day": 4,
     "start": 960,
     "end": 1020,
@@ -5383,14 +4766,6 @@
    }
   ],
   "PS0217": [
-   {
-    "kind": "event",
-    "day": 3,
-    "start": 570,
-    "end": 660,
-    "type": "MTG",
-    "eventId": "000652804"
-   },
    {
     "kind": "event",
     "day": 3,
@@ -5424,16 +4799,7 @@
     "eventId": "000652340"
    }
   ],
-  "RA0009": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 600,
-    "end": 720,
-    "type": "MTG",
-    "eventId": "000653888"
-   }
-  ],
+  "RA0009": [],
   "RA0059": [
    {
     "kind": "event",
@@ -5460,9 +4826,26 @@
     "end": 1140,
     "type": "MTG",
     "eventId": "000655504"
+   },
+   {
+    "kind": "event",
+    "day": 6,
+    "start": 510,
+    "end": 1020,
+    "type": "WRKS",
+    "eventId": "000639863"
    }
   ],
-  "RA0110": [],
+  "RA0110": [
+   {
+    "kind": "event",
+    "day": 5,
+    "start": 670,
+    "end": 750,
+    "type": "MTG",
+    "eventId": "000657080"
+   }
+  ],
   "RA0115": [
    {
     "kind": "event",
@@ -5471,22 +4854,54 @@
     "end": 1080,
     "type": "MTG",
     "eventId": "000655521"
+   },
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 1050,
+    "end": 1260,
+    "type": "MTG",
+    "eventId": "000657077"
+   },
+   {
+    "kind": "event",
+    "day": 3,
+    "start": 1050,
+    "end": 1290,
+    "type": "MTG",
+    "eventId": "000657077"
+   },
+   {
+    "kind": "event",
+    "day": 4,
+    "start": 1050,
+    "end": 1260,
+    "type": "MTG",
+    "eventId": "000657077"
+   },
+   {
+    "kind": "event",
+    "day": 5,
+    "start": 660,
+    "end": 750,
+    "type": "MTG",
+    "eventId": "000657077"
+   },
+   {
+    "kind": "event",
+    "day": 5,
+    "start": 900,
+    "end": 1200,
+    "type": "MTG",
+    "eventId": "000657077"
    }
   ],
   "SB0105": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 1200,
-    "end": 1260,
-    "type": "MTG",
-    "eventId": "000652114"
-   },
-   {
-    "kind": "event",
-    "day": 5,
-    "start": 1200,
-    "end": 1260,
+    "day": 2,
+    "start": 1240,
+    "end": 1300,
     "type": "MTG",
     "eventId": "000652983"
    }
@@ -5494,11 +4909,11 @@
   "SB0200": [
    {
     "kind": "event",
-    "day": 1,
+    "day": 2,
     "start": 1140,
-    "end": 1200,
+    "end": 1320,
     "type": "MTG",
-    "eventId": "000651036"
+    "eventId": "000657142"
    },
    {
     "kind": "event",
@@ -5512,30 +4927,30 @@
   "SB0205": [
    {
     "kind": "event",
+    "day": 2,
+    "start": 1050,
+    "end": 1110,
+    "type": "MTG",
+    "eventId": "000656094"
+   },
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 1125,
+    "end": 1245,
+    "type": "MTG",
+    "eventId": "000653885"
+   },
+   {
+    "kind": "event",
     "day": 3,
     "start": 1140,
     "end": 1200,
     "type": "MTG",
     "eventId": "000651042"
-   },
-   {
-    "kind": "event",
-    "day": 4,
-    "start": 1080,
-    "end": 1140,
-    "type": "MTG",
-    "eventId": "000652983"
    }
   ],
   "SB0209": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 1140,
-    "end": 1200,
-    "type": "MTG",
-    "eventId": "000651038"
-   },
    {
     "kind": "event",
     "day": 3,
@@ -5580,6 +4995,14 @@
    }
   ],
   "SB0215": [
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 1140,
+    "end": 1320,
+    "type": "MTG",
+    "eventId": "000657142"
+   },
    {
     "kind": "event",
     "day": 3,
@@ -5764,18 +5187,17 @@
   "SH0135": [],
   "SH0235": [],
   "SH0240": [],
-  "SH0245": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 1050,
-    "end": 1140,
-    "type": "MTG",
-    "eventId": "000653845"
-   }
-  ],
+  "SH0245": [],
   "SH0425V": [],
   "SM1005": [
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 970,
+    "end": 1030,
+    "type": "MTG",
+    "eventId": "000653636"
+   },
    {
     "kind": "event",
     "day": 3,
@@ -5783,17 +5205,17 @@
     "end": 900,
     "type": "WRKS",
     "eventId": "000656835"
+   },
+   {
+    "kind": "event",
+    "day": 3,
+    "start": 1050,
+    "end": 1230,
+    "type": "MTG",
+    "eventId": "000655532"
    }
   ],
   "SM1009": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 1080,
-    "end": 1140,
-    "type": "MTG",
-    "eventId": "000655226"
-   },
    {
     "kind": "event",
     "day": 3,
@@ -5801,14 +5223,6 @@
     "end": 1155,
     "type": "MTG",
     "eventId": "000644122"
-   },
-   {
-    "kind": "event",
-    "day": 4,
-    "start": 1050,
-    "end": 1230,
-    "type": "MTG",
-    "eventId": "000655530"
    }
   ],
   "SM1042": [
@@ -5824,27 +5238,11 @@
   "SM1048": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 480,
-    "end": 510,
+    "day": 5,
+    "start": 540,
+    "end": 600,
     "type": "MTG",
-    "eventId": "000653067"
-   },
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 600,
-    "end": 660,
-    "type": "MTG",
-    "eventId": "000653066"
-   },
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 840,
-    "end": 900,
-    "type": "MTG",
-    "eventId": "000655529"
+    "eventId": "000655160"
    }
   ],
   "SM1064": [],
@@ -5862,6 +5260,14 @@
   "SM1138": [],
   "SM1153": [],
   "SM1180": [
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 900,
+    "end": 960,
+    "type": "MTG",
+    "eventId": "000657262"
+   },
    {
     "kind": "event",
     "day": 4,
@@ -5883,7 +5289,16 @@
     "eventId": "000653829"
    }
   ],
-  "SM2150": [],
+  "SM2150": [
+   {
+    "kind": "event",
+    "day": 4,
+    "start": 1095,
+    "end": 1155,
+    "type": "MTG",
+    "eventId": "000656092"
+   }
+  ],
   "SM2180": [
    {
     "kind": "event",
@@ -5895,14 +5310,6 @@
    }
   ],
   "SM2186": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 840,
-    "end": 900,
-    "type": "MTG",
-    "eventId": "000653449"
-   },
    {
     "kind": "event",
     "day": 2,
@@ -5933,16 +5340,7 @@
   "SM5024": [],
   "SM5097": [],
   "SOE0001": [],
-  "SOE0004": [
-   {
-    "kind": "event",
-    "day": 4,
-    "start": 860,
-    "end": 960,
-    "type": "MTG",
-    "eventId": "000653570"
-   }
-  ],
+  "SOE0004": [],
   "SOE0024": [
    {
     "kind": "event",
@@ -5965,7 +5363,16 @@
   ],
   "SOE0103": [],
   "SOE0105": [],
-  "SOE0125": [],
+  "SOE0125": [
+   {
+    "kind": "event",
+    "day": 5,
+    "start": 755,
+    "end": 850,
+    "type": "INFO",
+    "eventId": "000653091"
+   }
+  ],
   "SOE0200": [],
   "SOE0205": [],
   "SOE0241": [
@@ -5991,14 +5398,6 @@
   "SON0044": [
    {
     "kind": "event",
-    "day": 1,
-    "start": 600,
-    "end": 660,
-    "type": "MTG",
-    "eventId": "000656266"
-   },
-   {
-    "kind": "event",
     "day": 3,
     "start": 600,
     "end": 660,
@@ -6007,39 +5406,12 @@
    }
   ],
   "SON0048": [],
-  "SON0050": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 630,
-    "end": 720,
-    "type": "MTG",
-    "eventId": "000654091"
-   }
-  ],
+  "SON0050": [],
   "SON0054": [],
   "SON0056": [],
   "SU0131A": [],
-  "SU0220": [
-   {
-    "kind": "event",
-    "day": 1,
-    "start": 1080,
-    "end": 1260,
-    "type": "MTG",
-    "eventId": "000643903"
-   }
-  ],
-  "SU0225": [
-   {
-    "kind": "event",
-    "day": 3,
-    "start": 750,
-    "end": 900,
-    "type": "MTG",
-    "eventId": "000656359"
-   }
-  ],
+  "SU0220": [],
+  "SU0225": [],
   "SU0251": [],
   "SU0349A": [],
   "TFM0210": [],

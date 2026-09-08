@@ -3,6 +3,7 @@
  "termName": "Autumn 2026",
  "generated": "2026-09-06T11:47:31Z",
  "rooms": "data/rooms-1268.json",
+ "events": "data/room-events-1268.json",
  "buildings": "data/buildings-1268.json",
  "instruction": [
   "2026-08-25",

@@ -26,10 +26,14 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-// The two paths build-index.mjs writes into current.json. A test reads that
-// file and fails if either template moves out from under this one.
+// The three term paths build-index.mjs writes into current.json. A test reads
+// that file and fails if a template moves out from under this one.
 export function indexAssets(term) {
-  return { rooms: `data/rooms-${term}.json`, buildings: `data/buildings-${term}.json` };
+  return {
+    rooms: `data/rooms-${term}.json`,
+    events: `data/room-events-${term}.json`,
+    buildings: `data/buildings-${term}.json`,
+  };
 }
 
 // Only the buildings subset can be missing. The harvest writes the room index

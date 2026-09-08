@@ -15,14 +15,20 @@ const source = readFileSync(join(ROOT, 'js', 'firstrun.js'), 'utf8');
 
 const POINTER = '/Vacant/data/current.json';
 const ROOMS = '/Vacant/data/rooms-1268.json';
+const EVENTS = '/Vacant/data/room-events-1268.json';
 const BUILDINGS = '/Vacant/data/buildings-1268.json';
 const HOURS = '/Vacant/data/buildings-hours.json';
 
 // What a fully warmed data cache holds. Everything boot() awaits before it can
 // put a row on screen.
 const WARM = {
-  [POINTER]: { rooms: 'data/rooms-1268.json', buildings: 'data/buildings-1268.json' },
+  [POINTER]: {
+    rooms: 'data/rooms-1268.json',
+    events: 'data/room-events-1268.json',
+    buildings: 'data/buildings-1268.json',
+  },
   [ROOMS]: {},
+  [EVENTS]: {},
   [BUILDINGS]: {},
   [HOURS]: {},
 };
@@ -46,7 +52,10 @@ test('a whole cached term is tier 1', async () => {
   const cache = store(WARM);
   assert.equal(await pickTier({ store: cache, online: true }), CACHED);
   assert.equal(await pickTier({ store: cache, online: false }), CACHED);
-  assert.deepEqual(cache.asked, [POINTER, ROOMS, BUILDINGS, HOURS, POINTER, ROOMS, BUILDINGS, HOURS]);
+  assert.deepEqual(cache.asked, [
+    POINTER, ROOMS, EVENTS, BUILDINGS, HOURS,
+    POINTER, ROOMS, EVENTS, BUILDINGS, HOURS,
+  ]);
 });
 
 test('one file short of a whole term is not tier 1', async () => {
@@ -55,7 +64,7 @@ test('one file short of a whole term is not tier 1', async () => {
   // exactly the third case. Saying CACHED there hid the offline card behind a
   // screen with three disabled buttons: boot() awaits all three files together
   // and rejects if any one of them is missing.
-  for (const gone of [ROOMS, BUILDINGS, HOURS]) {
+  for (const gone of [ROOMS, EVENTS, BUILDINGS, HOURS]) {
     const held = { ...WARM };
     delete held[gone];
     assert.equal(await pickTier({ store: store(held), online: true }), FETCHING, gone);
@@ -64,7 +73,10 @@ test('one file short of a whole term is not tier 1', async () => {
 });
 
 test('a pointer that names no buildings file is not tier 1 either', async () => {
-  const held = { ...WARM, [POINTER]: { rooms: 'data/rooms-1268.json' } };
+  const held = {
+    ...WARM,
+    [POINTER]: { rooms: 'data/rooms-1268.json', events: 'data/room-events-1268.json' },
+  };
   assert.equal(await pickTier({ store: store(held), online: false }), OFFLINE);
 });
 
@@ -228,7 +240,7 @@ test('every fetch on the path to a first answer carries the boot deadline', () =
   // And every fetch on the path to a first answer goes through it. Two in
   // boot(), the json() helper and the buildings table, plus the room index.
   assert.match(parsed, /\.then\(answered\)/, 'a 503 body reaches JSON.parse as the schedule');
-  assert.equal((boot.match(/\.then\(answered\)/g) ?? []).length, 2, 'a boot fetch skips the status check');
+  assert.equal((boot.match(/\.then\(answered\)/g) ?? []).length, 3, 'a boot fetch skips the status check');
 });
 
 // The number, not just its name. A deadline shorter than the load it is
@@ -242,13 +254,16 @@ test('the byte figure beside the deadline is still the size of what boot() reads
   const claimed = Number((prose.match(/The ([0-9,]+) bytes boot\(\) reads/) ?? [])[1]?.replace(/,/g, ''));
   assert.ok(claimed, 'no measured payload figure beside NETWORK_TIMEOUT_MS');
   const current = JSON.parse(readFileSync(join(ROOT, 'data', 'current.json'), 'utf8'));
-  const real = ['data/current.json', 'data/campus.json', 'data/buildings-hours.json', current.rooms, current.buildings]
+  const real = [
+    'data/current.json', 'data/campus.json', 'data/buildings-hours.json',
+    current.rooms, current.events, current.buildings,
+  ]
     .reduce((total, file) => total + readFileSync(join(ROOT, file)).length, 0);
   // One percent wide, because a Windows checkout carries CRLF and the server
   // that produced the figure served exactly that: measured 379,144 with the CR
   // in and 375,776 with it out, which is 0.9 percent.
   const off = Math.abs(claimed - real) / real;
-  assert.ok(off < 0.01, `the comment says ${claimed} bytes and the five files are ${real}, ${(off * 100).toFixed(1)}% out`);
+  assert.ok(off < 0.01, `the comment says ${claimed} bytes and the six files are ${real}, ${(off * 100).toFixed(1)}% out`);
 });
 
 test('the boot deadline still clears the slowest load it was measured against', () => {

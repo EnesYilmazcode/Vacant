@@ -376,28 +376,31 @@ test('the shipped file is a full sweep of the shipped index, not a subset', () =
 
 test('a swept room with nothing on it keeps its key, so absent means not swept', () => {
   assert.equal(Object.keys(shipped.rooms).length, 425);
-  assert.equal(Object.values(shipped.rooms).filter((v) => v.length).length, 215);
-  assert.equal(Object.values(shipped.rooms).filter((v) => v.length === 0).length, 210,
+  assert.equal(Object.values(shipped.rooms).filter((v) => v.length).length, 208);
+  assert.equal(Object.values(shipped.rooms).filter((v) => v.length === 0).length, 217,
     'an empty array is evidence of nothing; an absent key is no evidence');
-  assert.equal(records.length, 674);
+  assert.equal(records.length, 596);
 });
 
 test('the headline counts are the ones the sweep measured', () => {
   // This is what catches a bad regeneration: either the numbers move together
   // or the parse collapsed.
   const c = shipped._meta.counts;
-  assert.equal(c.events, 327);
-  assert.equal(c.distinctEventIds, 209);
-  assert.equal(c.roomsWithEvents, 174);
-  assert.deepEqual(c.eventTypes, { MTG: 236, TOUR: 76, INFO: 8, WRKS: 6, SMNR: 1 });
-  assert.equal(c.blockCells, 347);
+  assert.equal(c.events, 307);
+  assert.equal(c.distinctEventIds, 198);
+  assert.equal(c.roomsWithEvents, 165);
+  assert.deepEqual(c.eventTypes, {
+    MTG: 215, TOUR: 67, INFO: 10, WRKS: 6, SMNR: 1, RCPT: 1, INTV: 1, FAIR: 6,
+  });
+  assert.equal(c.blockCells, 289);
   assert.equal(c.distinctBlockIds, 8);
   assert.equal(c.roomsWithBlocks, 56);
   assert.equal(c.invalidValue, 0);
   assert.equal(c.noGrid, 0);
   assert.deepEqual(shipped._meta.invalidValueRooms, []);
   assert.deepEqual(shipped._meta.noGridRooms, []);
-  assert.equal(shipped._meta.requests, 427, '1 GET, 1 redirect hop, 425 POSTs');
+  assert.ok(shipped._meta.requests >= 427 && shipped._meta.requests <= 600,
+    '1 GET, 1 redirect hop and 425 POSTs, plus only bounded retries');
   // Recounted from the records rather than trusted from the header.
   const events = records.filter((r) => r.kind === 'event');
   const blocks = records.filter((r) => r.kind === 'block');
@@ -413,9 +416,9 @@ test('the headline counts are the ones the sweep measured', () => {
 
 test('classes are counted and discarded, and the two class counters differ', () => {
   const c = shipped._meta.counts;
-  assert.equal(c.classCellsSeenAndDiscarded, 8288);
-  assert.equal(c.classBookingsSeenAndDiscarded, 9647);
-  assert.equal(c.combinedSectionCells, 1124);
+  assert.equal(c.classCellsSeenAndDiscarded, 6875);
+  assert.equal(c.classBookingsSeenAndDiscarded, 8024);
+  assert.equal(c.combinedSectionCells, 955);
   assert.ok(c.classBookingsSeenAndDiscarded > c.classCellsSeenAndDiscarded,
     'a combined-section cell holds more than one booking');
   assert.equal(records.some((r) => r.kind === 'class'), false, 'no class reached the file');
@@ -436,28 +439,26 @@ test('the shipped file carries no free-text label and no raw field', () => {
   assert.doesNotMatch(body, /\b\d{3}[-.]\d{3}[-.]\d{4}\b/, 'a phone number is in the file');
   assert.doesNotMatch(body, /[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+/, 'an email address is in the file');
   assert.doesNotMatch(body, /\b[a-z]+\.\d{1,4}\b/i, 'an OSU name.n identifier is in the file');
-  assert.doesNotMatch(body, /(MTG|TOUR|INFO|WRKS|SMNR) - /, 'a raw label prefix is in the file');
+  assert.doesNotMatch(body, /(MTG|TOUR|INFO|WRKS|SMNR|RCPT|INTV|FAIR) - /,
+    'a raw label prefix is in the file');
 });
 
-test('the clock times come from the booking label, not from the query window', () => {
-  // _meta.windowNote says a booking outside 7:00AM-11:00PM is "clipped to those
-  // bounds". It is not: the grid places the cell inside the queried rows but the
-  // cell's own label still carries the true times, and toMinutes reads the
-  // label. One record on the week of 08/31/2026 starts at 390, which is 6:30AM.
-  // Anything downstream that assumes a 420 floor is wrong about that room.
-  const early = records.filter((r) => r.start < 7 * 60);
-  assert.equal(early.length, 1, JSON.stringify(early));
-  assert.equal(Math.min(...records.map((r) => r.start)), 390);
+test('the shipped clock range retains the late bookings the wider query asks for', () => {
+  // The page defaults to 8am-10pm. Asking for 7am-11pm is what keeps the last
+  // hour represented; the parser tests above separately establish that the
+  // times themselves come from each booking label rather than the grid row.
+  assert.equal(Math.min(...records.map((r) => r.start)), 420);
   assert.equal(Math.max(...records.map((r) => r.end)), 1380);
   assert.match(shipped._meta.windowNote, /7:00AM-11:00PM/);
 });
 
-test('every record is a weekday, a clock range and one of the five type codes', () => {
+test('every record is a weekday, a clock range and one of the approved type codes', () => {
   for (const r of records) {
     assert.ok(Number.isInteger(r.day) && r.day >= 0 && r.day <= 6, JSON.stringify(r));
     assert.ok(r.start >= 0 && r.end <= 1440 && r.start < r.end, JSON.stringify(r));
     if (r.kind === 'event') {
-      assert.ok(['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR'].includes(r.type), JSON.stringify(r));
+      assert.ok(['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR', 'RCPT', 'INTV', 'FAIR'].includes(r.type),
+        JSON.stringify(r));
       assert.match(r.eventId, /^\d{9}$/, 'a reservation id is nine digits');
     } else {
       assert.equal(r.kind, 'block');
@@ -473,8 +474,8 @@ test('the week rendered is a Monday', () => {
   assert.match(shipped._meta.week, /^\d{2}\/\d{2}\/\d{4}$/);
   const [m, d, y] = shipped._meta.week.split('/');
   assert.equal(new Date(`${y}-${m}-${d}T12:00:00`).getDay(), 1, shipped._meta.week);
-  assert.equal(shipped._analysis.weekStart, '2026-08-31');
-  assert.equal(shipped._analysis.weekEnd, '2026-09-06');
+  assert.equal(shipped._analysis.weekStart, '2026-09-07');
+  assert.equal(shipped._analysis.weekEnd, '2026-09-13');
 });
 
 test('the gap against the shipped index is the one that was measured', () => {
@@ -482,13 +483,13 @@ test('the gap against the shipped index is the one that was measured', () => {
   // Vacant currently calls entirely free.
   const a = shipped._analysis;
   assert.deepEqual(a.activeSessions, [0, 1], 'the third session starts 2026-10-19');
-  assert.equal(a.landInFreeWindow.events, '323/327');
-  assert.equal(a.landInFreeWindow.blocks, '343/347');
-  assert.equal(a.landInFreeWindow.eventsSessionScoped, '327/327');
+  assert.equal(a.landInFreeWindow.events, '304/307');
+  assert.equal(a.landInFreeWindow.blocks, '286/289');
+  assert.equal(a.landInFreeWindow.eventsSessionScoped, '307/307');
   const [weeknight, saturday] = a.windows;
-  assert.equal(weeknight.freeMinutes, 588395);
-  assert.equal(weeknight.blockMinutesInWindow, 62985);
-  assert.equal(weeknight.blockPctOfFree, 10.7);
+  assert.equal(weeknight.freeMinutes, 588265);
+  assert.equal(weeknight.blockMinutesInWindow, 50040);
+  assert.equal(weeknight.blockPctOfFree, 8.51);
   assert.equal(saturday.freeMinutes, 356580);
   assert.equal(saturday.blockMinutesInWindow, 31920);
   assert.equal(saturday.blockPctOfFree, 8.95);

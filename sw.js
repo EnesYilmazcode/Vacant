@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 127,405 bytes, data 85,157.
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 130,448 bytes, data 91,951.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these sixteen files, which is most of a percent of
@@ -41,7 +41,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-665a5b3';
+const SHELL_CACHE = 'vacant-shell-a32570b';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also
@@ -78,8 +78,8 @@ const SHELL_DOC = SCOPE + 'index.html';
 // restating it, because the restatement is what drifted.
 //
 // They are in addAll rather than a second best-effort pass, and that is the
-// argued half: the four are 23,861 of the 127,405 gzipped bytes here, so
-// install does 23.0% more work before it resolves, and a strict tier that fails
+// argued half: the four are 23,861 of the 130,448 gzipped bytes here, so
+// install does 22.4% more work before it resolves, and a strict tier that fails
 // fails the whole install. It is still right. A best-effort tier is for things
 // the app is better with; js/app.js cannot evaluate without js/state.js. And a
 // rejected install is retried where a resolved lie is not.
@@ -104,6 +104,7 @@ const SHELL_ASSETS = [
   SCOPE + 'js/claim.js',
   SCOPE + 'js/day.js',
   SCOPE + 'js/engine.js',
+  SCOPE + 'scripts/lib/club-occupancy.mjs',
   SCOPE + 'js/map.js',
   SCOPE + 'js/pwa.js',
   SCOPE + 'js/install.js',
@@ -170,11 +171,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (url.pathname.startsWith(DATA_PREFIX)) {
-    // The term pointer is the one file that must never be stale: a two month old
-    // shell reading a cached pointer would ask for last term's rooms by name. It
-    // is 226 bytes.
+    // The term pointer and dated event overlay must never be stale. The event
+    // filename is stable for a whole term even though its covered week changes,
+    // so an old cached response can otherwise hide the current week's events.
+    // Both still fall back to the data cache when the network is unavailable.
+    const needsFreshData =
+      url.pathname === CURRENT || /\/room-events-\d+\.json$/.test(url.pathname);
     event.respondWith(
-      url.pathname === CURRENT ? networkFirst(request) : staleWhileRevalidate(event, request),
+      needsFreshData ? networkFirst(request) : staleWhileRevalidate(event, request),
     );
     return;
   }
@@ -218,7 +222,9 @@ async function cacheFirst(event, request) {
 async function networkFirst(request) {
   const data = await caches.open(DATA_CACHE);
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, {
+      cache: request.cache === 'no-store' ? 'no-store' : 'no-cache',
+    });
     if (response && response.ok) {
       await data.put(request, response.clone());
       return response;
@@ -280,7 +286,7 @@ async function warmTerm() {
   if (!response.ok) return;
   await data.put(CURRENT, response.clone());
   const current = await response.json();
-  const files = [current.rooms, current.buildings, ...WARM_ALWAYS].filter(Boolean);
+  const files = [current.rooms, current.events, current.buildings, ...WARM_ALWAYS].filter(Boolean);
   await Promise.all(
     files.map(async (file) => {
       const url = SCOPE + String(file).replace(/^\//, '');
@@ -310,7 +316,7 @@ async function evictOldTerms() {
   // evicted the Registrar's building hours on the first activate. Measured, the
   // app then booted from cache with no hours file and never reached ready.
   for (const request of await data.keys()) {
-    const match = new URL(request.url).pathname.match(/\/data\/(?:rooms|buildings)-(\d+)\.json$/);
+    const match = new URL(request.url).pathname.match(/\/data\/(?:rooms|room-events|buildings)-(\d+)\.json$/);
     if (match && match[1] !== String(term)) await data.delete(request);
   }
 }

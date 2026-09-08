@@ -1239,11 +1239,16 @@ function paintCard() {
   card.innerHTML =
     notes() +
     strip +
-    `<div class="c-deck">
+    // Above the card, not on it. How deep you are in the deck is a fact about
+    // the deck, and it was in the card's top-left corner where the GO stamp
+    // lands: the two drew over each other and neither could be read. It also
+    // has no business flying off the side of the phone with a room it is not
+    // about.
+    `<p class="c-pos">${state.cardIndex + 1} of ${total}</p>
+    <div class="c-deck">
       <article class="c-card" id="c-top" tabindex="0" role="group" aria-label="${esc(said)}">
         <span class="c-stamp no" aria-hidden="true">NEXT</span>
         <span class="c-stamp yes" aria-hidden="true">GO</span>
-        <p class="c-pos">${state.cardIndex + 1} of ${total}</p>
         ${building ? `<p class="c-b">${esc(building)}</p>` : ''}
         <p class="c-n">${esc(room)}</p>
         <p class="c-win">${win.html}</p>

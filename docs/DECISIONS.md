@@ -3432,7 +3432,30 @@ plain centring on a scroll container puts overflow ABOVE the scroll origin, wher
 a large root font size would put the two buttons out of reach of every way of
 scrolling.
 
-**Cost.** The shell went 133,694 -> 138,137 gzipped bytes, +3.3%: 2,941 on
-js/app.js for the deck, the two verdicts and the gesture, and 1,502 on index.html
-for the card. Suite 842 -> 848 tests. scripts/shoot.mjs photographs the card as
-its second frame now and reaches the list through it.
+**The verdict stamp goes on the corner the card is NOT leaving by, and it needs
+its own band.** Three drafts, each caught by photographing the gesture rather
+than reasoning about it. NEXT started on the LEFT of the card, so a card thrown
+left took the word telling you what you were about to do off the screen first --
+the stamp was gone at the exact moment you committed to it. Swapped: a card going
+left keeps its right corner, so NEXT lives right and GO lives left. Then GO drew
+on top of the deck position in the top-left corner and neither could be read; the
+position line moved out of the card entirely, which it should have been anyway,
+because how deep you are in the deck is a fact about the DECK and has no business
+flying off the side of the phone with a room it is not about. Then GO drew on top
+of the building name instead. The card carries a reserved 3.2rem band at the top
+for them now, which is why its top padding is twice its bottom.
+
+**scripts/shoot.mjs photographs a HELD gesture.** Every other frame in it is a
+screen at rest. `holdCard()` presses, drags and does not release, because the
+stamp only exists while a finger is on the card. Held at 72px, short of the 84px
+commit threshold, so the room is still readable under the verdict rather than
+half off the side of the phone -- and stable to photograph, since nothing is
+animating and shoot() takes every frame twice and compares them. `dropCard()`
+returns it to the middle and lets go, and the run asserts the card came back to
+exactly where it started before it moves on to the list.
+
+**Cost.** The shell went 133,694 -> 138,629 gzipped bytes, +3.7%: 3,082 on
+js/app.js for the deck, the two verdicts and the gesture, and 1,853 on index.html
+for the card. Suite 842 -> 848 tests. scripts/shoot.mjs photographs seven frames
+now: the question, the card, the card held in each direction, the list, a room
+lit on the map, and its day.

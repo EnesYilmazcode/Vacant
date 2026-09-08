@@ -163,6 +163,38 @@ class Phone {
     await this.call('Input.dispatchMouseEvent', at(box.y + dy, 'mouseReleased', 0));
   }
 
+  // The card, dragged and HELD. Every other frame in here is a screen at rest;
+  // this one is deliberately mid-gesture, because the stamp that says which
+  // verdict a release would fire only exists while a finger is on the card.
+  // Left down rather than released, so the frame is stable: nothing is
+  // animating, the transform is exactly where the pointer put it, and shoot()
+  // photographs it twice and compares.
+  async holdCard(dx) {
+    const box = await this.evaluate(`(() => {
+      const r = document.getElementById('c-top').getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`);
+    const at = (x, type, buttons) => ({ x, y: box.y, type, buttons, button: 'left', clickCount: 1 });
+    await this.call('Input.dispatchMouseEvent', at(box.x, 'mouseMoved', 0));
+    await this.call('Input.dispatchMouseEvent', at(box.x, 'mousePressed', 1));
+    const steps = 10;
+    for (let i = 1; i <= steps; i++) {
+      await this.call('Input.dispatchMouseEvent', at(box.x + (dx * i) / steps, 'mouseMoved', 1));
+      await sleep(24);
+    }
+    await sleep(200);
+    this.held = box;
+  }
+
+  // Back to the middle, and let go. Under the threshold, so the card returns to
+  // rest and the deck is where it was.
+  async dropCard() {
+    const at = (x, type, buttons) => ({ x, y: this.held.y, type, buttons, button: 'left', clickCount: 1 });
+    await this.call('Input.dispatchMouseEvent', at(this.held.x, 'mouseMoved', 1));
+    await this.call('Input.dispatchMouseEvent', at(this.held.x, 'mouseReleased', 0));
+    await sleep(450);
+  }
+
   // The sheet snaps with a CSS transition, so a frame taken too early
   // photographs a drag in progress, which is not a state the app rests in.
   async settled() {
@@ -474,6 +506,44 @@ async function run() {
     if (card.acts.some((a) => !a)) problems.push('card: a verdict button has no accessible name');
     if (!card.nomap) problems.push('card: the map is on screen with nothing on it');
     await shoot('card', `${card.pos}, ${card.building} ${card.room}, ${card.win}`);
+
+    // 2b and 2c. The same card, held mid-swipe in each direction. This is the
+    //   only part of the screen no still frame can show: the stamp that says
+    //   what letting go would do exists only while a finger is on the card.
+    //   Held short of the 84px commit threshold, so the room is still readable
+    //   under the verdict rather than half off the side of the phone.
+    const stampOf = () =>
+      page.evaluate(`(() => {
+        const seen = (sel) => {
+          const el = document.querySelector(sel);
+          return el ? Number(getComputedStyle(el).opacity) : -1;
+        };
+        const t = document.getElementById('c-top');
+        return { no: seen('.c-stamp.no'), yes: seen('.c-stamp.yes'), moved: t.getBoundingClientRect().left };
+      })()`);
+    const atRest = await stampOf();
+
+    await page.holdCard(-72);
+    const left = await stampOf();
+    if (!(left.no > 0.6)) problems.push(`swipe-next: the NEXT stamp is at ${left.no}`);
+    if (left.yes > 0.05) problems.push(`swipe-next: the GO stamp is showing too, at ${left.yes}`);
+    if (!(left.moved < atRest.moved - 50)) problems.push('swipe-next: the card did not follow the pointer');
+    await shoot('swipe-next', `held ${Math.round(atRest.moved - left.moved)}px left, NEXT showing`);
+    await page.dropCard();
+
+    await page.holdCard(72);
+    const right = await stampOf();
+    if (!(right.yes > 0.6)) problems.push(`swipe-go: the GO stamp is at ${right.yes}`);
+    if (right.no > 0.05) problems.push(`swipe-go: the NEXT stamp is showing too, at ${right.no}`);
+    if (!(right.moved > atRest.moved + 50)) problems.push('swipe-go: the card did not follow the pointer');
+    await shoot('swipe-go', `held ${Math.round(right.moved - atRest.moved)}px right, GO showing`);
+    await page.dropCard();
+
+    // Letting go under the threshold puts it back, so the deck is where it was.
+    const back = await stampOf();
+    if (Math.abs(back.moved - atRest.moved) > 1) {
+      problems.push(`the card did not return to rest: ${atRest.moved} -> ${back.moved}`);
+    }
 
     // 3. the ranked list, one tap behind the card for anyone who wants to scan.
     await page.tapSelector('.c-more');

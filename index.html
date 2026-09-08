@@ -278,6 +278,9 @@
     display: flex; flex-direction: column; align-items: center;
     justify-content: center; justify-content: safe center;
     gap: .85rem; padding: .4rem 1rem calc(.6rem + var(--safe-b));
+    /* A thrown card leaves sideways. Vertical scrolling stays, for a large root
+       font size; sideways is clipped, so the flight cannot widen the page. */
+    overflow-x: hidden;
   }
   /* The card is lifted off the sheet so the swipe reads as moving an object
      rather than wiping the screen. It carries its own ground, one step up from
@@ -286,7 +289,11 @@
   .c-card {
     position: relative; width: 100%; max-width: 22rem; flex: none;
     background: var(--card-hi); border: 1px solid var(--line-hi); border-radius: 20px;
-    padding: 1.5rem 1.35rem 1.6rem;
+    /* The top padding is a reserved band for the two verdict stamps, which is
+       why it is twice the bottom. Sharing that line with the first line of
+       content was tried twice: the stamps drew over the deck position, and then
+       over the building name, and in both cases neither could be read. */
+    padding: 3.2rem 1.35rem 1.6rem;
     display: flex; flex-direction: column; gap: .3rem;
     touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none;
     box-shadow: 0 10px 30px rgba(0,0,0,.45);
@@ -320,17 +327,23 @@
     display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
   }
   .c-facts .ico { width: 1em; height: 1em; }
-  .c-pos { margin: 0 0 .5rem; color: var(--dim); font-size: .78rem; }
+  .c-pos { margin: 0; color: var(--dim); font-size: .78rem; }
 
   /* The two verdicts, painted on the card as it moves so the gesture says what
      it will do before it is finished. Opacity is driven from js/app.js. */
   .c-stamp {
-    position: absolute; top: 1.1rem; font-size: .85rem; font-weight: 800;
+    position: absolute; top: 1.15rem; font-size: .85rem; font-weight: 800;
     letter-spacing: .08em; padding: .3rem .6rem; border-radius: 8px;
     border: 2px solid currentColor; opacity: 0; pointer-events: none;
   }
-  .c-stamp.no { left: 1.1rem; color: var(--dim); transform: rotate(-12deg); }
-  .c-stamp.yes { right: 1.1rem; color: var(--accent); transform: rotate(12deg); }
+  /* Each one sits on the side of the card that stays ON SCREEN, which is the
+     opposite side to the direction of travel: a card thrown left takes its left
+     edge away first, so NEXT lives on the right, and GO lives on the left for
+     the same reason going the other way. The first build had them the other way
+     round and the word telling you what you were about to do slid off the
+     screen exactly as you committed to it. */
+  .c-stamp.no { right: 1.1rem; color: var(--dim); transform: rotate(12deg); }
+  .c-stamp.yes { left: 1.1rem; color: var(--accent); transform: rotate(-12deg); }
 
   /* Buttons, not only a swipe. A gesture nothing announces is unreachable from
      a keyboard and invisible to a screen reader, and it is also just harder to

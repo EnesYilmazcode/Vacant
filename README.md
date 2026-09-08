@@ -36,6 +36,21 @@ back the ten minutes the row had already taken off
 A card that says **no class rest of today** instead of a time means no class is
 coming at all, and the timeline behind it ends where the building locks.
 
+## Bin it, or take it
+
+Drag the card and it tells you what letting go will do. Each badge sits on the
+corner the card is *not* leaving by, so the word is still on screen at the moment
+you commit to it.
+
+| | |
+| :--: | :--: |
+| ![The same card dragged left and held. It has slid off the left edge and tilted, and a grey NEXT badge has appeared on the corner still on screen. Cunz Hall 160, no class rest of today, 42 seats are all still readable.](docs/media/swipe-next.webp) | ![The same card dragged right and held. It has slid right and tilted the other way, and a red GO badge has appeared on the corner still on screen, above Cunz Hall 160, no class rest of today, 4 min walk and 42 seats.](docs/media/swipe-go.webp) |
+| Left: the next room, nearest first. | Right: this one, and the way there. |
+
+The buttons under the card do the same two things, and so do the left and right
+arrow keys. A gesture nothing announces is unreachable from a keyboard and
+invisible to a screen reader.
+
 The ranking is still all there. **See all 35 in a list** under the card opens it,
 and every row is the same answer the card gives, one per building, nearest first.
 

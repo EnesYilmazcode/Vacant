@@ -2335,6 +2335,29 @@ test('the map class is written in one place, off the same pair the sheet reads',
   assert.match(css, /body\.nomap #map \{[^}]*pointer-events: none/);
 });
 
+test('every place that drops the selection re-rests the sheet', () => {
+  // There are two, and only one of them goes through showList(). A re-rank
+  // clears it in answer(), and a re-rank can happen with a row lit: the Check
+  // again button in the list footer and the visibilitychange handler both call
+  // refresh() without asking followAction first. Driven at 393x852 before this
+  // line existed, both ways in: the row went dark and the sheet stayed at 324
+  // over a canvas with nothing left on it, which is the band this whole change
+  // removes. Now 776, or 708 with the install rail up.
+  for (const fn of ['answer', 'showList']) {
+    const body = bodyOf(fn);
+    const cleared = body.indexOf('state.selected = null');
+    assert.ok(cleared > 0, `${fn} no longer clears the selection`);
+    assert.match(
+      body.slice(cleared),
+      /sheetHeight\(\)|showPane\('list'\)/,
+      `${fn} drops the selection without re-resting the sheet`,
+    );
+  }
+  // The question screen has no sheet to rest, and setSheet would stamp its name
+  // on sheetScreen.
+  assert.match(bodyOf('answer'), /if \(state\.screen !== 'ask'\) sheetHeight\(\);/);
+});
+
 test('the sheet asks where it rests rather than assuming peek and full', () => {
   // Every height in js/app.js used to be written against PEEK or FULL, neither
   // of which knows whether anything is on the map. restNow() and capNow() do,

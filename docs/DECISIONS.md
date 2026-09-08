@@ -3257,6 +3257,15 @@ button off screen with it. Caught by the drag check in `scripts/shoot.mjs`,
 which reported the sheet moving 776 -> 696 under a 60 px pull that should have
 moved nothing.
 
+**One hole the change opened, found by reading the re-rank paths and then
+reproducing it.** `showList()` is not the only place the selection is dropped:
+`answer()` drops it too, and a re-rank can happen with a row lit, because the
+Check again button in the list footer and the `visibilitychange` handler both
+call `refresh()` without asking `followAction` first. Driven at 393x852, both
+ways in: the row went dark and the sheet stayed at **324 px over a canvas with
+nothing left on it**, which is precisely the band this entry is about. `answer()`
+re-rests the sheet now, guarded off the question screen, which has none.
+
 **A covered screen has no travel, only a dismiss.** Its two snap points are one
 number, so a pane drag has nowhere to go -- there is nothing under the sheet to
 uncover -- and the grip still has its whole 88 px below that, so pull-down-to-go-
@@ -3284,5 +3293,5 @@ the screen, and that stopped being a second state the day the list started
 there. `scripts/shoot.mjs` spends the drag on a check instead: that the same
 pull moves nothing.
 
-**Cost.** The shell went 127,395 -> 129,472 gzipped bytes, +1.6%, 852 of it on
-js/sheet.js. Suite 819 -> 829 tests.
+**Cost.** The shell went 127,395 -> 129,651 gzipped bytes, +1.8%, 852 of it on
+js/sheet.js. Suite 819 -> 830 tests.

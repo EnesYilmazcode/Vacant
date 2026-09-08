@@ -757,6 +757,13 @@ function answer() {
   // what made the highlight fire on load and never move again.
   state.selected = null;
   state.listScroll = 0;
+  // The sheet and the map follow the selection, and this is the second place it
+  // is dropped. showList() has the first and re-rests on its own; a re-rank does
+  // not go through it. Measured with a row lit at 393x852, both ways in: Check
+  // again in the list footer, and coming back to the tab. The row went dark and
+  // the sheet stayed at 324 over a canvas with nothing left on it, which is the
+  // band this screen stopped leaving.
+  if (state.screen !== 'ask') sheetHeight();
   // Rows first, then the sweep that only the strip needs.
   //
   // The ladder is a SECOND full sweep of the index. Warm it is about a

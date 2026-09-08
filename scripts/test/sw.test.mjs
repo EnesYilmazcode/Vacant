@@ -187,7 +187,7 @@ test('activate drops the stale Vacant caches and evicts last term', () => {
   assert.match(activate, /caches\.delete/);
   assert.match(activate, /evictOldTerms\(\)/);
   const evict = sw.slice(sw.indexOf('async function evictOldTerms'));
-  assert.match(evict, /rooms\|buildings/);
+  assert.match(evict, /rooms\|room-events\|buildings/);
   assert.match(evict, /data\.delete\(request\)/);
 });
 
@@ -236,8 +236,12 @@ test('a navigation falls back to the cached shell', () => {
   assert.match(navigate, /response\.ok/);
 });
 
-test('term data is stale-while-revalidate and the pointer is network first', () => {
-  assert.match(sw, /url\.pathname === CURRENT \? networkFirst\(request\) : staleWhileRevalidate\(/);
+test('dated event data and the term pointer are network first', () => {
+  assert.match(sw, /const needsFreshData =/);
+  assert.match(sw, /\/room-events-\\d\+\\\.json\$/);
+  assert.match(sw, /needsFreshData \? networkFirst\(request\) : staleWhileRevalidate\(/);
+  const first = sw.slice(sw.indexOf('async function networkFirst'), sw.indexOf('async function staleWhileRevalidate'));
+  assert.match(first, /cache: request\.cache === 'no-store' \? 'no-store' : 'no-cache'/);
   const swr = sw.slice(sw.indexOf('async function staleWhileRevalidate'), sw.indexOf('function changed'));
   assert.match(swr, /event\.waitUntil\(update\)/);
   assert.match(swr, /announce\(request\.url\)/);
@@ -343,7 +347,7 @@ test('the gzip figures in the header are the sizes of the files it caches', () =
     .split(',')
     .map((entry) => entry.trim().replace(/^'|'$/g, ''))
     .filter(Boolean);
-  const data = ['data/current.json', current.rooms, current.buildings, ...warm].reduce(
+  const data = ['data/current.json', current.rooms, current.events, current.buildings, ...warm].reduce(
     (total, file) => total + gzipped(file),
     0,
   );

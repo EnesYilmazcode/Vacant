@@ -22,10 +22,11 @@ const BASE = '/Vacant/';
 //
 // MEASURED, because the direction of the error is the point: too short and a
 // slow load that IS working gets called dead, which is the lie this app exists
-// not to tell. The 379,144 bytes boot() reads, uncompressed off a local server
-// with the worker out of the way, took 9.59 s over CDP at Chrome's Slow 3G
+// not to tell. The 461,657 bytes boot() reads, uncompressed from the committed
+// files, includes the Room Matrix snapshot. The earlier five-file path, with
+// the worker out of the way, took 9.59 s over CDP at Chrome's Slow 3G
 // preset (51,200 B/s down, 2,000 ms latency) and 2.69 s at Fast 3G, worst of
-// five runs each. Pages gzips those five to 85,151, so a deployed load has more
+// five runs each. Pages gzips the current six to 91,951 bytes, so a deployed load has more
 // room than that. 20 s is twice the measurement, and still refuses a link a
 // tenth of Slow 3G, where the same fetch needs 77.1 s.
 export const NETWORK_TIMEOUT_MS = 20000;
@@ -55,7 +56,7 @@ export async function pickTier({ store, online, base = BASE }) {
   if (!store) return miss;
   const current = await cachedJson(store, `${base}data/current.json`);
   if (!current) return miss;
-  const files = [current.rooms, current.buildings, ...NEEDED];
+  const files = [current.rooms, current.events, current.buildings, ...NEEDED];
   if (!files.every(Boolean)) return miss;
   try {
     for (const file of files) {

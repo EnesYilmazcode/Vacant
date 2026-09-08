@@ -20,6 +20,7 @@
 
 import { toGrid } from './campus.js';
 import { roomClaim } from './claim.js';
+import { overlayForDate } from '../scripts/lib/club-occupancy.mjs';
 import { blocksOn, classesOn, dayClaim } from './day.js';
 // `query` arrives as `ladder` because js/app.js already holds a `state.query`,
 // which is the buildings search box and has nothing to do with the engine.
@@ -163,6 +164,9 @@ const state = {
   // may not re-order the rows under it.
   dragging: false,
   rooms: null,
+  classRooms: null,
+  roomEvents: null,
+  eventCoverage: null,
   buildings: null,
   counts: null,
   shorts: null,
@@ -682,6 +686,16 @@ function neededMinutes(now) {
   return Math.max(30, left);
 }
 
+// Build one date from the immutable class index and the matching Room Matrix
+// snapshot. On a Registrar no-class day, only class tuples are removed;
+// registered non-class events remain busy.
+function scheduleFor(date, classesSuspended = false) {
+  return overlayForDate(state.classRooms, state.roomEvents, {
+    date: typeof date === 'string' ? date : isoDate(date),
+    classesSuspended,
+  });
+}
+
 function answer() {
   // Whether the app may answer at all was settled before this ran, by
   // refusalFor() inside resolveState(). state.rankable is that verdict, and
@@ -703,9 +717,9 @@ function answer() {
     hoursFor,
     sessions: state.rooms.sessions,
     date,
-    // A day with no classes is a day the busy grid describes nobody. 2,048
-    // of the 2,106 Wednesday blocks are still active on Veterans Day.
-    classesSuspended: !!state.situation?.classesSuspended,
+    // scheduleFor() already removed class tuples on a no-class day without
+    // removing registered events, so the engine sweeps what remains.
+    classesSuspended: false,
   };
   const results = rank(rooms, ask);
 
@@ -894,9 +908,13 @@ const FOOT_ACTS = `<p class="foot-acts">
 // One sentence, said once, at the bottom where a reader lands after the rows.
 // A per-row version of this was tried and rejected: a warning repeated on 98
 // rows stops being read by row four.
-const CAVEAT = `<p class="foot">Class schedule only. Doors get locked and clubs book rooms, and a
-  class scheduled with no room recorded does not appear here at all, so a room can be in use
-  with nothing on its timeline.</p>`;
+function coverageCaveat(coverage) {
+  return coverage === 'complete-room-sweep'
+    ? 'Registered non-class events from the Room Matrix are included for this week. ROOM BLOCK holds, unscheduled use, and locked doors are not.'
+    : 'Class schedule only for this date. Non-class event coverage is unavailable, doors get locked, and unscheduled use does not appear here.';
+}
+
+const caveatHtml = (coverage) => `<p class="foot">${esc(coverageCaveat(coverage))}</p>`;
 
 // The list's statement of the question it answers. The duration chips used to
 // be the only thing on this screen that said what was asked for, and they went
@@ -1072,7 +1090,7 @@ function paintList() {
         // The visible row is glyphs and an icon. The name a screen reader gets
         // is written out, because the computed name would be "Page Hall 110B 4
         // min": no unit, no window, no caveat.
-        const name = `${label}, ${walkSay}, ${win.say}, ${seats.say}${dept.say}. Class schedule only, the door may be locked.`;
+        const name = `${label}, ${walkSay}, ${win.say}, ${seats.say}${dept.say}. ${coverageCaveat(state.eventCoverage)}`;
         return `<button type="button" class="row" data-i="${i}" aria-label="${esc(name)}">
         <span class="r-name">${esc(label)}</span>
         <span class="r-walk">${WALK_ICON}${coarse ? '~' : ''}${r.walk} min</span>
@@ -1082,7 +1100,7 @@ function paintList() {
       })
       .join('') +
     foot +
-    CAVEAT +
+    caveatHtml(state.eventCoverage) +
     FOOT_ACTS;
 
   for (const el of list.querySelectorAll('.row')) {
@@ -1524,8 +1542,7 @@ const SHORT_MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 // Hours are always published for a shipped room, because a building with no
 // published hours no longer ships at all, so there is exactly one unknown left
 // to draw: a day the building is published as closed.
-function dayGridHtml(room, bname) {
-  const date = dayShown();
+function dayGridHtml(room, bname, date, schedule) {
   const hours = hoursFor(room.b, date.getDay());
   const label = `${SHORT_DAY[date.getDay()]}, ${SHORT_MONTH[date.getMonth()]} ${date.getDate()}`;
   const head = `<div class="dnav">
@@ -1538,7 +1555,7 @@ function dayGridHtml(room, bname) {
 
   if (hours === null) return `${head}<p class="unknown">${esc(bname)} is closed.</p>`;
 
-  const classes = classesOn(room, date, state.rooms.sessions, state.rooms.courses);
+  const classes = classesOn(room, date, schedule.sessions, schedule.courses);
   // A shipped room's building always publishes hours, because one that does not
   // no longer reaches the index. `undefined` still has to be survivable: the
   // hours table is refetched on its own schedule and can drop a building while
@@ -1601,9 +1618,9 @@ function hourLabel(m) {
 // The timeline, as rows. Free blocks are the content and classes are the
 // frame, so a free block carries a start, the word and a length, and a class
 // carries a start and nothing else.
-function timelineRows(room, bname, nowMin, date) {
+function timelineRows(room, bname, nowMin, date, schedule) {
   const hours = hoursFor(room.b, date.getDay());
-  const blocks = blocksOn(room, date, state.rooms.sessions);
+  const blocks = blocksOn(room, date, schedule.sessions);
   const known = Array.isArray(hours);
   if (hours === null) return { closed: true, rows: [] };
 
@@ -1721,13 +1738,13 @@ function claimFor(tl, nowMin, bname, metres) {
 // The same line for a date the user is not standing in. js/day.js decides what
 // is true and this fetches what it needs, the calendar included: an empty busy
 // list is not evidence of a free room on a day the app refuses to answer for.
-function shapeFor(tl, date) {
+function shapeFor(tl, date, schedule) {
   const iso = isoDate(date);
   return dayClaim({
     closed: tl.closed,
     blocks: tl.blocks,
-    calendar: calendarOn(iso, state.rooms, state.current),
-    inTerm: inTermOn(iso, state.current, state.rooms),
+    calendar: calendarOn(iso, schedule, state.current),
+    inTerm: inTermOn(iso, state.current, schedule),
     term: state.current?.termName,
   });
 }
@@ -1743,7 +1760,11 @@ function bearingTo(from, to) {
 }
 
 function roomHtml(id) {
-  const room = state.rooms.rooms[id];
+  const date = dayShown();
+  const calendar = calendarOn(isoDate(date), state.classRooms, state.current);
+  const overlaid = scheduleFor(date, !!calendar?.noClasses);
+  const schedule = overlaid.index;
+  const room = schedule.rooms[id];
   const b = state.buildings?.[room.b];
   const bname = shortName(b?.name ?? room.b);
   const now = clockNow();
@@ -1759,11 +1780,10 @@ function roomHtml(id) {
       : null;
 
   // The day the screen is drawing, which is the day it has to describe.
-  const date = dayShown();
   const today = roomDayOffset === 0;
-  const tl = timelineRows(room, bname, today ? nowMin : null, date);
+  const tl = timelineRows(room, bname, today ? nowMin : null, date, schedule);
   const claim = !today
-    ? shapeFor(tl, date)
+    ? shapeFor(tl, date, schedule)
     : tl.closed
       ? { head: 'Closed today', sub: '' }
       : tl.nothing
@@ -1806,7 +1826,7 @@ function roomHtml(id) {
   // the grid now shows: a closed day is a grid that says closed, an empty day is
   // an empty grid, and there is no unpublished-hours case left to explain
   // because those rooms no longer ship.
-  const body = dayGridHtml(room, bname);
+  const body = dayGridHtml(room, bname, date, schedule);
 
   // The one control on this screen that leaves the app, and the reason #44's
   // straight line is allowed to stay a direction rather than a route: it is a
@@ -1831,7 +1851,7 @@ function roomHtml(id) {
     <p class="facts">${facts.join('')}</p>
     ${acts}
     ${body}
-    ${CAVEAT}`;
+    ${caveatHtml(overlaid.coverage)}`;
 }
 
 // The compass needle. It stays off until it is asked for, because iOS only
@@ -2300,12 +2320,37 @@ function openNear() {
   showNear();
 }
 
+// A room link can arrive while dev mode is still restoring its saved clock.
+// On a real-world refusal day (Labor Day is the useful example), boot cannot
+// open the room yet; devApply retries this after the simulated minute has made
+// the app rankable. Only retry from the question screen so changing the dev
+// clock while already viewing a room does not grow browser history.
+function openWantedRoom() {
+  if (!state.ready || state.screen !== 'ask' || !state.rankable) return false;
+  const wanted = new URLSearchParams(location.search).get('room');
+  if (!wanted || !state.classRooms?.rooms?.[wanted]) return false;
+  if (state.scheduled) {
+    showList();
+    answer();
+    history.replaceState({ v: 'list' }, '', cleanUrl());
+  } else {
+    showNear();
+    history.replaceState({ v: 'near' }, '', cleanUrl());
+  }
+  openRoom(wanted);
+  return true;
+}
+
 // Recompute. Never on a timer: a list that re-sorts under a thumb loses the row
 // somebody was reaching for. This fires when the app comes back to the
 // foreground, when the duration changes, and when the user asks.
 function refresh() {
-  if (!state.rooms) return;
+  if (!state.classRooms || !state.roomEvents) return;
   const now = clockNow();
+  state.situation = resolveState({ now, current: state.current, index: state.classRooms });
+  const overlaid = scheduleFor(now, !!state.situation?.classesSuspended);
+  state.rooms = overlaid.index;
+  state.eventCoverage = overlaid.coverage;
   state.situation = resolveState({ now, current: state.current, index: state.rooms });
   state.rankable = state.situation.ranked;
   state.scheduled = inScheduledHours({ now, current: state.current, index: state.rooms });
@@ -2656,13 +2701,20 @@ async function boot() {
   const current = await json('current.json');
   state.current = current;
 
-  const [rooms, buildings, hours, located] = await Promise.all([
+  const [rooms, roomEvents, buildings, hours, located] = await Promise.all([
     parsedIndex(`${BASE}${current.rooms}`, signal),
+    fetch(`${BASE}${current.events}`, { signal }).then(answered).then((r) => r.json()),
     fetch(`${BASE}${current.buildings}`, { signal }).then(answered).then((r) => r.json()).then((d) => d.buildings),
     json('buildings-hours.json').catch(() => null),
     fix,
   ]);
-  state.rooms = rooms;
+  state.classRooms = rooms;
+  state.roomEvents = roomEvents;
+  const now = clockNow();
+  state.situation = resolveState({ now, current, index: rooms });
+  const overlaid = scheduleFor(now, !!state.situation?.classesSuspended);
+  state.rooms = overlaid.index;
+  state.eventCoverage = overlaid.coverage;
   state.buildings = buildings;
   state.counts = roomsPerBuilding(rooms);
   state.hours = hours;
@@ -2672,8 +2724,7 @@ async function boot() {
   useOrigin(located.origin, located.note);
   follow(located.origin);
 
-  const now = clockNow();
-  state.situation = resolveState({ now, current, index: rooms });
+  state.situation = resolveState({ now, current, index: state.rooms });
   state.rankable = state.situation.ranked;
   state.scheduled = inScheduledHours({ now, current, index: rooms });
 
@@ -2689,18 +2740,7 @@ async function boot() {
   // and outside scheduled hours that claim is exactly the one this app refuses
   // to make. Opening the list here anyway put 40 rows one back press behind a
   // link tapped at 3am on a Saturday, with the reason sentence nowhere.
-  const wanted = new URLSearchParams(location.search).get('room');
-  if (wanted && rooms.rooms[wanted] && state.rankable) {
-    if (state.scheduled) {
-      showList();
-      answer();
-      history.replaceState({ v: 'list' }, '', cleanUrl());
-    } else {
-      showNear();
-      history.replaceState({ v: 'near' }, '', cleanUrl());
-    }
-    openRoom(wanted);
-  }
+  openWantedRoom();
 }
 
 // Nothing came back, or what came back was not a schedule. The old catch left
@@ -2833,7 +2873,7 @@ export function devApply({ at, origin, note } = {}) {
   if (!state.ready) return;
   state.day = clockNow().getDay();
   refresh();
-  if (state.screen === 'ask') paintGate();
+  if (!openWantedRoom() && state.screen === 'ask') paintGate();
 }
 
 // What the app currently believes, for the panel's readout. A copy, so the

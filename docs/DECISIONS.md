@@ -3183,8 +3183,11 @@ the decision can be made without refetching.
 
 ### The Registrar's booking labels are dropped at the parse boundary
 
-**Decided.** Only `type` survives: MTG, TOUR, INFO, WRKS, SMNR, and null for a
-block. The free text the Registrar types is read, counted and discarded.
+**Decided.** Only `type` survives: MTG, TOUR, INFO, WRKS, SMNR, RCPT, INTV,
+FAIR, and null for a block. RCPT, INTV and FAIR first appeared in the 09/07/2026
+sweep; they are registered receptions, interviews and fairs, so they occupy a
+room by the same rule as the original five codes. The free text the Registrar
+types is read, counted and discarded.
 
 **Measured.** 23 of the 189 distinct labels in a single week name a real person,
 in forms like "MTG - Dr X Training Mtg" and "MTG - Office Hours/<name>". No
@@ -3339,5 +3342,34 @@ is wider than today's call graph needs: `refresh()` only reaches `answer()` on t
 list or the question screen, because `followAction` holds everywhere else and the
 room's footer buttons all go to About.
 
-**Cost.** The shell went 127,395 -> 130,432 gzipped bytes, +2.4%, 1,510 of it on
+**Cost.** The shell went 130,647 -> 133,694 gzipped bytes on top of #117, +2.3%, 1,510 of it on
 js/sheet.js. Suite 819 -> 830 tests.
+### The overlay reads the Room Matrix document directly
+
+**Decided.** `scripts/lib/club-occupancy.mjs` accepts the parsed
+`data/room-events-<term>.json` document from the scraper above. The proposed EMS
+adapter contract from #113 is gone: it required organization identity, explicit
+status, source timestamps and caller-expanded recurrence that this verified,
+privacy-reduced source neither needs nor publishes.
+
+The boundary converts the matrix's 0=Sunday weekday into an exact date inside
+`_meta.weekStart` through `_meta.weekEnd`, verifies the source and class terms
+match, rejects unknown rooms and malformed events, and adds each accepted event
+to a one-date session without changing the original class index. A query outside
+the swept week is explicitly `outside-snapshot`; an event cannot repeat merely
+because its weekday matches.
+
+`kind: "block"` remains `undecided-room-block` and never becomes busy time here.
+That is the ROOM BLOCK decision above enforced in code rather than left to a
+caller. The test suite reads the committed #114 JSON and requires all 327 events
+to normalize, all 347 blocks to be reported and excluded, and no adapter or
+synthetic organization data in between.
+
+The application reads the event path from `data/current.json`. Ranking uses the
+overlay for today's date, and the room calendar uses it again for the date being
+drawn. A registered event therefore removes the room from a free window and
+appears as `In use` on its timeline. On a Registrar no-class day, class tuples
+are removed before the overlay so the event survives; passing the old blanket
+`classesSuspended` flag to the engine would have erased both. The service worker
+warms and evicts the term-keyed event file with the room index, and the weekly
+workflow refreshes it after rebuilding that index.

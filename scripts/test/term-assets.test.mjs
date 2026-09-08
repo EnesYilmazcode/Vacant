@@ -25,17 +25,19 @@ test('a term with no buildings subset is refused, by name', () => {
 });
 
 test('the filenames still match what build-index.mjs writes', () => {
-  // Two files apart, one template. If build-index renames either path this
+  // Three files apart, one template. If build-index renames a path this
   // guard would start checking a name nothing uses, and pass on a dead build.
   const src = readFileSync(new URL('../build-index.mjs', import.meta.url), 'utf8');
   assert.ok(src.includes('rooms: `data/rooms-${term}.json`'), 'rooms path moved');
+  assert.ok(src.includes('events: `data/room-events-${term}.json`'), 'events path moved');
   assert.ok(src.includes('buildings: `data/buildings-${term}.json`'), 'buildings path moved');
 });
 
-test('the committed current.json names exactly these two paths', () => {
+test('the committed current.json names exactly these three term paths', () => {
   const current = JSON.parse(readFileSync(new URL('../../data/current.json', import.meta.url), 'utf8'));
   const want = indexAssets(current.term);
   assert.equal(current.rooms, want.rooms);
+  assert.equal(current.events, want.events);
   assert.equal(current.buildings, want.buildings);
 });
 

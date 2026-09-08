@@ -258,10 +258,17 @@ test('the byte figure beside the deadline is still the size of what boot() reads
     'data/current.json', 'data/campus.json', 'data/buildings-hours.json',
     current.rooms, current.events, current.buildings,
   ]
-    .reduce((total, file) => total + readFileSync(join(ROOT, file)).length, 0);
-  // One percent wide, because a Windows checkout carries CRLF and the server
-  // that produced the figure served exactly that: measured 379,144 with the CR
-  // in and 375,776 with it out, which is 0.9 percent.
+    // The CR comes out before the count, the way sw.test.mjs already does it,
+    // because git checks these out with CRLF on Windows and Pages serves LF.
+    // Leaving it in was a 1.9% gap on a Windows checkout -- 470,531 against the
+    // 461,657 the files really are -- so this failed there and passed in CI,
+    // which is the worst way for a measured number to be wrong.
+    .reduce(
+      (total, file) =>
+        total + Buffer.byteLength(readFileSync(join(ROOT, file), 'utf8').replace(/\r\n/g, '\n'), 'utf8'),
+      0,
+    );
+  // One percent wide, for the day the harvest moves the index under the figure.
   const off = Math.abs(claimed - real) / real;
   assert.ok(off < 0.01, `the comment says ${claimed} bytes and the six files are ${real}, ${(off * 100).toFixed(1)}% out`);
 });

@@ -3214,6 +3214,136 @@ is ordinary one-week drift, and it means the matrix is an independent oracle for
 the weekly harvest, keyed by the same facility ids. Not wired up. Recorded so it
 is not rediscovered.
 
+## 2026-09-08  The map waits for a destination, and the list takes the screen back
+
+**Decided.** The canvas is faded out and made untouchable on every screen where
+nothing is selected, and those screens rest at their own ceiling over it instead
+of at `PEEK`. Tapping a row is what puts the map on screen, and the walk line
+now ends in an arrowhead. The question screen keeps its flyover: that is a
+blurred drifting background rather than a map anybody reads.
+
+**Measured, at 393x852 on the pinned clock and place `scripts/shoot.mjs` uses.**
+The list rested at `PEEK`, so 528 px of the 852 -- 62% of the screen -- was
+campus carrying nothing but the blue dot, and the sheet under it held **three
+whole rooms**. It holds **ten** now. The band that was there to frame a lit
+footprint and a walk line was framing neither.
+
+Driven through every screen, reading the class and the sheet's box back off the
+page: question, flyover on and no sheet; list browsing, covered at 776 px with
+its top at 76 and ten whole rows; one row tapped, map on and the sheet back to
+324; room, 613; Back to the list, covered again at 776, so a height dragged over
+a lit room does not come back over a blank canvas; "What Vacant knows", covered
+at 776; the buildings screen, covered at 776 and back to 324 the moment a
+building is picked. The back button clears the sheet's top edge in all eight,
+and the page logged no errors.
+
+**FULL was not far enough.** The first version of this rested the covered
+screens at `FULL`, which left 187 px of empty ground above the list at 393x852:
+the map was gone and two rows of rooms went with it. So a covered screen stops
+where the back button is instead -- 44 px of button on a 0.6 rem inset plus air,
+`BACK_PX = 76` -- and that is 776 px of sheet, or 696 with the install rail up.
+`COVER = 0.92` is the ceiling on the fraction, so a tablet does not run the sheet
+to within 76 px of the top of a 2000 px screen.
+
+**That put pixels into js/sheet.js, which only held fractions.** A button is a
+fixed size and a phone is not, so `capFor` and `restPxFor` return pixels and
+`floorFor` and `sheetAfterDrag` take them. The assumption they replaced -- every
+screen rests at `PEEK` and every ceiling is `FULL` -- was true until a screen
+could rest somewhere else, and it is the assumption `viewport()` was already
+caught making once, five entries up.
+
+**The install rail resizes the sheet now, not just the map band.** `--bar-h` is
+the one layout change nothing announces, and the `MutationObserver` that existed
+for the band only woke the frame loop. Left there, the rail arriving under a
+776 px list put the sheet's top edge at **-4 px** and took the grip and the back
+button off screen with it. Caught by the drag check in `scripts/shoot.mjs`,
+which reported the sheet moving 776 -> 696 under a 60 px pull that should have
+moved nothing.
+
+**One hole the change opened, found by reading the re-rank paths and then
+reproducing it.** `showList()` is not the only place the selection is dropped:
+`answer()` drops it too, and a re-rank can happen with a row lit, because the
+Check again button in the list footer and the `visibilitychange` handler both
+call `refresh()` without asking `followAction` first. Driven at 393x852, both
+ways in: the row went dark and the sheet stayed at **324 px over a canvas with
+nothing left on it**, which is precisely the band this entry is about. `answer()`
+re-rests the sheet now, guarded off the question screen, which has none.
+
+**A covered screen has no travel, only a dismiss.** Its two snap points are one
+number, so a pane drag has nowhere to go -- there is nothing under the sheet to
+uncover -- and the grip still has its whole 88 px below that, so pull-down-to-go-
+back is untouched. Driven in the app: a 60 px pull on the grip leaves the sheet
+at 696, and the dismiss still fires at 88.
+
+**The head on the walk line.** The line is symmetrical and says which two points
+matter, not which one is the answer; the lit footprint said that, and a fitted
+view can push it to the edge of the band or under the sheet. 11 screen pixels at
+0.42 rad, solid where the shaft is dashed, and not drawn at all below 26 px of
+line -- the case where you are standing at the building, and where the head
+would be as long as the thing it ends.
+
+**Two lines came off the question screen with it.** "How long?" was a label for
+four buttons that read 30 min, 1 hour, 2 hours and rest of day; it survives as
+the group's `aria-label`, where a reader landing on a bare button row still needs
+the durations attached to something. The term line ("Autumn 2026") is a fact
+about the DATA that was on screen every single load and that nobody acts on --
+the case it looked like it was guarding, an index from a term that has ended, is
+`#stale`'s job and `staleness()` already shouts at 14 days and 35. The term is
+still on the record, in the diagnostics block behind "What Vacant knows".
+
+**`docs/media/list-full.webp` is deleted.** It was the list dragged up to fill
+the screen, and that stopped being a second state the day the list started
+there. `scripts/shoot.mjs` spends the drag on a check instead: that the same
+pull moves nothing.
+
+### What the review caught, and what it did not
+
+Three of the six findings were real and all three were mine, made while moving
+the geometry. Each was reproduced before it was fixed.
+
+**Where a screen RESTS is not how far down it can be pulled.** Reading `restNow()`
+into `floorFor` and `sheetAfterDrag` moved the floor AND the dismiss trigger up
+with the rest. Measured at 393x852: an 88 px pull on the room screen's grip went
+from sliding the sheet to 525 to **throwing the answer away**, because the trigger
+travelled from 236 to 525 behind it; and the room and picker sheets stopped going
+down at all, which takes their map band out of reach of a thumb. `lowPxFor` is the
+third number now: peek on every screen showing a map, and the rest only on one
+covering it. Driven in the app: the 88 px pull leaves you on the room screen, and
+a pane drag opens it back to 324.
+
+**The band is the strip the map is LOOKED AT through.** Passing `targeted` to
+`bandFor` composed the camera for the covered band, 68 px at 393x852 and 1 px
+with the install rail up. `clampView` collapses there and forces the centre to
+the middle of the basemap: cx 19661 at bands 528, 239 and 187, cx **32768** at 68
+and 1. Reachable, because `frame()` stands down once the map has been panned by
+hand: pan on the room screen, press back, tap a row, and the map uncovers
+pointing at the middle of campus. `bandFor` lost the argument. Composing for 528
+while covered is what makes the reveal a finished frame, which is what the CSS
+comment claimed and did not yet do.
+
+**`Math.max(FULL * height, ...)` in the cap re-created the bug the cap exists to
+stop.** FULL looks like a safe floor and is not: it is a HEIGHT, and the rail
+sits under it. Measured across rail heights at 852, the sheet's top edge went
+76, 76, 76, **53, 0, -113** at rails of 0, 80, 111, 134, 187 and 300 -- the back
+button buried past 134 and the sheet off the screen past 187. The floor is PEEK,
+which is where these screens actually stopped before. The top edge is 76 at every
+one of those rails now.
+
+**And one in the instrument.** `scripts/shoot.mjs` read `ask.chosen.trim()` one
+line after recording that `ask.chosen` was missing, so the one failure that check
+exists for killed the run with a TypeError instead of being reported.
+
+**Two findings were not defects.** The rule is that the map is on screen when it
+has a DESTINATION on it, so reaching "What Vacant knows" or the picker from a lit
+room leaves the map up behind them, showing the room you came from -- which is
+also what pressing back returns you to. That is the rule, not an exception to it,
+and it is unchanged from before. And `answer()`'s `state.screen !== 'ask'` guard
+is wider than today's call graph needs: `refresh()` only reaches `answer()` on the
+list or the question screen, because `followAction` holds everywhere else and the
+room's footer buttons all go to About.
+
+**Cost.** The shell went 130,647 -> 133,694 gzipped bytes on top of #117, +2.3%, 1,510 of it on
+js/sheet.js. Suite 819 -> 830 tests.
 ### The overlay reads the Room Matrix document directly
 
 **Decided.** `scripts/lib/club-occupancy.mjs` accepts the parsed

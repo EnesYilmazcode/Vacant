@@ -48,7 +48,11 @@ const clockTime = (s) => (String(s).match(/\d{1,2}:\d{2}[ap]m/) || [null])[0];
 
 test('every screenshot the README shows is committed', () => {
   const onDisk = new Set(readdirSync(MEDIA).filter((f) => f.endsWith('.webp')));
-  assert.ok(shots.length >= 5, `the README shows ${shots.length} screenshots`);
+  // Four, not five. The fifth was the list dragged up to fill the screen, and
+  // that stopped being a second state the day the list started there: with
+  // nothing on the map there is nothing under the sheet to uncover, so the
+  // photograph was the one above it twice.
+  assert.ok(shots.length >= 4, `the README shows ${shots.length} screenshots`);
   for (const shot of shots) {
     assert.ok(onDisk.has(`${frameOf(shot.src)}.webp`), `${shot.src} is referenced but not committed`);
   }

@@ -427,38 +427,63 @@ async function run() {
       else problems.push(`${key}: ${detail}`);
     };
 
-    // 1. the question, over the flyover
-    const askCopy = await page.evaluate(`document.querySelector('#prov').textContent.trim()`);
-    if (!askCopy) problems.push('ask: the provenance line is empty');
-    await shoot('ask', askCopy);
+    // 1. the question, over the flyover. The four durations ARE the question
+    //    now; the label above them and the term line below are both gone, and
+    //    the frame is worth nothing if either came back.
+    const ask = await page.evaluate(`(() => ({
+      opts: [...document.querySelectorAll('#ask .opt[data-min]')].map(b => b.textContent.trim()),
+      chosen: (document.querySelector('#ask .opt.primary') || {}).textContent,
+      copy: document.getElementById('ask').innerText.replace(/\\s+/g, ' ').trim(),
+    }))()`);
+    if (ask.opts.length !== 4) problems.push(`ask: ${ask.opts.length} durations on screen`);
+    if (!ask.chosen) problems.push('ask: no duration is marked chosen');
+    if (/How long/i.test(ask.copy)) problems.push('ask: the question label is back');
+    if (/\b(Autumn|Spring|Summer) \d{4}\b/.test(ask.copy)) problems.push('ask: the term line is back');
+    // `?? 'none'` rather than ask.chosen.trim(): undefined is exactly what the
+    // check two lines up records, and reading through it here killed the run
+    // with a TypeError instead of reporting the failure it had just found.
+    await shoot('ask', `${ask.opts.join(', ')}; ${(ask.chosen ?? 'none').trim()} chosen`);
 
-    // 2. the ranked list at peek height
+    // 2. the ranked list. Nothing is selected yet, so there is nothing on the
+    //    map, so the list has the screen: the sheet rests at full height and
+    //    the canvas is faded out under it.
     await page.tapSelector('.opt[data-min="120"]');
     await page.waitFor(`document.querySelectorAll('#list .row').length > 3`, 'the list to fill');
+    await page.settled();
     await sleep(1500);
     const rows = await page.evaluate(
       `[...document.querySelectorAll('#list .row')].map(r => r.textContent.replace(/\\s+/g, ' ').trim())`,
     );
     console.log('rows   ' + rows.slice(0, 5).join('\n       '));
-    await shoot('list', `${rows.length} rows shown`);
+    const browsing = await page.evaluate(`(() => ({
+      nomap: document.body.classList.contains('nomap'),
+      sheet: document.getElementById('sheet').getBoundingClientRect().height,
+    }))()`);
+    if (!browsing.nomap) problems.push('list: the map is on screen with nothing on it');
+    if (browsing.sheet < 0.7 * SCREEN.height) {
+      problems.push(`list: the sheet rests at ${Math.round(browsing.sheet)}px, not over the map`);
+    }
+    await shoot('list', `${rows.length} rows shown, sheet ${Math.round(browsing.sheet)}px, map covered`);
 
-    // 3. the same list dragged to full height
-    const peek = await page.evaluate(`document.getElementById('sheet').getBoundingClientRect().height`);
-    await page.dragSheet(-0.34 * SCREEN.height);
+    // And it cannot be uncovered by hand either. The two snap points have
+    // collapsed onto each other while nothing is selected, so a pull short of
+    // the dismiss travel returns to full rather than opening a band of campus
+    // with nothing on it. No frame: it is the same picture as the one above,
+    // which is the whole claim.
+    await page.dragSheet(60);
     await page.settled();
-    const full = await page.evaluate(`document.getElementById('sheet').getBoundingClientRect().height`);
-    if (!(full > peek + 100)) problems.push(`list-full: the sheet did not open (${peek} -> ${full})`);
-    await shoot('list-full', `sheet ${Math.round(peek)}px -> ${Math.round(full)}px`);
+    const pulled = await page.evaluate(`document.getElementById('sheet').getBoundingClientRect().height`);
+    if (Math.abs(pulled - browsing.sheet) > 2) {
+      problems.push(`list: a 60px pull moved the sheet ${Math.round(browsing.sheet)} -> ${Math.round(pulled)}`);
+    }
 
-    // 4. one room selected: footprint lit, walk line drawn. The first tap on a
-    //    row selects, so this is one tap and the sheet drops back to peek.
-    await page.dragSheet(0.34 * SCREEN.height);
-    await page.settled();
-    // The chosen room is not always among the four the sheet shows at peek, so
-    // the list is scrolled to it first, which is the scroll a thumb does. It
-    // stops with the row above it flush against the top of the list rather than
-    // centred, because centring cuts the first row in half and a sliced heading
-    // photographs as a bug.
+    // 3. one room selected: the map comes out from under the list with the
+    //    footprint lit and an arrow drawn to it. The first tap on a row
+    //    selects, so this is one tap and the sheet drops back to peek.
+    // The chosen room is not always above the fold, so the list is scrolled to
+    // it first, which is the scroll a thumb does. It stops with the row above it
+    // flush against the top of the list rather than centred, because centring
+    // cuts the first row in half and a sliced heading photographs as a bug.
     await page.evaluate(`(() => {
       const list = document.getElementById('list');
       const row = document.querySelector('#list .row[data-i="${target.i}"]');
@@ -470,10 +495,23 @@ async function run() {
     console.log(`room   row ${target.i}, ${target.name}`);
     await page.tapSelector(`#list .row[data-i="${target.i}"]`);
     await page.waitFor(`document.querySelector('#list .row.on')`, 'the row to light up');
+    await page.settled();
     await sleep(1400);
-    await shoot('room', `${target.name} selected`, target.name);
+    const picked = await page.evaluate(`(() => ({
+      nomap: document.body.classList.contains('nomap'),
+      sheet: document.getElementById('sheet').getBoundingClientRect().height,
+    }))()`);
+    if (picked.nomap) problems.push('room: the map stayed covered over a lit room');
+    if (!(picked.sheet < browsing.sheet - 100)) {
+      problems.push(`room: the sheet did not drop (${Math.round(browsing.sheet)} -> ${Math.round(picked.sheet)})`);
+    }
+    await shoot(
+      'room',
+      `${target.name} selected, sheet ${Math.round(browsing.sheet)}px -> ${Math.round(picked.sheet)}px, map shown`,
+      target.name,
+    );
 
-    // 5. tap the same row again and the room screen opens
+    // 4. tap the same row again and the room screen opens
     await page.tapSelector(`#list .row[data-i="${target.i}"]`);
     await page.waitFor(`!document.getElementById('room').hidden`, 'the room screen');
     await page.waitFor(`document.querySelector('#room .day')`, "today's grid");

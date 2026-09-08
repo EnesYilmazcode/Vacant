@@ -94,9 +94,15 @@
   #map {
     position: fixed; inset: 0; width: 100%; height: 100%; display: block;
     filter: blur(2.5px) saturate(.95); transform: scale(1.03);
-    transition: filter .9s ease, transform .9s ease;
+    transition: filter .9s ease, transform .9s ease, opacity .28s ease;
   }
   #map.settled { filter: none; transform: none; }
+  /* No destination on it, so it is not on screen. It keeps rendering, composed
+     for the band it will have when it comes back, so the first tap reveals a
+     finished frame rather than one built while you watch; js/sheet.js rests the
+     sheet over the whole of it. pointer-events because a pan on an invisible
+     canvas still latches state.userMoved. */
+  body.nomap #map { opacity: 0; pointer-events: none; }
   @media (prefers-reduced-motion: reduce) {
     #map { transition: none; }
   }
@@ -166,9 +172,6 @@
     text-shadow: 0 2px 22px rgba(0,0,0,.75);
   }
   #ask h1 span { color: var(--accent); }
-  /* Centred with everything else in the column. It sat left because #ask-q is
-     as wide as the button row and the paragraph inherited the default. */
-  #ask .q { margin: 0; font-weight: 650; text-align: center; }
   /* width:100% is here to make the buttons equal width, nothing more. An
      earlier comment claimed it fixed a max-content overflow that clipped
      "2 hours" at 390px. It did not: measured, the old row was 312px inside a
@@ -223,9 +226,9 @@
      above, so it has to sit under it. */
   #ask.failed .loading { opacity: 0; }
   .loading { color: var(--dim); font-size: .82rem; opacity: 0; transition: opacity .3s; }
-  /* The term and the read date used to sit in the corner of the result list,
-     where nothing was ever decided by them. They are read here instead, before
-     the answer exists. */
+  /* The quiet lines under the question. The term used to be one and is not any
+     more; what is left is actionable -- the index is old, you are somewhere
+     else, here is what boot failed on. */
   .prov { color: var(--dim); font-size: .8rem; text-align: center; margin: 0; max-width: 26rem; }
   .prov b { color: var(--fg); font-weight: 600; }
   #gate {
@@ -745,7 +748,10 @@
 <section id="ask">
   <h1>Vacant<span>.</span></h1>
   <div id="ask-q">
-    <p class="q">How long?</p>
+    <!-- The visible "How long?" is gone: four buttons reading 30 min, 1 hour,
+         2 hours and rest of day say it on their own. It stays as the group's
+         aria-label, where a reader landing on a bare button row still needs the
+         durations attached to something. -->
     <!-- aria-pressed is authored here, not only set by paintDuration(), so the
          markup and the accent fill agree before any script runs. A remembered
          duration moves both together on boot. Why toggle buttons and not a
@@ -758,7 +764,10 @@
     </div>
   </div>
   <p class="loading">finding campus&hellip;</p>
-  <p class="prov" id="prov" hidden></p>
+  <!-- The term line ("Autumn 2026") stood here. It is a fact about the DATA,
+       on screen every load, that nobody acts on; the case it guarded against,
+       an index from a term that ended, is #stale's job below. Still on the
+       record in the diagnostics block behind "What Vacant knows". -->
   <p class="prov" id="stale" hidden></p>
   <div id="gate" hidden>
     <h2 id="gate-h" tabindex="-1"></h2>

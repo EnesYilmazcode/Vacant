@@ -1399,8 +1399,13 @@ test('the swipe is not the only way to answer the card', () => {
   // invisible to a reader who cannot see the card move, so the card's name says
   // it and the down arrow does it.
   assert.match(swipe, /ArrowDown/);
-  assert.match(swipe, /openList\(\)/);
-  assert.match(bodyOf('paintCard'), /Swipe down for all of them/);
+  assert.match(swipe, /toAsk\(\)/);
+  assert.match(bodyOf('paintCard'), /Swipe down to start over/);
+  // No back arrow either. It was a third piece of chrome on a photograph for a
+  // screen you leave by throwing the card down.
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(css, /body\.carding #back \{ display: none; \}/);
+
   // Scoped to the card itself. The end of the deck still has a button, and
   // should: there is no photograph on that screen, no gesture, and no room left
   // to swipe -- the list is the only thing to offer.
@@ -1410,13 +1415,56 @@ test('the swipe is not the only way to answer the card', () => {
   assert.match(bodyOf('rejectCard'), /\$\('c-top'\)\?\.focus/);
 });
 
-test('taking a room goes through the one door the list already used', () => {
-  // Two ways into the room screen would be two places for its history entry,
-  // its focus move and its map frame to drift apart.
-  assert.match(bodyOf('acceptCard'), /openRoom\(r\.id\)/);
-  const opens = [...APP.matchAll(/\bopenRoom\(/g)];
-  assert.ok(opens.length >= 2, 'openRoom lost a caller');
-  assert.match(bodyOf('openRoom'), /history\.pushState/);
+test('the way is not a dead end', () => {
+  // It has no back button and no sheet to pull down, and on an installed icon
+  // there is no browser chrome behind it either -- so without a gesture of its
+  // own the only way off the last screen of the flow is to relaunch the app.
+  // The plate carries the card's gesture: down goes back a step, which from
+  // here is the card that was taken, with the deck still on the same room.
+  const swipe = bodyOf('attachWaySwipe');
+  assert.match(swipe, /dy > SWIPE_PX/);
+  assert.match(swipe, /history\.back\(\)/);
+  // On the plate and not on the section: the rest of that screen is a map, and
+  // a handler over it would swallow every pan.
+  assert.match(APP, /attachWaySwipe\(\$\('way-plate'\)\)/);
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(css, /#way \{[^}]*pointer-events: none/);
+  assert.match(css, /#way \.c-plate \{[^}]*touch-action: none/);
+  // And from a keyboard, off the heading showWay moves focus to.
+  const keys = bodyOf('showWay');
+  assert.match(keys, /way-name'\)\.onkeydown/);
+  assert.match(keys, /e\.key !== 'ArrowDown' && e\.key !== 'Escape'/);
+  // Which means the way needs a history entry of its own for back to land on.
+  assert.match(bodyOf('openWay'), /history\.pushState\(\{ v: 'way'/);
+});
+
+test('a press on a verdict button is not eaten by the card under it', () => {
+  // The card captures the pointer to follow a drag, and pointer capture
+  // retargets pointerup and CLICK onto the capturing element. So a press of the
+  // bin or the tick was delivered to the card and swallowed: scripts/shoot.mjs
+  // pressed the bin 120 times and never left the first room. The guard is the
+  // one the sheet has had all along, and both are checked here so neither can
+  // be dropped again.
+  const card = bodyOf('attachSwipe');
+  assert.match(card, /if \(e\.target\.closest\('button'\)\) return;/);
+  assert.match(card, /setPointerCapture/);
+  assert.ok(
+    card.indexOf("closest('button')") < card.indexOf('setPointerCapture'),
+    'the card captures the pointer before it checks what was pressed',
+  );
+});
+
+test('taking a room shows the way to it, not a second list of rooms', () => {
+  // The room screen carries the day as a calendar and the ranking behind it,
+  // and by the time you have said yes the question is which way to walk.
+  assert.match(bodyOf('acceptCard'), /openWay\(r\.id\)/);
+  assert.match(bodyOf('openWay'), /history\.pushState/);
+  // It is the map and one plate: no sheet, no pane, no rows.
+  const way = bodyOf('showWay');
+  assert.match(way, /\$\('sheet'\)\.hidden = true/);
+  assert.match(way, /for \(const pane of PANES\) \$\(pane\)\.hidden = true/);
+  // And the camera composes for a screen with nothing over it.
+  assert.equal(REST.way, 0, 'the way reserves room for a sheet it does not have');
 });
 
 test('a re-rank puts the deck back on top', () => {

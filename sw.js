@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 143,433 bytes, data 91,951.
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 146,240 bytes, data 91,951.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these sixteen files, which is most of a percent of
@@ -30,6 +30,12 @@
 // wrong; the correction then went stale by 758 bytes, and integrating the
 // screens lane put it 34.3% out in one merge. scripts/test/sw.test.mjs
 // recomputes both now.
+//
+// It read 143,433 before taking a room became a screen of its own, which cost
+// 2,807: 2,160 on js/app.js for the way -- the map with the walk drawn on it and
+// one plate, which is where the tick goes now instead of the room's calendar --
+// 524 on index.html for that screen and for the frosted plate over the
+// photograph, and 123 on js/sheet.js for a screen that has no sheet at all.
 //
 // It read 130,647 before the map learned to stay off screen until a row is
 // tapped, which cost 3,047 gzipped bytes over four files. 1,510 of them are on
@@ -58,7 +64,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-807f1b2';
+const SHELL_CACHE = 'vacant-shell-5d1c557';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also
@@ -100,8 +106,8 @@ const PHOTO = /\/data\/photos\/[^/]+\.webp$/;
 // restating it, because the restatement is what drifted.
 //
 // They are in addAll rather than a second best-effort pass, and that is the
-// argued half: the four are 25,593 of the 143,433 gzipped bytes here, so
-// install does 21.7% more work before it resolves, and a strict tier that fails
+// argued half: the four are 25,716 of the 146,240 gzipped bytes here, so
+// install does 21.3% more work before it resolves, and a strict tier that fails
 // fails the whole install. It is still right. A best-effort tier is for things
 // the app is better with; js/app.js cannot evaluate without js/state.js. And a
 // rejected install is retried where a resolved lie is not.

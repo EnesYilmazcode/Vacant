@@ -340,19 +340,29 @@
 
   /* The plate. Everything the card SAYS is on it, so the text has one contrast
      problem to solve instead of one per line, and it reads at the same weight
-     over a dark lecture hall and a wall of windows. Inset from the top rather
-     than pinned to it, so the back arrow beside it has room. */
-  /* Centred, and BELOW the row the icons are in. It used to be inset on the
-     left to dodge the back arrow, which made it the only thing on the screen
-     that was not symmetrical, and an off-centre plate over a centred photograph
-     reads as a mistake. It is also bigger than it was: this is the only text on
-     the screen and it is read at arm's length on a phone. */
+     over a dark lecture hall and a wall of windows. It is bigger than it was:
+     this is the only text on the screen and it is read at arm's length.
+
+     Narrower than the phone and centred in it, so it reads as a label ON the
+     photograph rather than as a bar across it. max-width rather than a pair of
+     insets -- the insets were what made it the width of the screen -- and it was
+     inset on the left before that, to dodge a back arrow this screen no longer
+     has.
+
+     Frosted: the reference Enes sent is a plate you can see the room through,
+     and a flat 78% panel is not that. backdrop-filter was taken out of this rule
+     once, because it made scripts/shoot.mjs refuse the frame as still moving;
+     that check compares within a tolerance now, for the raster noise a
+     photograph brings, and this sits well inside it. */
   .c-plate {
     position: absolute; z-index: 2; top: calc(var(--safe-t) + 5.6rem);
-    left: .9rem; right: .9rem;
-    background: rgba(18, 24, 33, .78);
-    border: 1px solid rgba(255,255,255,.1); border-radius: 16px;
-    padding: .85rem 1rem; text-align: center;
+    left: 50%; transform: translateX(-50%);
+    width: calc(100% - 1.8rem); max-width: 20rem;
+    background: rgba(18, 24, 33, .55);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    backdrop-filter: blur(14px) saturate(1.3);
+    border: 1px solid rgba(255,255,255,.14); border-radius: 16px;
+    padding: .8rem .9rem; text-align: center;
   }
   .c-b {
     margin: 0; font-size: clamp(1.35rem, 7vw, 1.8rem); font-weight: 700;
@@ -453,22 +463,28 @@
      js/sheet.js rests it at the full viewport height to match. */
   body.carding #sheet { border-radius: 0; border-top: 0; background: none; }
   body.carding #sheet .handle { display: none; }
-  /* The back arrow loses its disc here too, for the same reason the verdicts
-     did, and moves in to sit level with them. Only on this screen: everywhere
-     else it is over a map or a panel and the disc is what separates it. */
-  /* The same size and the same corner inset as the two verdicts below it, which
-     is what makes the four of them read as one set rather than as a small thing
-     at the top and two big ones at the bottom. */
-  body.carding #back {
-    border: 0; background: none; padding: 0;
-    min-width: 60px; min-height: 60px; width: 60px; height: 60px;
-    top: calc(var(--safe-t) + 1.1rem); left: 1.1rem;
-  }
-  body.carding #back .ico {
-    width: 40px; height: 40px; stroke-width: 2.1;
-    filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
-  }
+  /* No back arrow on the card. It was a third piece of chrome on a photograph
+     for a screen you leave by throwing the card down, and the duration behind it
+     is one tap to set again. The gesture is not printed anywhere: Enes,
+     "dont have text that says swipe down, it should be something ppl learn".
+     It is in the card's accessible name, where only a screen reader reads it,
+     because a gesture nothing announces is not learnable at all by somebody who
+     cannot see the card move. */
+  body.carding #back { display: none; }
 
+  /* The way. The map is already fixed behind everything, so this is a plate and
+     a hit area and nothing else: no sheet, no rounded panel, no list of the
+     rooms you just said no to. Enes: "once they click check on a room they dont
+     need to see the other rooms tbh, just the arrow pointing them to the room". */
+  #way { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+  /* The plate is the only thing on this screen a finger can hold, so it is also
+     the only thing that takes the pointer: over the map, a handler would fight
+     every pan. touch-action so the browser never claims the downward drag. */
+  #way .c-plate { pointer-events: auto; touch-action: none; cursor: grab; }
+  #way .c-plate.snap { transition: transform .22s cubic-bezier(.22,.61,.36,1); }
+  @media (prefers-reduced-motion: reduce) {
+    #way .c-plate.snap { transition: none; }
+  }
 
   /* --- the answer --- */
   /* The sheet carries the column width itself, rather than running the full
@@ -960,6 +976,17 @@
   <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg>
 </button>
 <p id="say" class="sr" aria-live="polite"></p>
+
+<!-- Where the room is, and nothing else. Reached by taking a card, and the
+     only thing between a reader and the walk. It is an overlay rather than a
+     pane of the sheet because it has no panel: it is the campus map with one
+     plate over it. -->
+<section id="way" hidden>
+  <div class="c-plate" id="way-plate">
+    <h2 class="c-b" id="way-name"></h2>
+    <p class="c-facts" id="way-facts"></p>
+  </div>
+</section>
 
 <section id="ask">
   <h1>Vacant<span>.</span></h1>

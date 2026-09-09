@@ -174,6 +174,25 @@ class Phone {
     await this.call('Input.dispatchMouseEvent', at(box.y + dy, 'mouseReleased', 0));
   }
 
+  // A slow downward pull on whatever is named, released at the bottom of it.
+  // dragSheet is the same motion hardwired to #handle; this one is for the
+  // gestures that live on something else, like the plate on the way screen.
+  async pullDown(selector, dy) {
+    const box = await this.evaluate(`(() => {
+      const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`);
+    const at = (y, type, buttons) => ({ x: box.x, y, type, buttons, button: 'left', clickCount: 1 });
+    await this.call('Input.dispatchMouseEvent', at(box.y, 'mouseMoved', 0));
+    await this.call('Input.dispatchMouseEvent', at(box.y, 'mousePressed', 1));
+    const steps = 12;
+    for (let i = 1; i <= steps; i++) {
+      await this.call('Input.dispatchMouseEvent', at(box.y + (dy * i) / steps, 'mouseMoved', 1));
+      await sleep(24);
+    }
+    await this.call('Input.dispatchMouseEvent', at(box.y + dy, 'mouseReleased', 0));
+  }
+
   // The card, dragged and HELD. Every other frame in here is a screen at rest;
   // this one is deliberately mid-gesture, because the stamp that says which
   // verdict a release would fire only exists while a finger is on the card.
@@ -369,6 +388,11 @@ const clockTime = (s) => (String(s).match(/\d{1,2}:\d{2}[ap]m/) || [null])[0];
 
 // How far down the ranked list the search for a room is allowed to go.
 const PROBE_ROWS = 20;
+
+// How many times the run will press the bin before it decides the deck does not
+// end. The deck is the ranking, which is 35 rooms at the pinned minute; a run
+// that gets past this is looping, not walking.
+const DECK_MAX = 120;
 
 // Which room the last two frames are of. Decided by opening rooms and reading
 // them back, not by guessing from the list row.
@@ -589,10 +613,9 @@ async function run() {
     await page.settled();
     await sleep(1400);
     const card = await page.evaluate(`(() => {
-      const pick = (sel) => (document.querySelector(sel) || {}).textContent || '';
+      const pick = (sel) => (document.querySelector('#card ' + sel) || {}).textContent || '';
       const img = document.getElementById('c-img');
       return {
-        pos: pick('.c-pos').trim(),
         title: pick('.c-b').trim(),
         facts: pick('.c-facts').replace(/\\s+/g, ' ').trim(),
         acts: [...document.querySelectorAll('.c-act')].map((b) => b.getAttribute('aria-label')),
@@ -602,7 +625,7 @@ async function run() {
         plain: document.getElementById('c-top').classList.contains('plain'),
       };
     })()`);
-    console.log(`card   ${card.pos}  ${card.title}  ${card.facts}`);
+    console.log(`card   ${card.title}  ${card.facts}`);
     console.log(`photo  ${card.photo ?? '(none)'}  ${card.drawn ?? ''}`);
     // The room and the building are the two things this screen exists to say.
     if (!card.title) problems.push('card: nothing names the room');
@@ -625,7 +648,7 @@ async function run() {
     // gets a 786x1704 canvas. A canvas that came out 0 wide is a draw that
     // happened before the pane had a size.
     else if (!/^\d{3,}x\d{3,}$/.test(card.drawn ?? '')) problems.push(`card: the canvas is ${card.drawn}`);
-    await shoot('card', `${card.pos}, ${card.title}, ${card.facts}`);
+    await shoot('card', `${card.title}, ${card.facts}`, target.name);
 
     // 2b and 2c. The same card, held mid-swipe in each direction. This is the
     //   only part of the screen no still frame can show: the stamp that says
@@ -648,7 +671,11 @@ async function run() {
     if (!(left.no > 0.6)) problems.push(`swipe-next: the NEXT stamp is at ${left.no}`);
     if (left.yes > 0.05) problems.push(`swipe-next: the GO stamp is showing too, at ${left.yes}`);
     if (!(left.moved < atRest.moved - 50)) problems.push('swipe-next: the card did not follow the pointer');
-    await shoot('swipe-next', `held ${Math.round(atRest.moved - left.moved)}px left, NEXT showing`);
+    await shoot(
+      'swipe-next',
+      `held ${Math.round(atRest.moved - left.moved)}px left, NEXT showing`,
+      target.name,
+    );
     await page.dropCard();
 
     await page.holdCard(72);
@@ -656,7 +683,11 @@ async function run() {
     if (!(right.yes > 0.6)) problems.push(`swipe-go: the GO stamp is at ${right.yes}`);
     if (right.no > 0.05) problems.push(`swipe-go: the NEXT stamp is showing too, at ${right.no}`);
     if (!(right.moved > atRest.moved + 50)) problems.push('swipe-go: the card did not follow the pointer');
-    await shoot('swipe-go', `held ${Math.round(right.moved - atRest.moved)}px right, GO showing`);
+    await shoot(
+      'swipe-go',
+      `held ${Math.round(right.moved - atRest.moved)}px right, GO showing`,
+      target.name,
+    );
     await page.dropCard();
 
     // Letting go under the threshold puts it back, so the deck is where it was.
@@ -665,10 +696,90 @@ async function run() {
       problems.push(`the card did not return to rest: ${atRest.moved} -> ${back.moved}`);
     }
 
-    // 3. the ranked list. There is no button for it: the screen is a photograph
-    //    and three icons, so the whole list lives on a downward throw of the
-    //    card, which is the one gesture it was not already using.
-    await page.throwCard(0, 150);
+    // 3. the way. Taking a card is the whole flow now: the map with the walk
+    //    line on it and one plate, and nothing else. No rows, no calendar.
+    //
+    await page.throwCard(150, 0);
+    await page.waitFor(`!document.getElementById('way').hidden`, 'the way screen');
+    await page.settled();
+    await sleep(1400);
+    const way = await page.evaluate(`(() => {
+      const pick = (sel) => (document.querySelector('#way ' + sel) || {}).textContent || '';
+      return {
+        name: pick('.c-b').trim(),
+        facts: pick('.c-facts').replace(/\\s+/g, ' ').trim(),
+        sheet: document.getElementById('sheet').hidden,
+        panes: ['card','list','room','near','pick','about'].filter((id) => !document.getElementById(id).hidden),
+        nomap: document.body.classList.contains('nomap'),
+        back: document.getElementById('back').hidden
+          || getComputedStyle(document.getElementById('back')).display === 'none',
+      };
+    })()`);
+    console.log(`way    ${way.name}  ${way.facts}`);
+    // Everything that is NOT on this screen is the point of it.
+    if (!way.sheet) problems.push('way: the sheet is still up behind the map');
+    if (way.panes.length) problems.push(`way: ${way.panes.join(', ')} is still showing`);
+    if (way.nomap) problems.push('way: the map is covered, on the one screen that is a map');
+    if (!way.name) problems.push('way: nothing names the room');
+    if (!/min/.test(way.facts)) problems.push(`way: no walk on it: "${way.facts}"`);
+    await shoot('way', `${way.name}, ${way.facts}`, target.name);
+
+    // The way has no back button and no sheet, and on an installed icon there is
+    // no browser chrome behind it, so the pull on the plate is the only thing
+    // between a reader and a screen they cannot leave. It goes back a step,
+    // which is the card that was taken, with the deck still on the same room --
+    // the undo. No frame: what is being checked is that this screen goes away.
+    await page.pullDown('#way-plate', 140);
+    await page.waitFor(`!document.getElementById('card').hidden`, 'the card to come back');
+    await page.settled();
+    const leaving = await page.evaluate(`(() => ({
+      way: document.getElementById('way').hidden,
+      carding: document.body.classList.contains('carding'),
+      room: (document.querySelector('#card .c-b') || {}).textContent || '',
+    }))()`);
+    if (!leaving.way) problems.push('way: pulling the plate down left the way screen up');
+    if (!leaving.carding) problems.push('way: pulling the plate down did not land on the card');
+    if (leaving.room !== way.name) {
+      problems.push(`way: back from the way landed on "${leaving.room}", not "${way.name}"`);
+    }
+    console.log(`way    pulled down -> the card, still ${leaving.room}`);
+
+    // 4. the ranked list. It used to be a downward throw of the card; that
+    //    gesture goes back to the question now, and the list is the button at
+    //    the end of the deck instead -- which is exactly where somebody who has
+    //    said no to every room ends up. So the way to it is to say no to every
+    //    room, and that is what this does. Nothing is staged: every screen below
+    //    is reached by tapping, the same as every screen above it.
+    //
+    //    From the question, because the way screen is a map with one plate on it
+    //    and has nothing to tap.
+    await page.boot(url);
+    await page.tapSelector('.opt[data-min="120"]');
+    await page.waitFor(`document.getElementById('c-top')`, 'the first card again');
+    //    Pressing the bin rather than throwing the card, because the button is
+    //    the thing that has to be pressed: it was dead to a finger until this
+    //    walk found it. The card captured the pointer on pointerdown, and
+    //    pointer capture retargets click onto the capturing element, so 120
+    //    presses of the bin left the first room on screen. Reading the room off
+    //    the plate each time is what turns that into a failure rather than a
+    //    hang.
+    const onDeck = () => page.evaluate(`(document.querySelector('#card .c-b') || {}).textContent || ''`);
+    let binned = 0;
+    while (!(await page.evaluate(`!!document.getElementById('c-list')`))) {
+      if (binned >= DECK_MAX) {
+        problems.push(`the deck had not ended after ${binned} rooms`);
+        break;
+      }
+      const was = await onDeck();
+      await page.tapSelector('#c-no');
+      if ((await onDeck()) === was) {
+        problems.push(`the bin did nothing: "${was}" is still on the card after pressing it`);
+        break;
+      }
+      binned += 1;
+    }
+    console.log(`deck   ${binned} rooms binned to reach the end of the deck`);
+    await page.tapSelector('#c-list');
     await page.waitFor(`document.querySelectorAll('#list .row').length > 3`, 'the list to fill');
     await page.settled();
     await sleep(1500);
@@ -680,6 +791,7 @@ async function run() {
       nomap: document.body.classList.contains('nomap'),
       sheet: document.getElementById('sheet').getBoundingClientRect().height,
     }))()`);
+    if (rows.length !== binned) problems.push(`list: ${rows.length} rows behind a deck of ${binned}`);
     if (!browsing.nomap) problems.push('list: the map is on screen with nothing on it');
     if (browsing.sheet < 0.7 * SCREEN.height) {
       problems.push(`list: the sheet rests at ${Math.round(browsing.sheet)}px, not over the map`);
@@ -698,7 +810,7 @@ async function run() {
       problems.push(`list: a 60px pull moved the sheet ${Math.round(browsing.sheet)} -> ${Math.round(pulled)}`);
     }
 
-    // 4. one room selected: the map comes out from under the list with the
+    // 5. one room selected: the map comes out from under the list with the
     //    footprint lit and an arrow drawn to it. The first tap on a row
     //    selects, so this is one tap and the sheet drops back to peek.
     // The chosen room is not always above the fold, so the list is scrolled to
@@ -732,7 +844,10 @@ async function run() {
       target.name,
     );
 
-    // 5. tap the same row again and the room screen opens
+    // 6. tap the same row again and the room screen opens: the whole day as a
+    //    calendar, doors included. This is the screen the card deliberately does
+    //    NOT show once a room has been taken -- by then the question is which
+    //    way to walk -- and it is still the screen for reading a room properly.
     await page.tapSelector(`#list .row[data-i="${target.i}"]`);
     await page.waitFor(`!document.getElementById('room').hidden`, 'the room screen');
     await page.waitFor(`document.querySelector('#room .day')`, "today's grid");

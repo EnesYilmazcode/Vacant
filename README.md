@@ -10,7 +10,7 @@ it. Bin it and it hands you the next one. Take it and it shows you the way.
 
 | | |
 | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![One card in the middle of a dark screen: a photograph of Cunz Hall 160, an empty classroom with rows of tables and yellow chairs, a clock and a door at the far end. The photograph is the whole screen. A back arrow sits over it at the top left, a translucent plate under it reads Cunz Hall 160 with no class rest of today, 4 min walk and 42 seats beneath, and a bin and a tick sit on the bottom corners at the same size and inset as the arrow.](docs/media/card.webp) |
+| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![One card, filling the screen: a photograph of Cunz Hall 160, an empty classroom with rows of tables and yellow chairs, a clock and a door at the far end. A narrow frosted plate floats over the ceiling reading Cunz Hall 160, with no class, 4 min and 42 seats on the line under it. A bin and a tick sit on the bottom corners. Nothing else is on the screen.](docs/media/card.webp) |
 | One question. | One answer. |
 
 ## Yours for, not free until
@@ -44,20 +44,51 @@ you commit to it.
 
 | | |
 | :--: | :--: |
-| ![The same card dragged left and held. The photograph of the room has slid off the left edge and tilted, and a grey NEXT badge has appeared on the corner still on screen.](docs/media/swipe-next.webp) | ![The same card dragged right and held. The photograph has slid right and tilted the other way, and a red GO badge has appeared on the corner still on screen, over the plate reading Cunz Hall 160.](docs/media/swipe-go.webp) |
+| ![The same card dragged left and held. The photograph of Cunz Hall 160 has slid off the left edge and tilted, and a grey NEXT badge has appeared on the corner still on screen.](docs/media/swipe-next.webp) | ![The same card dragged right and held. The photograph has slid right and tilted the other way, and a red GO badge has appeared on the corner still on screen, over the plate reading Cunz Hall 160.](docs/media/swipe-go.webp) |
 | Left: the next room, nearest first. | Right: this one, and the way there. |
 
 The buttons under the card do the same two things, and so do the left and right
 arrow keys. A gesture nothing announces is unreachable from a keyboard and
-invisible to a screen reader.
+invisible to a screen reader. They were also, until `scripts/shoot.mjs` tried to
+press one, doing nothing at all: the card takes the pointer capture to follow a
+drag, and pointer capture retargets the *click* onto the capturing element, so
+every press of the bin went to the card and was swallowed. A hundred and twenty
+presses left the first room on screen. The card steps aside for a control now,
+the way the sheet already did for its handle and its search field.
 
-The ranking is still all there, one downward throw of the card away. Every row
-is the same answer the card gives, one per building, nearest first.
+**Throw the card down and you are back at the question.** There is no back arrow
+on this screen: it was a third piece of chrome on a photograph, and the duration
+is one tap to set again. The gesture is not printed anywhere either, because a
+label is one more thing to read on a screen whose whole argument is that one room
+is the answer -- but it is in the card's accessible name, where a screen reader
+reads it out, since a gesture nothing announces is not learnable at all by
+somebody who cannot see the card move.
+
+## Take it and it shows you the way
+
+Nothing else. Not the ranking you just said no to, not the room's calendar: by
+the time you have said yes, the only question left is which way to walk.
+
+| |
+| :--: |
+| ![The campus map filling the screen at night, with Cunz Hall's footprint outlined in red, a dashed line running from the blue dot to it and an arrowhead pointing into the building. One frosted plate near the top reads Cunz Hall 160, with no class, 4 min and 42 seats under it.](docs/media/way.webp) |
+| The answer, and the way to it. |
+
+Pull the plate down and you are back on the card you took, deck still on the same
+room, so one more swipe is the next one. That gesture is on the plate rather than
+on the screen because the rest of the screen is a map you want to pan. It is also
+the only thing between a reader and a screen they cannot leave: an installed icon
+has no browser chrome behind it, and this one has no back button.
+
+## Say no to all of them
+
+Then the last card offers the ranking as a list, which is every row the deck
+would have shown you, one per building, nearest first.
 
 | |
 | :--: |
 | ![The ranked list, filling the screen with no map behind it. One room per building, under a line reading "You asked for 2h00." Cunz Hall 160, 4 min walk, no class rest of today, 42 seats. Dulles Hall 012, 4 min, no class rest of today, 25 seats. Seven more below them.](docs/media/list.webp) |
-| One tap behind the card, for when you would rather scan. |
+| Behind the end of the deck, for when you would rather scan. |
 
 | | |
 | :--: | :--: |
@@ -68,8 +99,9 @@ is the same answer the card gives, one per building, nearest first.
 
 The card shows the room, because a room you can see is a room you can recognise
 from the corridor, and "Cunz Hall 160" never told anybody that. It is the whole
-screen: a back arrow over it, one translucent plate near the top, and the two
-verdicts on the bottom corners.
+screen: one frosted plate near the top, and the two verdicts on the bottom
+corners. The plate is narrower than the phone and centred in it, so it reads as a
+label ON the photograph rather than as a bar across it.
 
 **The top of the frame is stretched to make it fit.** A 3:2 photograph in a
 1:2.2 screen is a 3.25x aspect gap, and a cover crop pays for it in width: 31%
@@ -86,13 +118,12 @@ of a 16:9 one, and both read as a high ceiling rather than as a distortion.
 `dev/warp.html` is the bench those numbers came off: both sliders, all 306
 rooms, and a line showing how much of the picture the plate hides.
 
-The screen is the picture and three icons -- back at the top left, the two
-verdicts on the bottom corners, all the same size and the same distance from
-their own corner. There is no control for the ranking, because an unlabelled
-glyph is a puzzle and a label is one more thing to read on a screen whose whole
-argument is that one room is the answer. **Throw the card down** and the list
-opens; the down arrow key does the same, and the card says so to a screen
-reader.
+The screen is the picture and two icons, the same size and the same distance
+from their own corner. There is no third one. The back arrow that used to sit
+opposite them went because the card is a photograph and every glyph on it is
+something between the reader and the room, and the ranking has never had a
+control because an unlabelled glyph is a puzzle and a label is one more thing to
+read.
 
 **306 of the 425** have one. The other 119 are departmental rooms nobody has
 photographed, and they get the same card without a picture: the words were always
@@ -126,7 +157,7 @@ sits at the bottom, then **Add to Home Screen**. iOS 26 defaults to that Compact
 layout, which is why the app offers you both. On Android, Chrome has **Install
 app** in its menu.
 
-Installed, the whole app is 70 KB of shell and 63 KB of schedule, gzipped, and
+Installed, the whole app is 143 KB of shell and 90 KB of schedule, gzipped, and
 none of it is fetched again to answer a question. Turn the network off, open it,
 and it still ranks rooms. That matters because the moment you want it most is the
 moment you are in a basement with one bar.

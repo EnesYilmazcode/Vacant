@@ -3663,3 +3663,102 @@ Spaces entry links a photograph that 404s. The script asks Node for the real
 status when a browser fetch fails -- a browser cannot tell a dead link from a
 dead network, because the 404 page has no CORS header on it -- and reports a
 genuine 404 as OSU's gap rather than its own failure.
+
+---
+
+## 2026-09-08  The tick goes to the way, the back arrow goes, and the bin was never working
+
+Eleven instructions from Enes in one message, and one bug found while proving
+they landed.
+
+**Decided. Taking a room opens a screen that is the map and nothing else.** The
+tick used to call the same `openRoom()` the list's second tap fires, which is the
+room screen: the day drawn as a calendar, the ranking still under it, the sheet
+over the map. Enes: "once they click check on a room they dont need to see the
+other rooms tbh, just the arrow pointing them to the room, also maybe the room
+schedule, like the list of other classes is irrelevant." He is right about when
+it stops being relevant. The calendar is how you *choose* a room; by the time you
+have said yes the only question left is which way to walk.
+
+So `#way` is an overlay, not a pane: no sheet, no panel, no rows. The map is
+already fixed behind every screen and already knows how to light a footprint and
+draw an arrow to it, so the screen is that map with one plate on it. `REST.way`
+is 0 in `js/sheet.js` for the same reason `ask` is -- a screen with no sheet
+leaves the whole canvas as the band, and `bandFor()` reads that table, so leaving
+it out would have framed the walk line for a panel that is not there.
+
+The room screen is not deleted and is not unreachable. It is where it always was,
+two taps behind a row of the list.
+
+**Decided. No back arrow on the card, and down goes back to the question.** This
+reverses the down gesture decided in *The answer is one card you swipe* above,
+where down opened the ranking. Enes: "lowkey the back arrow is ugly ... people
+will just have to swipe down to go back to the initial screen, but like yea, dont
+have text that says swipe down, it should be something ppl learn."
+
+Three icons on a photograph was one too many, and the thing the arrow did -- go
+back and set a different duration -- is one tap once you are at the question. The
+gesture is printed nowhere on the screen. It is in the card's accessible name,
+which ends "Swipe down to start over", because a gesture nothing announces is not
+learnable at all by somebody who cannot see the card move; that is the same
+reason the previous entry gave for announcing the old one.
+
+**The list moved rather than closing.** It was on the down throw and the down
+throw now goes to the question, so the ranking is behind the button at the end of
+the deck -- which is where somebody who has said no to all 35 rooms already ends
+up, and the one place a list is obviously what they want.
+
+**Found while proving it: the two verdict buttons had never worked.** The card
+calls `setPointerCapture` on `pointerdown` to follow a drag, and pointer capture
+retargets `pointerup`, `mouseup` **and `click`** onto the capturing element. So
+every press of the bin or the tick was delivered to the card and swallowed. Only
+the keyboard path worked, which is the exact reverse of what those buttons are
+for: they exist because a swipe is invisible to a screen reader and unreachable
+from a keyboard, and the pointer is the one input they were failing.
+
+Measured with `scripts/shoot.mjs`, which walks to the end of the deck by pressing
+the bin: **120 presses left the first room on screen.** The fix is the guard the
+sheet has had since it learned to drag -- it already steps aside for `#handle`,
+`#find` and the card itself -- and the card was simply missing it. A press that
+lands on a control is a press of that control.
+
+This is why the screenshot script refuses to stage a screen. Nothing about a
+dead button shows up in a unit test of `rejectCard()`; it took something that had
+to actually reach the end of the deck with a finger.
+
+**The plate, in four smaller changes.** Narrower and centred (`max-width: 20rem`,
+`translateX(-50%)`) so it reads as a label ON the photograph rather than a bar
+across it. Frosted -- `backdrop-filter: blur(14px) saturate(1.3)` over a 55%
+ground instead of a flat 78% panel -- to match the reference Enes sent. "no class
+rest of today" shortened to "no class" on the card and the way only, because the
+long form is what the list rows say and the list has the room to say it. The walk
+glyph dropped from the facts line: "4 min" beside a walking figure was the icon
+saying what the words already said.
+
+`backdrop-filter` was taken out of this file once before, because it made
+`scripts/shoot.mjs` refuse the frame as still moving. That check compares within
+a tolerance now -- for the raster noise a downscaled photograph brings -- and the
+blur sits well inside it.
+
+**The way is not a dead end.** It has no back button, no sheet to pull down,
+and on an installed icon no browser chrome behind it either, so without a gesture
+of its own the only way off the last screen of the flow is to relaunch the app.
+Enes is relaxed about that -- "they could just refresh tbh" -- but the fix is the
+gesture the card already has: the plate follows a finger pulled down, and letting
+go goes back a step. From here that is the card that was just taken, with the
+deck still on the same room, so the gesture is an undo and one more swipe is the
+next room; two pulls reaches the question. On the plate and not on the section,
+because the rest of that screen is a map and a handler over it would swallow
+every pan. Escape and the down arrow do it from a keyboard, off the heading the
+screen already moves focus to.
+
+**Cost.** The shell went 143,433 -> 146,240 gzipped bytes, +2.0%: 2,160 on
+`js/app.js` for the way screen and its gesture, 524 on `index.html` for it and
+the frosted plate, 123 on `js/sheet.js` for a screen that has no sheet. Suite
+851 -> 854 tests.
+
+**Two stale numbers fixed on the way past.** The README said the installed app is
+"70 KB of shell and 63 KB of schedule". It is 143 KB and 90 KB, and has been for
+a while: nothing was reading those two figures. `sw.js` already holds its own
+header to the files it caches, so `scripts/test/readme.test.mjs` now holds the
+README to that header and the chain is measured end to end.

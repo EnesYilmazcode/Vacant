@@ -18,7 +18,11 @@ export const ROOM_SHEET = 0.72;
 // viewport() used to hold a second copy of this that said peek on every screen,
 // so the room screen framed the walk line for a 324px sheet and drew it under a
 // 613px one: at 393x852, 164 of the 206px of target ink went under the panel.
-export const REST = { ask: 0, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: FULL, about: FULL };
+// `ask` and `way` are 0 because neither has a sheet: the question is an overlay
+// over the flyover, and the way is the map with one plate on it. A screen with
+// no panel leaves the whole canvas as the band, and bandFor reads this table, so
+// leaving them out would frame the walk line for a sheet that is not there.
+export const REST = { ask: 0, way: 0, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: FULL, about: FULL };
 
 // Where a screen rests once it is covering the map, and the strip it still has
 // to leave at the top: 44px of back button on a 0.6rem inset, plus air. In
@@ -44,7 +48,7 @@ const FULL_BLEED = new Set(['card']);
 // `targeted` is state.selected at every call site. Defaulted true so the screens
 // that always have one read unchanged.
 export const restFor = (screen, targeted = true) =>
-  (FULL_BLEED.has(screen) ? 1 : !targeted && screen !== 'ask' ? COVER : REST[screen]) ?? PEEK;
+  (FULL_BLEED.has(screen) ? 1 : !targeted && screen !== 'ask' && screen !== 'way' ? COVER : REST[screen]) ?? PEEK;
 
 // The strip the sheet is NOT covering, which is what the camera centres in.
 // Keyed to where the screen RESTS so a drag slides the sheet over a map that

@@ -1723,17 +1723,19 @@ function paintNear(reason) {
   state.groups = groups;
 
 
-  // Five doors, five sentences. A building the Registrar publishes as shut
-  // today is a fact and reads as one; only a building nobody publishes anything
-  // about gets "unknown" and the warning colour. The one line every row used to
+  // Four doors, four sentences. A building the Registrar publishes as shut
+  // today is a fact and reads as one. The one line every row used to
   // share said "open till 6:00pm" at 9:40pm, three hours forty after the door
   // had already locked.
+  //
+  // No `unknown` entry: row() below only ever maps over groups.open and
+  // groups.closed, so DOOR[b.when] is never asked for it. See the comment on
+  // closedGroup a few lines down for why groups.unknown stays unrendered.
   const DOOR = {
     open: (b) => [`open till ${clock(b.closesAt)}`, `open until ${spokenClock(b.closesAt)}`],
     before: (b) => [`opens ${clock(b.opensAt)}`, `shut now, opens at ${spokenClock(b.opensAt)}`],
     after: (b) => [`locked ${clock(b.closesAt)}`, `locked since ${spokenClock(b.closesAt)}`],
     'closed-today': () => ['closed today', 'published as closed all day today'],
-    unknown: () => ['hours unknown', 'opening hours not published'],
   };
 
   // An open row is a name and a walk. It used to carry a room count, an "open

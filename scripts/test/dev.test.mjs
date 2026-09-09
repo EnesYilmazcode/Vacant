@@ -93,6 +93,102 @@ test('js/dev.js is never downloaded by a student who did not ask for it', () => 
   assert.match(read('js/app.js'), /import\('\.\/dev\.js'\)/);
 });
 
+// ---- named scenes
+
+// `?dev=1` opens the panel on the live minute, which at 10pm is a campus with
+// every door shut: true, and nothing to look at. `?dev1` opens it standing
+// somewhere, on a day, at a minute. The panel itself needs a browser; what is
+// checkable here is the URL that arms it and the DATA the date is derived from.
+
+test('a scene name is recognised in all three places it gets typed', () => {
+  // The difference between ?dev=1 and ?dev1 is one character, and both get
+  // typed. So does #dev1, because the app rewrites its own query string and the
+  // hash is what survives a copied URL.
+  const app = read('js/app.js');
+  const body = app.slice(app.indexOf('function devScene('), app.indexOf('function openDev('));
+  assert.match(body, /for \(const key of url\.keys\(\)\) if \(SCENE\.test\(key\)\) return key;/);
+  assert.match(body, /url\.get\('dev'\)/);
+  assert.match(body, /hash\.replace\(\/\^#\/, ''\)/);
+  // And the plain panel is still the plain panel: ?dev=1 is not a scene, so it
+  // must not match the pattern that names one.
+  const SCENE = /^dev\d+$/;
+  assert.equal(SCENE.test('1'), false, '?dev=1 would be read as a scene');
+  assert.equal(SCENE.test('dev'), false);
+  assert.ok(SCENE.test('dev1'));
+  assert.ok(SCENE.test('dev12'));
+});
+
+test('a scene arms dev mode on its own, so one URL is the whole thing', () => {
+  const app = read('js/app.js');
+  const arm = app.slice(app.indexOf('function armDev('));
+  assert.match(arm, /location\.hash === '#dev' \|\| scene/);
+  assert.match(arm, /openDev\(scene\)/);
+  assert.match(read('js/dev.js'), /export function start\(scene\)/);
+});
+
+test('a scene names its place by building code, and the code is a real one', () => {
+  // A place the index does not have would leave the origin alone: a scene that
+  // moved the clock and said nothing about it. js/dev.js falls back to the Oval
+  // for that, and this checks the shipped scene never needs the fallback.
+  const dev = read('js/dev.js');
+  const scenes = dev.slice(dev.indexOf('const SCENES = {'), dev.indexOf('};', dev.indexOf('const SCENES = {')));
+  const codes = [...scenes.matchAll(/place: '(\d+)'/g)].map((m) => m[1]);
+  assert.ok(codes.length >= 1, 'no scene defines a place');
+
+  const current = JSON.parse(read('data/current.json'));
+  const buildings = JSON.parse(read(current.buildings)).buildings;
+  const index = JSON.parse(read(current.rooms));
+  for (const code of codes) {
+    assert.ok(buildings[code], `building ${code} is not in ${current.buildings}`);
+    const rooms = Object.values(index.rooms).filter((r) => r.b === code).length;
+    // buildingOptions() only offers buildings that have rooms in the index, so
+    // a scene pointing at a building with none would silently fall back.
+    assert.ok(rooms > 0, `building ${code} has no rooms, so the panel never offers it`);
+  }
+  // The one Enes asked for.
+  assert.equal(buildings['279'].name, 'Dreese Laboratories');
+});
+
+test('the term ships a day every scene can land on', () => {
+  // The DATE is derived rather than written down: a literal 2026-09-17 in
+  // js/dev.js would name a Thursday in a term that has ended the moment the next
+  // one ships, with nothing to catch it. js/dev.js walks the teaching range for
+  // the first weekday that is neither closed nor inside exams; this checks the
+  // shipped calendar still answers that question, for every day a scene asks
+  // for, and re-derives it the same way rather than trusting the file.
+  const dev = read('js/dev.js');
+  assert.match(dev, /if \(closed\[date\]\) continue;/);
+  assert.match(dev, /date >= exams\.start && date <= exams\.end\) continue;/);
+
+  const current = JSON.parse(read('data/current.json'));
+  const index = JSON.parse(read(current.rooms));
+  const [from, to] = index.teaching;
+  const closed = index.closed ?? {};
+  const exams = index.exams;
+  const iso = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const scenes = dev.slice(dev.indexOf('const SCENES = {'), dev.indexOf('};', dev.indexOf('const SCENES = {')));
+  const days = [...scenes.matchAll(/day: (\d)/g)].map((m) => Number(m[1]));
+  assert.ok(days.length >= 1, 'no scene names a day');
+
+  for (const day of days) {
+    let found = null;
+    const end = new Date(`${to}T12:00`);
+    for (const d = new Date(`${from}T12:00`); d <= end; d.setDate(d.getDate() + 1)) {
+      if (d.getDay() !== day) continue;
+      const date = iso(d);
+      if (closed[date]) continue;
+      if (exams?.start && date >= exams.start && date <= exams.end) continue;
+      found = date;
+      break;
+    }
+    assert.ok(found, `${current.termName} has no teaching day ${day} that is open`);
+    assert.equal(new Date(`${found}T12:00`).getDay(), day);
+    assert.ok(found >= from && found <= to, `${found} is outside the teaching range`);
+  }
+});
+
 test('the dev seam is three exports and no more', () => {
   // A widening seam is how a debug tool ends up load bearing. If this grows,
   // the thing to ask is whether the app grew a state the screens cannot reach.

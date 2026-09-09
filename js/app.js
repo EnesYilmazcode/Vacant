@@ -3603,10 +3603,28 @@ export function devReadout() {
 // that.
 const DEV_KEY = 'vacant.dev';
 
-function openDev() {
+// A SCENE goes further: one URL that also stands you somewhere, on a day, at a
+// minute. `?dev=1` opens the panel on the live moment, which at 10pm is a
+// campus with every door shut and an app correctly refusing to answer -- true,
+// and impossible to look at. `?dev1` opens the same panel already somewhere
+// worth looking at. js/dev.js owns what each name means.
+//
+// Three spellings because all three get typed, and the difference between
+// `?dev=1` and `?dev1` is one character.
+const SCENE = /^dev\d+$/;
+
+function devScene(url, hash) {
+  for (const key of url.keys()) if (SCENE.test(key)) return key;
+  const value = url.get('dev');
+  if (value && SCENE.test(value)) return value;
+  const name = hash.replace(/^#/, '');
+  return SCENE.test(name) ? name : null;
+}
+
+function openDev(scene) {
   if (document.getElementById('dev')) return;
   import('./dev.js')
-    .then((m) => m.start())
+    .then((m) => m.start(scene))
     .catch(() => {
       /* a dev panel that will not load is not worth breaking the app over */
     });
@@ -3614,16 +3632,20 @@ function openDev() {
 
 function armDev() {
   let armed = false;
+  let scene = null;
   try {
     const url = new URLSearchParams(location.search);
-    if (url.get('dev') === '1' || location.hash === '#dev') sessionStorage.setItem(DEV_KEY, '1');
+    scene = devScene(url, location.hash);
+    if (url.get('dev') === '1' || location.hash === '#dev' || scene) {
+      sessionStorage.setItem(DEV_KEY, '1');
+    }
     armed = sessionStorage.getItem(DEV_KEY) === '1';
   } catch {
     /* private mode with storage off is simply not in dev mode */
   }
   if (armed) {
     state.dev = true;
-    openDev();
+    openDev(scene);
   }
 
   let hits = [];

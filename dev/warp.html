@@ -8,7 +8,7 @@
 <style>
   :root {
     --bg: #0b0d10; --fg: #eef1f5; --dim: #a0a9b6; --line: #1d232c;
-    --card: #121821; --accent: #ff4d3d; --line-hi: #39434f;
+    --card: #121821; --accent: #ff4d3d; --line-hi: #39434f; --warn: #ffb02e;
   }
   * { box-sizing: border-box; }
   body {
@@ -20,13 +20,33 @@
   p.why { margin: 0 0 1rem; color: var(--dim); font-size: .85rem; max-width: 34rem; }
   .panel { flex: 1 1 22rem; max-width: 34rem; }
   /* The phone, at the size scripts/shoot.mjs photographs. Everything measured
-     on this bench is measured at the size the app is actually looked at. */
+     on this bench is measured at the size the app is actually looked at, and it
+     carries the same four icons the card does, because whether the picture
+     works is partly whether they stay legible over it. */
   .phone {
     position: relative; width: 393px; height: 852px; flex: none;
     border: 1px solid var(--line-hi); border-radius: 22px; overflow: hidden;
     background: #000;
   }
   .phone canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .ico {
+    fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
+  }
+  .chrome { position: absolute; z-index: 2; color: var(--fg); pointer-events: none; }
+  .chrome.tl { top: .35rem; left: .5rem; }
+  .chrome.tr { top: .35rem; right: .5rem; }
+  .chrome.bl { bottom: 1.1rem; left: 1.2rem; }
+  .chrome.br { bottom: 1.1rem; right: 1.2rem; color: var(--accent); }
+  .chrome.tl .ico, .chrome.tr .ico { width: 26px; height: 26px; stroke-width: 2.1; }
+  .chrome.bl .ico, .chrome.br .ico { width: 34px; height: 34px; stroke-width: 2.1; }
+  .chrome.br .ico { stroke-width: 2.6; }
+  .scrim {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background:
+      linear-gradient(180deg, rgba(11,13,16,.55) 0%, rgba(11,13,16,.28) 14%, rgba(11,13,16,0) 32%),
+      linear-gradient(0deg, rgba(11,13,16,.55) 0%, rgba(11,13,16,0) 18%);
+  }
   .plate {
     position: absolute; z-index: 2; top: 4.2rem; left: .9rem; right: .9rem;
     background: rgba(18, 24, 33, .78); border: 1px solid rgba(255,255,255,.1);
@@ -56,21 +76,30 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem;
     white-space: pre-wrap; line-height: 1.5;
   }
-  .row { display: flex; gap: .5rem; align-items: center; }
+  .out.bad { border-color: var(--warn); color: var(--warn); }
+  .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
   button {
     appearance: none; border: 1px solid var(--line-hi); background: var(--card);
     color: var(--fg); font: inherit; font-size: .85rem; padding: .45rem .7rem;
     border-radius: 8px; cursor: pointer;
   }
   .note { color: var(--dim); font-size: .8rem; margin-top: .6rem; }
+  code { background: var(--card); padding: 1px 4px; border-radius: 4px; }
 </style>
 </head>
 <body>
 
 <div class="phone">
   <canvas id="cv"></canvas>
+  <div class="scrim"></div>
+  <div class="chrome tl"><svg class="ico" viewBox="0 0 24 24"><path d="M15 4 7 12 15 20"/></svg></div>
+  <div class="chrome tr"><svg class="ico" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></div>
+  <div class="chrome bl">
+    <svg class="ico" viewBox="0 0 24 24"><path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>
+  </div>
+  <div class="chrome br"><svg class="ico" viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6"/></svg></div>
   <div class="hidden-band" id="band"><span>under the plate</span></div>
-  <div class="plate"><b id="p-name">Cunz Hall 160</b><span id="p-facts">no class rest of today &middot; 4 min &middot; 42 seats</span></div>
+  <div class="plate"><b id="p-name">&mdash;</b><span id="p-facts">no class rest of today &middot; 4 min &middot; 42 seats</span></div>
 </div>
 
 <div class="panel">
@@ -84,7 +113,7 @@
   </p>
 
   <label for="room">Room</label>
-  <select id="room"></select>
+  <select id="room"><option>loading&hellip;</option></select>
 
   <label for="width">Width kept &mdash; <b id="v-width">0.72</b> of the source</label>
   <input type="range" id="width" min="0.3" max="1" step="0.01" value="0.72">
@@ -93,15 +122,19 @@
   <input type="range" id="bottom" min="1" max="2.4" step="0.01" value="1.23">
 
   <div class="row" style="margin-top:.9rem">
+    <button id="prev">&larr; prev room</button>
+    <button id="next">next room &rarr;</button>
     <button id="reset">Reset to shipped</button>
     <button id="copy">Copy these numbers</button>
     <button id="band-toggle">Hide the plate line</button>
   </div>
 
-  <div class="out" id="out"></div>
+  <div class="out" id="out">starting&hellip;</div>
   <p class="note">
-    Serve the repo and open <code>/Vacant/dev/warp.html</code>. Nothing here is loaded by
-    the app; it reads the same files and runs the same arithmetic.
+    This page has to be <b>served</b>, not opened from disk: it fetches the same JSON the
+    app does, and <code>file://</code> pages are not allowed to. From the repo root run
+    <code>python3 -m http.server 8000</code> and open
+    <code>http://localhost:8000/dev/warp.html</code>.
   </p>
 </div>
 
@@ -112,15 +145,38 @@
 //   source y = sh * (dest y / H) ** p
 //   p        = h * sw / (sh * BOTTOM * w)     so the bottom edge lands on BOTTOM
 //   bands    = 240 straight drawImage calls approximating that curve
-const BASE = new URL('..', location.href).pathname;
 const BANDS = 240;
 const SHIPPED = { width: 0.72, bottom: 1.23 };
 
 const $ = (id) => document.getElementById(id);
 const cv = $('cv');
-const state = { ...SHIPPED, img: null, id: null, meta: null };
+const state = { ...SHIPPED, img: null, id: null, names: {}, ids: [] };
 
 const warpPower = (w, h, sw, sh, bottom) => Math.max(1, (h * sw) / (sh * bottom * w));
+
+// Loudly. The first build of this page did all of its loading in top-level
+// await with no catch, so a single failed fetch killed the module and left the
+// picker empty, the canvas black and NOTHING on screen saying why -- which is
+// exactly what happens when the page is opened from disk instead of served.
+function fail(what, err) {
+  const out = $('out');
+  out.classList.add('bad');
+  out.textContent = [
+    `Could not load ${what}.`,
+    '',
+    location.protocol === 'file:'
+      ? 'This page is open as a file:// URL, and a file:// page is not allowed to\n' +
+        'fetch anything. That is the whole problem: serve the repo instead.\n\n' +
+        '  cd <the repo>\n' +
+        '  python3 -m http.server 8000\n\n' +
+        'then open  http://localhost:8000/dev/warp.html'
+      : `Tried: ${state.base}\n\n${err}\n\n` +
+        'If the path above looks wrong, this page works out where the repo root is\n' +
+        'from its own URL, so serve the repo root and open /dev/warp.html under it.\n' +
+        'If data/photos.json is missing, run:  node scripts/fetch-room-photos.mjs',
+  ].join('\n');
+  $('room').innerHTML = '<option>could not load</option>';
+}
 
 function draw() {
   const img = state.img;
@@ -152,6 +208,7 @@ function draw() {
 
 // What the numbers actually cost, in the units a reader would notice.
 function report(w, h, sw, sh, p) {
+  const img = state.img;
   // The strip the plate covers: its top plus its own height, at the phone size.
   const plateBottom = Math.round(4.2 * 16 + 84);
   $('band').style.height = `${plateBottom}px`;
@@ -159,9 +216,10 @@ function report(w, h, sw, sh, p) {
   const natural = w / sw;
   const bottomScale = h / (sh * p) / natural;
   const midScale = h / (sh * p * 0.5 ** (p - 1)) / natural;
+  $('out').classList.remove('bad');
   $('out').textContent = [
-    `photograph      ${state.id}  ${img_dims()}  aspect ${(sh ? (state.img.naturalWidth / sh).toFixed(3) : '?')}`,
-    `width kept      ${state.width.toFixed(2)}  (${Math.round(sw)} of ${state.img.naturalWidth} px)`,
+    `photograph      ${state.id}  ${img.naturalWidth}x${img.naturalHeight}  aspect ${(img.naturalWidth / sh).toFixed(3)}`,
+    `width kept      ${state.width.toFixed(2)}  (${Math.round(sw)} of ${img.naturalWidth} px)`,
     `bottom stretch  ${state.bottom.toFixed(2)}x`,
     `derived p       ${p.toFixed(3)}`,
     ``,
@@ -174,20 +232,24 @@ function report(w, h, sw, sh, p) {
     `  const WARP_BOTTOM = ${state.bottom.toFixed(2)};`,
   ].join('\n');
 }
-const img_dims = () => (state.img ? `${state.img.naturalWidth}x${state.img.naturalHeight}` : '');
 
 async function load(id) {
   const img = new Image();
   img.decoding = 'async';
-  await new Promise((res, rej) => {
-    img.onload = res;
-    img.onerror = rej;
-    img.src = `${BASE}data/photos/${encodeURIComponent(id)}.webp`;
-  });
+  try {
+    await new Promise((res, rej) => {
+      img.onload = res;
+      img.onerror = () => rej(new Error('the image did not load'));
+      img.src = `${state.base}data/photos/${encodeURIComponent(id)}.webp`;
+    });
+  } catch (e) {
+    fail(`the photograph for ${id}`, String(e));
+    return;
+  }
   state.img = img;
   state.id = id;
-  const room = state.meta?.[id];
-  $('p-name').textContent = room?.name ?? id;
+  $('p-name').textContent = state.names[id] ?? id;
+  $('room').value = id;
   draw();
 }
 
@@ -202,12 +264,20 @@ function bind(id, key, digits) {
 bind('width', 'width', 2);
 bind('bottom', 'bottom', 2);
 
+const step = (by) => {
+  const at = state.ids.indexOf(state.id);
+  if (at < 0) return;
+  load(state.ids[(at + by + state.ids.length) % state.ids.length]);
+};
+$('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
+
 $('reset').onclick = () => {
   Object.assign(state, SHIPPED);
-  $('width').value = SHIPPED.width;
-  $('bottom').value = SHIPPED.bottom;
-  $('v-width').textContent = SHIPPED.width.toFixed(2);
-  $('v-bottom').textContent = SHIPPED.bottom.toFixed(2);
+  for (const [id, key] of [['width', 'width'], ['bottom', 'bottom']]) {
+    $(id).value = SHIPPED[key];
+    $(`v-${key}`).textContent = SHIPPED[key].toFixed(2);
+  }
   draw();
 };
 $('copy').onclick = async () => {
@@ -217,7 +287,7 @@ $('copy').onclick = async () => {
     $('copy').textContent = 'Copied';
     setTimeout(() => ($('copy').textContent = 'Copy these numbers'), 1200);
   } catch {
-    $('out').textContent = text + '\n\n' + $('out').textContent;
+    $('out').textContent = `${text}\n\n${$('out').textContent}`;
   }
 };
 $('band-toggle').onclick = () => {
@@ -227,38 +297,54 @@ $('band-toggle').onclick = () => {
   $('band-toggle').textContent = off ? 'Hide the plate line' : 'Show the plate line';
 };
 
-// The room list, and the names to go with it. Both files the app itself reads.
-const [photos, rooms, current] = await Promise.all([
-  fetch(`${BASE}data/photos.json`).then((r) => r.json()),
-  fetch(`${BASE}data/current.json`)
-    .then((r) => r.json())
-    .then((c) => fetch(`${BASE}${c.rooms}`).then((r) => r.json())),
-  Promise.resolve(null),
-]);
-const buildings = await fetch(`${BASE}data/buildings.json`)
-  .then((r) => r.json())
-  .then((d) => d.buildings)
-  .catch(() => ({}));
+// Where the repo root is, worked out from this page's own URL rather than
+// assumed: served at the root it is /, and on Pages it is /Vacant/.
+const json = async (rel) => {
+  const res = await fetch(state.base + rel);
+  if (!res.ok) throw new Error(`${state.base}${rel} -> HTTP ${res.status}`);
+  return res.json();
+};
 
-state.meta = {};
-for (const id of photos.rooms) {
-  const r = rooms.rooms[id];
-  const b = buildings[r?.b];
-  state.meta[id] = { name: b?.name ? `${b.name} ${r.n ?? ''}`.trim() : id };
+async function boot() {
+  state.base = new URL('..', location.href).pathname;
+  let photos;
+  let rooms;
+  try {
+    photos = await json('data/photos.json');
+    const current = await json('data/current.json');
+    rooms = await json(current.rooms);
+  } catch (e) {
+    fail('the room data', String(e && e.message ? e.message : e));
+    return;
+  }
+  // Names are a nicety, so a missing buildings table is not a failure.
+  const buildings = await json('data/buildings.json')
+    .then((d) => d.buildings)
+    .catch(() => ({}));
+
+  state.ids = photos.rooms ?? [];
+  if (!state.ids.length) {
+    fail('any photographs (data/photos.json lists none)', 'run node scripts/fetch-room-photos.mjs');
+    return;
+  }
+  for (const id of state.ids) {
+    const r = rooms.rooms[id];
+    const b = buildings[r?.b];
+    state.names[id] = b?.name ? `${b.name} ${r.n ?? ''}`.trim() : id;
+  }
+  const select = $('room');
+  select.innerHTML = '';
+  for (const id of [...state.ids].sort((a, b) => (state.names[a] < state.names[b] ? -1 : 1))) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = `${state.names[id]}  (${id})`;
+    select.append(opt);
+  }
+  select.onchange = () => load(select.value);
+  await load(state.ids.includes('CZ0160') ? 'CZ0160' : state.ids[0]);
 }
-const select = $('room');
-// The widest aspects first, then the narrowest: the two ends are where a single
-// pair of numbers is most likely to look wrong, so they are what to check.
-const order = [...photos.rooms].sort((a, b) => (state.meta[a].name < state.meta[b].name ? -1 : 1));
-for (const id of order) {
-  const opt = document.createElement('option');
-  opt.value = id;
-  opt.textContent = `${state.meta[id].name}  (${id})`;
-  select.append(opt);
-}
-select.value = photos.rooms.includes('CZ0160') ? 'CZ0160' : photos.rooms[0];
-select.onchange = () => load(select.value);
-await load(select.value);
+
+boot().catch((e) => fail('the bench', String(e && e.stack ? e.stack : e)));
 </script>
 </body>
 </html>

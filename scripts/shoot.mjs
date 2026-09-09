@@ -199,6 +199,28 @@ class Phone {
     this.held = box;
   }
 
+  // A throw that is meant to commit: it lets go past the threshold rather than
+  // back at the start. dy for the downward one, which opens the list.
+  async throwCard(dx, dy) {
+    const box = await this.evaluate(`(() => {
+      const r = document.getElementById('c-top').getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`);
+    const at = (x, y, type, buttons) => ({ x, y, type, buttons, button: 'left', clickCount: 1 });
+    await this.call('Input.dispatchMouseEvent', at(box.x, box.y, 'mouseMoved', 0));
+    await this.call('Input.dispatchMouseEvent', at(box.x, box.y, 'mousePressed', 1));
+    const steps = 10;
+    for (let i = 1; i <= steps; i++) {
+      await this.call(
+        'Input.dispatchMouseEvent',
+        at(box.x + (dx * i) / steps, box.y + (dy * i) / steps, 'mouseMoved', 1),
+      );
+      await sleep(20);
+    }
+    await this.call('Input.dispatchMouseEvent', at(box.x + dx, box.y + dy, 'mouseReleased', 0));
+    await sleep(500);
+  }
+
   // Back to the middle, and let go. Under the threshold, so the card returns to
   // rest and the deck is where it was.
   async dropCard() {
@@ -643,8 +665,10 @@ async function run() {
       problems.push(`the card did not return to rest: ${atRest.moved} -> ${back.moved}`);
     }
 
-    // 3. the ranked list, one tap behind the card for anyone who wants to scan.
-    await page.tapSelector('.c-more');
+    // 3. the ranked list. There is no button for it: the screen is a photograph
+    //    and three icons, so the whole list lives on a downward throw of the
+    //    card, which is the one gesture it was not already using.
+    await page.throwCard(0, 150);
     await page.waitFor(`document.querySelectorAll('#list .row').length > 3`, 'the list to fill');
     await page.settled();
     await sleep(1500);

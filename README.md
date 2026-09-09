@@ -10,7 +10,7 @@ it. Bin it and it hands you the next one. Take it and it shows you the way.
 
 | | |
 | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![One card in the middle of a dark screen: a photograph of Cunz Hall 160, an empty classroom with rows of tables and yellow chairs, a clock and a door at the far end. The photograph is the whole screen. A back arrow sits over it at the top left and a list icon at the top right, a translucent plate under them reads Cunz Hall 160 with no class rest of today, 4 min walk and 42 seats beneath, and a bin and a tick sit on the bottom corners.](docs/media/card.webp) |
+| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![One card in the middle of a dark screen: a photograph of Cunz Hall 160, an empty classroom with rows of tables and yellow chairs, a clock and a door at the far end. The photograph is the whole screen. A back arrow sits over it at the top left, a translucent plate under it reads Cunz Hall 160 with no class rest of today, 4 min walk and 42 seats beneath, and a bin and a tick sit on the bottom corners at the same size and inset as the arrow.](docs/media/card.webp) |
 | One question. | One answer. |
 
 ## Yours for, not free until
@@ -51,8 +51,8 @@ The buttons under the card do the same two things, and so do the left and right
 arrow keys. A gesture nothing announces is unreachable from a keyboard and
 invisible to a screen reader.
 
-The ranking is still all there, behind the list icon opposite the back arrow.
-Every row is the same answer the card gives, one per building, nearest first.
+The ranking is still all there, one downward throw of the card away. Every row
+is the same answer the card gives, one per building, nearest first.
 
 | |
 | :--: |
@@ -85,6 +85,14 @@ drawn, and `p` falls out of that and the aspect. At the shipped 1.23x, the top
 of a 16:9 one, and both read as a high ceiling rather than as a distortion.
 `dev/warp.html` is the bench those numbers came off: both sliders, all 306
 rooms, and a line showing how much of the picture the plate hides.
+
+The screen is the picture and three icons -- back at the top left, the two
+verdicts on the bottom corners, all the same size and the same distance from
+their own corner. There is no control for the ranking, because an unlabelled
+glyph is a puzzle and a label is one more thing to read on a screen whose whole
+argument is that one room is the answer. **Throw the card down** and the list
+opens; the down arrow key does the same, and the card says so to a screen
+reader.
 
 **306 of the 425** have one. The other 119 are departmental rooms nobody has
 photographed, and they get the same card without a picture: the words were always

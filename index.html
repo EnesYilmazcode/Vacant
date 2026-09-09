@@ -348,7 +348,7 @@
      reads as a mistake. It is also bigger than it was: this is the only text on
      the screen and it is read at arm's length on a phone. */
   .c-plate {
-    position: absolute; z-index: 2; top: calc(var(--safe-t) + 4.2rem);
+    position: absolute; z-index: 2; top: calc(var(--safe-t) + 5.6rem);
     left: .9rem; right: .9rem;
     background: rgba(18, 24, 33, .78);
     border: 1px solid rgba(255,255,255,.1); border-radius: 16px;
@@ -401,7 +401,7 @@
     position: absolute; z-index: 2; left: 0; right: 0;
     bottom: calc(1.1rem + var(--safe-b));
     display: flex; justify-content: space-between; align-items: center;
-    margin: 0; padding: 0 1.2rem; pointer-events: none;
+    margin: 0; padding: 0 1.1rem; pointer-events: none;
   }
   .c-acts .c-act { pointer-events: auto; }
   /* No disc. A ring around a glyph is a second shape to read before the glyph
@@ -410,35 +410,32 @@
      grows to fill it. The drop shadow is what holds a white glyph over a lit
      ceiling; a translucent disc was doing that job and doing it worse. */
   .c-act {
-    appearance: none; width: 56px; height: 56px; padding: 0;
+    appearance: none; width: 60px; height: 60px; padding: 0;
     border: 0; background: none; color: var(--fg); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
   }
   .c-act .ico {
-    width: 34px; height: 34px; stroke-width: 2.1;
+    width: 40px; height: 40px; stroke-width: 2.1;
     filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
   }
   .c-act.yes { color: var(--accent); }
   .c-act.yes .ico { stroke-width: 2.6; }
   .c-act:active { transform: scale(.9); }
 
-  /* The way to the ranking, opposite the back arrow and the same size as it.
-     It used to be a pill between the two verdicts reading "1 of 35 - see all",
-     and the count went with it: how many rooms are left is not a thing anybody
-     does anything with, and it was the only number on a screen whose whole
-     argument is that one room is the answer. */
-  .c-more {
-    position: absolute; z-index: 2;
-    top: calc(var(--safe-t) + .35rem); right: .5rem;
-    appearance: none; border: 0; background: none; padding: 0;
-    width: 44px; height: 44px; color: var(--fg); cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .c-more .ico {
-    width: 26px; height: 26px; stroke-width: 2.1;
-    filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
-  }
+  /* Nothing here any more. The way to the ranking was a pill reading
+     "1 of 35 - see all", then three bars opposite the back arrow, and both were
+     one more thing to work out on a screen whose whole argument is that one
+     room is the answer. It is a downward throw on the card now, and the card's
+     accessible name says so. */
   .c-end { margin: 0; text-align: center; color: var(--dim); font-size: .9rem; }
+  /* The end of the deck is the one place a control for the list survives: no
+     photograph, no gesture, and no room left to swipe, so it is the only thing
+     there is to offer. */
+  #card.done .c-more {
+    appearance: none; border: 1px solid var(--line-hi); background: var(--card);
+    color: var(--fg); font: inherit; font-size: .9rem;
+    padding: .6rem 1rem; border-radius: 10px; cursor: pointer;
+  }
   /* The end of the deck has no photograph and no gesture, so it is laid out
      like every other message pane in this app rather than like a screen. */
   #card.done {
@@ -459,12 +456,16 @@
   /* The back arrow loses its disc here too, for the same reason the verdicts
      did, and moves in to sit level with them. Only on this screen: everywhere
      else it is over a map or a panel and the disc is what separates it. */
+  /* The same size and the same corner inset as the two verdicts below it, which
+     is what makes the four of them read as one set rather than as a small thing
+     at the top and two big ones at the bottom. */
   body.carding #back {
-    border: 0; background: none; min-width: 44px; min-height: 44px;
-    top: calc(var(--safe-t) + .35rem);
+    border: 0; background: none; padding: 0;
+    min-width: 60px; min-height: 60px; width: 60px; height: 60px;
+    top: calc(var(--safe-t) + 1.1rem); left: 1.1rem;
   }
   body.carding #back .ico {
-    width: 26px; height: 26px; stroke-width: 2.1;
+    width: 40px; height: 40px; stroke-width: 2.1;
     filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
   }
 
@@ -949,9 +950,6 @@
     <path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6"/>
   </symbol>
   <symbol id="i-tick" viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6"/></symbol>
-  <symbol id="i-list" viewBox="0 0 24 24">
-    <path d="M4 6h16M4 12h16M4 18h16"/>
-  </symbol>
 </svg>
 
 <canvas id="map"></canvas>

@@ -34,12 +34,13 @@
     filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
   }
   .chrome { position: absolute; z-index: 2; color: var(--fg); pointer-events: none; }
-  .chrome.tl { top: .35rem; left: .5rem; }
-  .chrome.tr { top: .35rem; right: .5rem; }
-  .chrome.bl { bottom: 1.1rem; left: 1.2rem; }
-  .chrome.br { bottom: 1.1rem; right: 1.2rem; color: var(--accent); }
-  .chrome.tl .ico, .chrome.tr .ico { width: 26px; height: 26px; stroke-width: 2.1; }
-  .chrome.bl .ico, .chrome.br .ico { width: 34px; height: 34px; stroke-width: 2.1; }
+  /* One size and one corner inset for all three, which is what makes them read
+     as one set rather than as a small thing at the top and two big ones at the
+     bottom. Same numbers as index.html. */
+  .chrome.tl { top: 1.1rem; left: 1.1rem; }
+  .chrome.bl { bottom: 1.1rem; left: 1.1rem; }
+  .chrome.br { bottom: 1.1rem; right: 1.1rem; color: var(--accent); }
+  .chrome .ico { width: 40px; height: 40px; stroke-width: 2.1; }
   .chrome.br .ico { stroke-width: 2.6; }
   .scrim {
     position: absolute; inset: 0; z-index: 1; pointer-events: none;
@@ -48,7 +49,7 @@
       linear-gradient(0deg, rgba(11,13,16,.55) 0%, rgba(11,13,16,0) 18%);
   }
   .plate {
-    position: absolute; z-index: 2; top: 4.2rem; left: .9rem; right: .9rem;
+    position: absolute; z-index: 2; top: 5.6rem; left: .9rem; right: .9rem;
     background: rgba(18, 24, 33, .78); border: 1px solid rgba(255,255,255,.1);
     border-radius: 16px; padding: .85rem 1rem; text-align: center;
     pointer-events: none;
@@ -93,7 +94,6 @@
   <canvas id="cv"></canvas>
   <div class="scrim"></div>
   <div class="chrome tl"><svg class="ico" viewBox="0 0 24 24"><path d="M15 4 7 12 15 20"/></svg></div>
-  <div class="chrome tr"><svg class="ico" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></div>
   <div class="chrome bl">
     <svg class="ico" viewBox="0 0 24 24"><path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>
   </div>
@@ -115,11 +115,11 @@
   <label for="room">Room</label>
   <select id="room"><option>loading&hellip;</option></select>
 
-  <label for="width">Width kept &mdash; <b id="v-width">0.72</b> of the source</label>
-  <input type="range" id="width" min="0.3" max="1" step="0.01" value="0.72">
+  <label for="width">Width kept &mdash; <b id="v-width">0.55</b> of the source</label>
+  <input type="range" id="width" min="0.3" max="1" step="0.01" value="0.55">
 
-  <label for="bottom">Bottom stretch &mdash; <b id="v-bottom">1.23</b>&times; natural</label>
-  <input type="range" id="bottom" min="1" max="2.4" step="0.01" value="1.23">
+  <label for="bottom">Bottom stretch &mdash; <b id="v-bottom">1.10</b>&times; natural</label>
+  <input type="range" id="bottom" min="1" max="2.4" step="0.01" value="1.10">
 
   <div class="row" style="margin-top:.9rem">
     <button id="prev">&larr; prev room</button>
@@ -146,7 +146,7 @@
 //   p        = h * sw / (sh * BOTTOM * w)     so the bottom edge lands on BOTTOM
 //   bands    = 240 straight drawImage calls approximating that curve
 const BANDS = 240;
-const SHIPPED = { width: 0.72, bottom: 1.23 };
+const SHIPPED = { width: 0.55, bottom: 1.10 };
 
 const $ = (id) => document.getElementById(id);
 const cv = $('cv');
@@ -210,7 +210,7 @@ function draw() {
 function report(w, h, sw, sh, p) {
   const img = state.img;
   // The strip the plate covers: its top plus its own height, at the phone size.
-  const plateBottom = Math.round(4.2 * 16 + 84);
+  const plateBottom = Math.round(5.6 * 16 + 84);
   $('band').style.height = `${plateBottom}px`;
   const rowsHidden = Math.round(sh * (plateBottom / h) ** p);
   const natural = w / sw;

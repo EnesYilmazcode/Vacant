@@ -3627,7 +3627,33 @@ is that one room is the answer. The way to the ranking is now an icon opposite
 the back arrow, the same size as it, which is also what makes the top row
 symmetrical.
 
-**Cost.** The shell went 138,629 -> 142,263 gzipped bytes, +2.6%: the picture,
+### The numbers off the bench, and the last control to come off the screen
+
+**0.55 of the width and 1.10x at the bottom**, picked by Enes on dev/warp.html
+over Orton Hall 110. Tighter and straighter than the 0.72 and 1.23 first guess:
+less of the room across, but what is there stands up rather than leaning, and
+the height it gives up all comes out of ceiling nobody reads.
+
+**One size and one corner inset for all three icons.** The back arrow was 26px
+at .35rem and the two verdicts 34px at 1.1rem, which read as a small thing at
+the top and two big ones at the bottom rather than as one set. They are 40px
+glyphs in 60px targets, 1.1rem from their own corner, and the plate moved down
+to 5.6rem to clear them.
+
+**The list lost its control entirely and lives on a downward throw.** It was a
+pill reading "1 of 35 - see all", then three bars opposite the back arrow, and
+Enes on the second of those: "idk what the 3 bars are for, lowkey I dont think
+we need them too much". He is right that an unlabelled glyph is a puzzle, and a
+label would be one more thing to read on a screen whose whole argument is that
+one room is the answer. So it is the one gesture the card was not already using:
+down opens the ranking, ArrowDown does it from a keyboard, and the card's
+accessible name ends "Swipe down for all of them", because a gesture nothing
+announces is invisible to a reader who cannot see the card move.
+
+The end of the deck keeps a button, and should. No photograph, no gesture and no
+room left to swipe, so the list is the only thing there is to offer.
+
+**Cost.** The shell went 138,629 -> 143,433 gzipped bytes, +3.5%: the picture,
 the plate, the sheet losing its frame on that one screen, and `drawWarp()`. The
 photographs are none of that -- they are 11.7 MB of `data/photos/`, fetched one
 at a time and never precached. Suite 848 -> 851 tests.

@@ -1188,9 +1188,14 @@ const SWIPE_V = 0.45;
 // of the 306 are 3:2, and the rest run from 4:3 to 16:9. A fixed exponent
 // leaves a 16:9 room visibly more stretched at the bottom than a 4:3 one, so it
 // is derived per photograph from the two numbers above and the aspect it
-// actually has. dev/warp.html is the knob these came off.
-const WARP_WIDTH = 0.72;
-const WARP_BOTTOM = 1.23;
+// actually has.
+//
+// 0.55 and 1.10 are Enes's, off dev/warp.html, picked over Orton Hall 110. They
+// are a tighter crop and a straighter bottom than the first guess of 0.72 and
+// 1.23: less of the room across, but what is there stands up rather than
+// leaning, and the extra height all goes into ceiling nobody reads.
+const WARP_WIDTH = 0.55;
+const WARP_BOTTOM = 1.10;
 
 // Horizontal bands the warp is drawn in. Each is a straight drawImage, so this
 // is a piecewise approximation of the curve: at 240 the seams are under a
@@ -1311,8 +1316,10 @@ function paintCard() {
   // The card's own name is written out. The computed one would read "3 of 35
   // Cunz Hall 160 4 min 42 seats", with no units and nothing saying what the
   // two buttons under it do.
+  // The card's own name is written out, and it is the only thing that says the
+  // ranking is longer than one room: the screen itself does not, on purpose.
   const said = `${roomLabel(r)}, ${walkSay}, ${win.say}, ${seats.say}${dept.say}.` +
-    ` Room ${state.cardIndex + 1} of ${total}.`;
+    ` Room ${state.cardIndex + 1} of ${total}. Swipe down for all of them.`;
 
   // The photograph is the SCREEN. One plate near the top carries everything the
   // card says, so the text has a single contrast problem to solve rather than
@@ -1358,14 +1365,11 @@ function paintCard() {
         </p>
       </article>
     </div>
-    <button type="button" class="c-more" id="c-list" aria-label="See every room in a list">
-      <svg class="ico" aria-hidden="true"><use href="#i-list"/></svg>
-    </button>`;
+`;
 
   $('card').classList.remove('done');
   $('c-no').onclick = () => rejectCard();
   $('c-yes').onclick = () => acceptCard();
-  $('c-list').onclick = () => openList();
   // Faded in on decode rather than on load, so the room does not appear as a
   // flash under words already being read. A photograph that 404s or is corrupt
   // leaves the plain card behind it, which is the same card 119 rooms get.
@@ -1440,8 +1444,8 @@ function attachSwipe(el) {
   const stamps = { no: el.querySelector('.c-stamp.no'), yes: el.querySelector('.c-stamp.yes') };
   let drag = null;
 
-  const paint = (dx) => {
-    el.style.transform = `translateX(${dx}px) rotate(${dx / 22}deg)`;
+  const paint = (dx, dy = 0) => {
+    el.style.transform = `translate(${dx}px, ${dy}px) rotate(${dx / 22}deg)`;
     stamps.no.style.opacity = String(Math.min(1, Math.max(0, -dx / SWIPE_PX)));
     stamps.yes.style.opacity = String(Math.min(1, Math.max(0, dx / SWIPE_PX)));
   };
@@ -1461,7 +1465,7 @@ function attachSwipe(el) {
   };
 
   el.addEventListener('pointerdown', (e) => {
-    drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: e.timeStamp, dx: 0 };
+    drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: e.timeStamp, dx: 0, dy: 0 };
     el.classList.remove('snap');
     try {
       el.setPointerCapture(e.pointerId);
@@ -1472,17 +1476,32 @@ function attachSwipe(el) {
   el.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     drag.dx = e.clientX - drag.x0;
-    paint(drag.dx);
+    drag.dy = e.clientY - drag.y0;
+    // One axis at a time, decided by which one moved further. Painting both
+    // makes a diagonal drag look like it is about to do two things at once.
+    const down = Math.abs(drag.dy) > Math.abs(drag.dx);
+    paint(down ? 0 : drag.dx, down ? Math.max(0, drag.dy) : 0);
     e.preventDefault();
   });
   const end = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
-    const { dx, t0 } = drag;
+    const { dx, dy, t0 } = drag;
     drag = null;
+    const released = e.type === 'pointerup';
+    // Down opens the ranking. There is no button for it any more -- the screen
+    // is a photograph and four icons, and a fifth was one more thing to read --
+    // so the whole list lives on the one gesture the card was not already
+    // using. The card's accessible name says so, since a gesture nothing
+    // announces is invisible to a reader who cannot see it move.
+    if (released && dy > SWIPE_PX && Math.abs(dy) > Math.abs(dx)) {
+      rest();
+      openList();
+      return;
+    }
     const v = Math.abs(dx) / Math.max(1, e.timeStamp - t0);
     const thrown = Math.abs(dx) > SWIPE_PX || (v > SWIPE_V && Math.abs(dx) > 24);
     // pointercancel is the platform taking the gesture, not a decision.
-    if (thrown && e.type === 'pointerup') commit(Math.sign(dx));
+    if (thrown && released) commit(Math.sign(dx));
     else rest();
   };
   el.addEventListener('pointerup', end);
@@ -1491,6 +1510,7 @@ function attachSwipe(el) {
   el.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowLeft') rejectCard();
     else if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') acceptCard();
+    else if (e.key === 'ArrowDown') openList();
     else return;
     e.preventDefault();
   });

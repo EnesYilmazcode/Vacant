@@ -1393,6 +1393,19 @@ test('the swipe is not the only way to answer the card', () => {
   const swipe = bodyOf('attachSwipe');
   assert.match(swipe, /ArrowLeft/);
   assert.match(swipe, /ArrowRight/);
+  // The ranking has no control any more -- the screen is a photograph and three
+  // icons, and a fourth was one more thing to work out -- so it lives on the one
+  // gesture the card was not already using. A gesture nothing announces is
+  // invisible to a reader who cannot see the card move, so the card's name says
+  // it and the down arrow does it.
+  assert.match(swipe, /ArrowDown/);
+  assert.match(swipe, /openList\(\)/);
+  assert.match(bodyOf('paintCard'), /Swipe down for all of them/);
+  // Scoped to the card itself. The end of the deck still has a button, and
+  // should: there is no photograph on that screen, no gesture, and no room left
+  // to swipe -- the list is the only thing to offer.
+  const card = paint.slice(paint.indexOf('c-deck'));
+  assert.equal(/c-more|i-list/.test(card), false, 'the list grew a control on the card again');
   // And the repaint does not drop the reader on the body.
   assert.match(bodyOf('rejectCard'), /\$\('c-top'\)\?\.focus/);
 });

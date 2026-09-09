@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 147,855 bytes, data 91,951.
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 148,079 bytes, data 91,951.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these sixteen files, which is most of a percent of
@@ -32,8 +32,8 @@
 // recomputes both now.
 //
 // It read 146,240 before the ranking came back under the way and the corner got
-// a menu instead of an arrow, which cost 1,615: 957 on index.html for the panel,
-// its backdrop and the glyph, 503 on js/app.js for opening and closing it, and
+// a menu instead of an arrow, which cost 1,839: 1,101 on index.html for the panel,
+// its backdrop and the glyph, 583 on js/app.js for opening and closing it, and
 // 155 on js/sheet.js for a screen that rests where the list does.
 //
 // It read 143,433 before taking a room became a screen of its own, which cost
@@ -111,7 +111,7 @@ const PHOTO = /\/data\/photos\/[^/]+\.webp$/;
 // restating it, because the restatement is what drifted.
 //
 // They are in addAll rather than a second best-effort pass, and that is the
-// argued half: the four are 25,871 of the 147,855 gzipped bytes here, so
+// argued half: the four are 25,871 of the 148,079 gzipped bytes here, so
 // install does 21.2% more work before it resolves, and a strict tier that fails
 // fails the whole install. It is still right. A best-effort tier is for things
 // the app is better with; js/app.js cannot evaluate without js/state.js. And a

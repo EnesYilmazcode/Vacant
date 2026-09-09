@@ -623,6 +623,7 @@ async function run() {
         photo: img ? (img.tagName === 'CANVAS' ? 'canvas' : img.getAttribute('src')) : null,
         drawn: img ? img.width + 'x' + img.height : null,
         plain: document.getElementById('c-top').classList.contains('plain'),
+        glyph: getComputedStyle(document.querySelector('#menu .ico')).width,
       };
     })()`);
     console.log(`card   ${card.title}  ${card.facts}`);
@@ -753,6 +754,9 @@ async function run() {
         nomap: document.body.classList.contains('nomap'),
         menu: !document.getElementById('menu').hidden,
         back: document.getElementById('back').hidden,
+        // The same button on two consecutive screens has to be the same size.
+        // It was 44px in a bordered disc here and 60px bare on the card.
+        glyph: getComputedStyle(document.querySelector('#menu .ico')).width,
       };
     })()`);
     console.log(`way    ${way.name}  ${way.facts}`);
@@ -772,6 +776,9 @@ async function run() {
     }
     if (!way.menu) problems.push('way: no menu, and no back arrow either');
     if (!way.back) problems.push('way: the back arrow is up beside the menu');
+    if (way.glyph !== card.glyph) {
+      problems.push(`way: the menu glyph is ${way.glyph} here and ${card.glyph} on the card`);
+    }
     await shoot('way', `${way.name}, ${way.rows} rows under it`, target.name);
 
     // The way has no back arrow, so the two things that leave it are the menu's

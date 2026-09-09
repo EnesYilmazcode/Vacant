@@ -3814,8 +3814,16 @@ has carried the same gesture, through the same dismiss travel, to the same
 `toAsk()`, since long before either of these screens existed. Two mechanisms for
 one gesture is one too many, so `attachWaySwipe()` is gone.
 
-**Cost.** The shell went 146,240 -> 147,855 gzipped bytes, +1.1%: 957 on
-`index.html` for the panel, its backdrop and the glyph, 503 on `js/app.js` for
+**One button, one size.** The menu came out 44px in a bordered disc on the way
+and 60px bare on the card, because the way inherited #back's rule and the card
+had its own. Enes, on two consecutive screens in the PR: "in the 3rd picture the
+hamburger icon like the 3 lines is different, make image 3 match image 2." Both
+screens carry the bare 60px one now; the drop shadow is what the disc was for,
+and it holds over a photograph and a night map alike. `scripts/shoot.mjs`
+compares the two computed glyph widths, so they cannot come apart again.
+
+**Cost.** The shell went 146,240 -> 148,079 gzipped bytes, +1.3%: 1,101 on
+`index.html` for the panel, its backdrop and the glyph, 583 on `js/app.js` for
 opening and closing it, 155 on `js/sheet.js`. Suite stays at 854 tests; three of
 them were rewritten rather than added, because both described a screen that has
 changed shape. `scripts/shoot.mjs` takes nine frames now: the menu is opened with

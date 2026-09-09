@@ -2529,6 +2529,7 @@ function showPane(name) {
   // no rounded top, no border and no grip there. index.html hangs those off the
   // body rather than the pane, because the sheet is what has to lose them.
   document.body.classList.toggle('carding', name === 'card');
+  document.body.classList.remove('waying');
   for (const id of PANES) $(id).hidden = id !== name;
   $('find').hidden = name !== 'pick';
   $('origin').hidden = !originBarOn(name);
@@ -2563,7 +2564,7 @@ function showAsk() {
   $('way').hidden = true;
   $('ask').hidden = false;
   document.body.classList.add('asking');
-  document.body.classList.remove('carding');
+  document.body.classList.remove('carding', 'waying');
   $('sheet').hidden = true;
   $('back').hidden = true;
   $('menu').hidden = true;
@@ -2788,6 +2789,9 @@ function showWay(id) {
   $('way').hidden = false;
   closeMenu();
   document.body.classList.remove('asking', 'carding');
+  // The menu is this screen's only chrome, and it is the same button it was on
+  // the card a tap ago, so it is drawn the same: no disc, 40px in a 60px target.
+  document.body.classList.add('waying');
   const arrived = state.screen !== 'way';
   state.screen = 'way';
   syncPaneTouch();

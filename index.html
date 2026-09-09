@@ -510,19 +510,25 @@
      showPane(), rather than here as well: this rule used to hide #back on the
      card while showPane un-hid it, and two mechanisms for one fact is how they
      drift. */
-  /* On the photograph the menu loses its disc and grows to the size of the two
-     verdicts below it, so the three of them read as one set. A bordered pill
-     over a room reads as a control panel bolted to the picture. */
-  body.carding #menu {
+  /* On the two screens the menu owns, it loses its disc and grows to the size of
+     the two verdicts on the card, so the set reads as one set. A bordered pill
+     over a room reads as a control panel bolted to the picture, and the same
+     button two sizes on two consecutive screens reads as two buttons: Enes,
+     "in the 3rd picture the hamburger icon like the 3 lines is different, make
+     image 3 match image 2". The drop shadow is what the disc was for, and it
+     works over a photograph and a night map alike. */
+  body.carding #menu, body.waying #menu {
     border: 0; background: none; padding: 0;
     min-width: 60px; min-height: 60px; width: 60px; height: 60px;
     top: calc(var(--safe-t) + 1.1rem); left: 1.1rem;
   }
-  body.carding #menu .ico {
+  body.carding #menu .ico, body.waying #menu .ico {
     width: 40px; height: 40px; stroke-width: 2.1;
     filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
   }
-  body.carding .m-panel { top: calc(var(--safe-t) + 4.6rem); left: 1.1rem; }
+  body.carding .m-panel, body.waying .m-panel {
+    top: calc(var(--safe-t) + 4.6rem); left: 1.1rem;
+  }
 
   /* The way: the map with the room lit on it, one plate naming the room, and the
      ranking peeked underneath. Enes on the schedule, "the list of other classes

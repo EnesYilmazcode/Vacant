@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 148,079 bytes, data 91,951.
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 150,285 bytes, data 91,951.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these sixteen files, which is most of a percent of
@@ -32,9 +32,11 @@
 // recomputes both now.
 //
 // It read 146,240 before the ranking came back under the way and the corner got
-// a menu instead of an arrow, which cost 1,839: 1,101 on index.html for the panel,
-// its backdrop and the glyph, 583 on js/app.js for opening and closing it, and
-// 155 on js/sheet.js for a screen that rests where the list does.
+// a menu instead of an arrow, which cost 4,045 with the review of it: 1,224 on
+// index.html for the panel, its backdrop and the glyph, 2,340 on js/app.js for
+// opening and closing it and for the six defects that review found, and 481 on
+// js/sheet.js for a screen that rests where the list does and for a camera band
+// that stopped collapsing on the card.
 //
 // It read 143,433 before taking a room became a screen of its own, which cost
 // 2,807: 2,160 on js/app.js for the way -- the map with the walk drawn on it and
@@ -69,7 +71,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-5d1c557';
+const SHELL_CACHE = 'vacant-shell-4559dcd';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also
@@ -111,8 +113,8 @@ const PHOTO = /\/data\/photos\/[^/]+\.webp$/;
 // restating it, because the restatement is what drifted.
 //
 // They are in addAll rather than a second best-effort pass, and that is the
-// argued half: the four are 25,871 of the 148,079 gzipped bytes here, so
-// install does 21.2% more work before it resolves, and a strict tier that fails
+// argued half: the four are 26,197 of the 150,285 gzipped bytes here, so
+// install does 21.1% more work before it resolves, and a strict tier that fails
 // fails the whole install. It is still right. A best-effort tier is for things
 // the app is better with; js/app.js cannot evaluate without js/state.js. And a
 // rejected install is retried where a resolved lie is not.
@@ -292,13 +294,18 @@ async function immutable(request) {
   const data = await caches.open(DATA_CACHE);
   const cached = await data.match(request);
   if (cached) return cached;
+  let response;
   try {
-    const response = await fetch(request);
-    if (response && response.ok) await data.put(request, response.clone());
-    return response;
+    response = await fetch(request);
   } catch {
     return Response.error();
   }
+  // The write is outside the try on purpose. 306 photographs at 39 KB is 11.7 MB
+  // of a quota nothing here caps, and a QuotaExceededError inside the try threw
+  // away a response that had already arrived: the card fell back to the plain
+  // one over a picture the phone was holding.
+  if (response && response.ok) await data.put(request, response.clone()).catch(() => {});
+  return response;
 }
 
 async function staleWhileRevalidate(event, request) {

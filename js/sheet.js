@@ -71,8 +71,21 @@ export const restFor = (screen, targeted = true) =>
 // basemap, so panning the map, backing out to the list and tapping a row
 // uncovered a camera pointing at the middle of campus. Composing for 528 while
 // covered is what makes the reveal a finished frame.
+// A full-bleed screen is the exception, and it has to be taken out by hand:
+// restFor() answers 1 for the card, because the SHEET is the whole viewport
+// there, and 1 - 1 is a band of nothing. The camera is not composing for that
+// screen -- the map is switched off on it -- it is composing for the one the map
+// comes back on, and that peeks.
+//
+// Left at the full-bleed 1 this returned a 1px band, and clampView collapses on
+// it: measured at 393x852, halfW came out 393 times too large, `halfW * 2 >=
+// gridW` held, and cx was forced to the middle of the basemap. Reachable in
+// four taps -- take a room, pan the map, back to the card (the view is wrecked
+// here), take a room again -- because frame() stands down once the map has been
+// moved by hand and never puts it back. Same failure as the 68px one above, 68
+// times smaller.
 export const bandFor = (screen, height, rail = 0) =>
-  Math.max(1, Math.round(height * (1 - restFor(screen))) - rail);
+  Math.max(1, Math.round(height * (1 - (FULL_BLEED.has(screen) ? PEEK : restFor(screen)))) - rail);
 
 // The tallest the sheet may be, in PIXELS. FULL wherever the map is on screen.
 // Where it is covered there is nothing to leave room for but the back button, so

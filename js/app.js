@@ -481,10 +481,18 @@ let closeMenu = () => {};
 function attachMenu() {
   const btn = $('menu');
   const pop = $('menu-pop');
+  // The backdrop stops a finger and stops nothing else. Without inert, Tab walks
+  // straight off the last choice onto the card behind it, where #c-top is
+  // focusable and its keydown makes Enter, Space and ArrowRight take the room:
+  // a reader could accept a room while looking at a menu. inert takes the whole
+  // screen out of the tab order AND out of the accessibility tree, which is the
+  // half aria-hidden alone would miss.
+  const behind = ['sheet', 'way', 'ask'];
   const show = (on) => {
     pop.hidden = !on;
     btn.setAttribute('aria-expanded', String(on));
     document.body.classList.toggle('menuing', on);
+    for (const id of behind) $(id).inert = on;
     if (on) pop.querySelector('.m-item').focus({ preventScroll: true });
     else if (!btn.hidden) btn.focus({ preventScroll: true });
   };
@@ -495,6 +503,7 @@ function attachMenu() {
     pop.hidden = true;
     btn.setAttribute('aria-expanded', 'false');
     document.body.classList.remove('menuing');
+    for (const id of behind) $(id).inert = false;
   };
 
   btn.onclick = () => show(pop.hidden);
@@ -503,7 +512,14 @@ function attachMenu() {
   // backdrop and ends on a row underneath should close the menu and not also
   // take the room the finger happened to land on.
   pop.addEventListener('pointerdown', (e) => {
-    if (e.target === pop) show(false);
+    if (e.target !== pop) return;
+    // preventDefault on pointerdown is what stops the compatibility mouse
+    // events. Without it a TOUCH press on the backdrop closes the menu at
+    // touchstart, and the click synthesised at touchend is hit-tested against a
+    // tree the panel has already left -- so pressing the dim area over a row on
+    // the way screen would close the menu and take that room.
+    e.preventDefault();
+    show(false);
   });
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || pop.hidden) return;
@@ -1227,9 +1243,11 @@ function select(i) {
   frame(r);
   // On the way screen the plate is the headline over the map, so it has to name
   // whatever the arrow points at. Tapping a row there is a change of
-  // destination, not a preview of one.
+  // destination, not a preview of one. paintWay() announces the room itself,
+  // and a live region only ever speaks its last value, so saying it twice in one
+  // task means the first sentence is never heard.
   if (state.screen === 'way') paintWay(r.id, r);
-  say(`${roomLabel(r)}, ${r.walk} minute walk, shown on the map.`);
+  else say(`${roomLabel(r)}, ${r.walk} minute walk, shown on the map.`);
 }
 
 // ------------------------------------------------------------------ the card
@@ -1467,7 +1485,24 @@ function paintCard() {
       // background re-rank -- and drawing into a canvas nothing holds any more
       // is how a stale room ends up under the right name.
       if (!canvas.isConnected) return;
-      if (drawWarp(canvas, source)) canvas.classList.add('on');
+      if (!drawWarp(canvas, source)) return;
+      canvas.classList.add('on');
+      // The bitmap is sized to the canvas BOX once and then stretched to fill it
+      // by CSS, so every later change of that box squashes the room instead of
+      // reflowing it. The install rail is the change that always happens: it
+      // mounts seconds after boot, the sheet gives up its height, and the
+      // photograph loses 9% of its own at 393x852. Rotation is the same failure,
+      // larger. Guarded on the size actually differing, because observe() fires
+      // once on its own and the draw is 240 drawImage calls.
+      let box = `${canvas.clientWidth}x${canvas.clientHeight}`;
+      const again = new ResizeObserver(() => {
+        if (!canvas.isConnected) return again.disconnect();
+        const now = `${canvas.clientWidth}x${canvas.clientHeight}`;
+        if (now === box) return;
+        box = now;
+        drawWarp(canvas, source);
+      });
+      again.observe(canvas);
     };
     source.onerror = () => {
       canvas.remove();
@@ -1543,7 +1578,14 @@ function attachSwipe(el) {
     el.classList.add('snap');
     paint(dir * window.innerWidth);
     el.style.opacity = '0';
-    setTimeout(() => (dir < 0 ? rejectCard() : acceptCard()), reduceMotion ? 0 : 200);
+    setTimeout(() => {
+      // The 200ms is the card sliding off. A back gesture inside it lands on the
+      // question, and firing then would drag the reader forward to a room they
+      // had already left the screen to avoid.
+      if (state.screen !== 'card') return;
+      if (dir < 0) rejectCard();
+      else acceptCard();
+    }, reduceMotion ? 0 : 200);
   };
 
   el.addEventListener('pointerdown', (e) => {
@@ -2617,7 +2659,12 @@ function showList() {
   // a property of the room screen; coming back to the list ends it.
   state.selected = null;
   showPane('list');
-  $('back').setAttribute('aria-label', 'Back to the card');
+  // openList() pushes over whatever was showing, and the menu can open the list
+  // from the way as well as from the card.
+  $('back').setAttribute(
+    'aria-label',
+    history.state?.from === 'way' ? 'Back to the way' : 'Back to the card',
+  );
   $('list').scrollTop = state.listScroll;
   sheetHeight();
 }
@@ -2736,7 +2783,11 @@ function showRoom(id, { keepDay = false } = {}) {
   // buildings screen, and the label promised a room list that is not there.
   $('back').setAttribute(
     'aria-label',
-    history.state?.from === 'near' ? 'Back to the nearest buildings' : 'Back to the room list',
+    history.state?.from === 'near'
+      ? 'Back to the nearest buildings'
+      : history.state?.from === 'way'
+        ? 'Back to the way'
+        : 'Back to the room list',
   );
 
   // frame() below runs only when the room is one of the ranked rows. Opened
@@ -2774,6 +2825,14 @@ function showRoom(id, { keepDay = false } = {}) {
 function showWay(id) {
   const room = state.rooms?.rooms?.[id];
   if (!room) return showCard();
+  // The compass, before anything else, and the reason this line is not just
+  // tidiness: the way is reachable FROM the room screen. Take a room, tap its
+  // lit row for the calendar, press Point me, then go back. showPane() detaches
+  // the two window listeners on the way out of 'room' and this does not go
+  // through showPane, so without this they stay bound to nodes the next repaint
+  // has already thrown away, and the next room's Point me overwrites the closure
+  // that could still have removed them.
+  if (orientationOff) orientationOff();
   const r = state.results.find((x) => x.id === id);
   // Before the panes, for the same reason showList and showRoom set it there:
   // reframe() composes the camera for the band this decides.
@@ -2798,6 +2857,21 @@ function showWay(id) {
   paintWay(id, r);
   markRows();
   sheetHeight();
+  // The rows open showing the room the arrow points at. Bin nineteen and take
+  // the twentieth and the ranking underneath was still parked at the top, so the
+  // lit row -- the whole reason the list is on this screen -- was off the bottom
+  // of it. Only when it is actually out of view: take the first room the deck
+  // offers, which is the common case, and the lit row is row one already --
+  // pinning that to the top would push "You asked for 2h00" off the pane to fix
+  // nothing.
+  const list = $('list');
+  const row = list.querySelector('.row.on');
+  if (row) {
+    const top = row.offsetTop - list.offsetTop;
+    if (top < list.scrollTop || top + row.offsetHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = Math.max(0, top - 8);
+    }
+  }
   if (arrived) reframe();
   frames.wake();
   if (r) frame(r);
@@ -2860,8 +2934,14 @@ function choose(min) {
     return;
   }
   if (state.screen === 'ask') history.pushState({ v: 'card' }, '', cleanUrl());
-  showCard();
+  // Ranked BEFORE the screen is shown. The other way round, paintCard() ran once
+  // against the previous answer -- on the first duration of a session that is no
+  // rows at all, so the reader got "That is all of them. You went through 0
+  // rooms", and focusHeading() moved focus onto a heading answer() then replaced,
+  // dropping a keyboard reader on the body. answer() paints both screens itself,
+  // and showCard() paints again over a deck that now exists.
   answer();
+  showCard();
 }
 
 function openRoom(id) {
@@ -2875,7 +2955,7 @@ function openRoom(id) {
 // The ranking, from the card. Its own history entry, so Back off the list
 // lands on the card the reader came from rather than on the question.
 function openList() {
-  history.pushState({ v: 'list' }, '', cleanUrl());
+  history.pushState({ v: 'list', from: state.screen }, '', cleanUrl());
   showList();
 }
 
@@ -2934,12 +3014,27 @@ function refresh() {
     return;
   }
   if (!state.scheduled) {
-    if (state.screen === 'card' || state.screen === 'list' || state.screen === 'room') showNear();
+    if (['card', 'list', 'room', 'way'].includes(state.screen)) showNear();
     else if (state.screen === 'near') paintNear(nearReason());
     return;
   }
   if (state.screen === 'near') showCard();
+  // answer() drops the selection and rebuilds the deck, and on the way that
+  // leaves a plate naming a room over a map paintMap() has just switched off:
+  // nothing is targeted any more, so body.nomap goes on, taking the footprint
+  // and the walk line with it. Two ways in, both new -- the menu's Check again,
+  // and the same button in the list footer, which is now scrollable underneath
+  // the plate. So the screen is re-entered after the re-rank, on the same room
+  // if it survived it and on the card if it did not, which is the honest answer
+  // to "check again" when the room you took has just been taken by a class.
+  const held = state.screen === 'way' ? state.selected?.id : null;
   answer();
+  if (!held) return;
+  if (state.results.some((r) => r.id === held)) showWay(held);
+  else {
+    history.replaceState({ v: 'card' }, '', cleanUrl());
+    showCard();
+  }
 }
 
 // The question screen has three shapes, and which one it wears is decided

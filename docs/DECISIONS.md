@@ -3822,10 +3822,76 @@ screens carry the bare 60px one now; the drop shadow is what the disc was for,
 and it holds over a photograph and a night map alike. `scripts/shoot.mjs`
 compares the two computed glyph widths, so they cannot come apart again.
 
-**Cost.** The shell went 146,240 -> 148,079 gzipped bytes, +1.3%: 1,101 on
-`index.html` for the panel, its backdrop and the glyph, 583 on `js/app.js` for
-opening and closing it, 155 on `js/sheet.js`. Suite stays at 854 tests; three of
-them were rewritten rather than added, because both described a screen that has
-changed shape. `scripts/shoot.mjs` takes nine frames now: the menu is opened with
+### Six defects the review found, and the shape they share
+
+A new screen that does its own pane work, and a new control on two screens, both
+reached the parts of the app that were written before either existed. Every one
+of these is that.
+
+**1. Check again on the way switched the map off.** `refresh()` had no `way`
+case, so it fell through to `answer()`, which drops the selection. `paintMap()`
+reads that: nothing targeted means `body.nomap`, and the footprint, the walk line
+and the map itself go. What was left was a plate naming a room over a black
+screen, with the ranking underneath re-ranked and nothing lit. Two ways in, both
+new: the menu's Check again, and the same button in the list footer, which is now
+scrollable under the plate. `refresh()` re-enters the way afterwards, on the same
+room if it survived the re-rank and on the card if a class has taken it, which is
+the honest answer to the question that was asked.
+
+**2. `bandFor('card')` returned a 1px band and clampView collapsed on it.**
+`restFor` answers 1 for the card because the SHEET is the whole viewport there,
+and `1 - 1` is a band of nothing. Measured at 393x852: `halfW` came out 393 times
+too large, `halfW * 2 >= gridW` held, and `cx` was forced to the middle of the
+basemap. Four taps reach it -- take a room, pan the map, back to the card, take a
+room again -- because `frame()` stands down once the map has been moved by hand
+and never puts it back. This is the failure the 68px paragraph in `js/sheet.js`
+already records, 68 times smaller. The camera now composes the card for PEEK,
+which is the band the map is actually revealed through.
+
+**3. The menu held the screen but not the keyboard.** The backdrop stops a
+finger and nothing else: Tab walked off the last choice onto `#c-top`, whose
+keydown makes Enter, Space and ArrowRight take the room. A reader could accept a
+room while looking at a menu. `inert` on the sheet, the way and the question
+takes them out of the tab order and out of the accessibility tree together.
+
+**4. `showWay()` never put the compass down.** It reproduces `showPane()`'s pane
+work and skipped its first line. Take a room, tap its lit row for the calendar,
+press Point me, press back: the two `deviceorientation` listeners stayed bound to
+nodes the next repaint throws away, and the next room's Point me would overwrite
+the only closure that could remove them. Verbatim the leak `repaintRoom()`'s own
+comment exists to stop, arriving through a door that did not exist when it was
+written.
+
+**5. The photograph was never redrawn.** `drawWarp()` sizes the bitmap to the
+canvas box once, on decode, and CSS stretches it to fill from then on. The
+install rail mounts seconds after boot and the sheet gives up its height, so the
+room lost 9% of its own at 393x852. Rotation is the same failure, larger. A
+`ResizeObserver` redraws on a real change of box.
+
+**6. The commit timer outlived the screen.** The 200ms is the card sliding off.
+A back gesture inside it lands on the question, and the timer then fired
+`acceptCard()` and dragged the reader forward to a room they had just left the
+screen to avoid.
+
+Three smaller ones went with them: a touch press on the menu backdrop could close
+the menu and take the row underneath, because the synthesised click is
+hit-tested after the panel has gone (`preventDefault` on pointerdown stops the
+compatibility events); `choose()` painted the card before ranking, so the first
+duration of a session flashed "That is all of them. You went through 0 rooms" and
+dropped a keyboard reader on the body when that heading was replaced; and
+`immutable()` in `sw.js` had its cache write inside the try, so a quota error
+threw away a photograph the phone was already holding.
+
+**What none of the new tests caught.** They are regex over source, which is what
+this suite can do without a browser, and every one of the six above is a runtime
+path. The screenshot run is the other half and it found the dead verdict buttons,
+but it walks one route. The gap is real and worth naming rather than papering
+over: a source-shaped test suite plus one scripted walk does not cover a state
+machine, and this branch added a state to it.
+
+**Cost.** The shell went 146,240 -> 150,285 gzipped bytes, +2.8%: 1,224 on
+`index.html`, 2,340 on `js/app.js`, 481 on `js/sheet.js`. Suite 854 -> 862
+tests, seven of them for the defects above; five more were rewritten rather than
+added, because they described screens that have changed shape. `scripts/shoot.mjs` takes nine frames now: the menu is opened with
 a press and closed with a press off it, and the way is checked for rows under the
 map and for the lit row agreeing with the plate.

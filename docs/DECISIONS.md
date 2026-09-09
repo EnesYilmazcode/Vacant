@@ -3895,3 +3895,52 @@ tests, seven of them for the defects above; five more were rewritten rather than
 added, because they described screens that have changed shape. `scripts/shoot.mjs` takes nine frames now: the menu is opened with
 a press and closed with a press off it, and the way is checked for rows under the
 map and for the lit row agreeing with the plate.
+
+---
+
+## 2026-09-09  One URL for a scene, and a date the file does not carry
+
+**Decided.** `?dev1` opens the dev panel already standing at Dreese Laboratories
+on a Thursday at 2:15pm. `#dev1` and `?dev=dev1` do the same, because the
+difference between `?dev=1` and `?dev1` is one character and all three get typed.
+
+**Why it is not just the panel.** `?dev=1` opens on the live minute, and the
+live minute is the problem. Enes asked for this at 10pm: every building on
+campus is shut, the app refuses to rank, and it is right to. There is nothing on
+any screen to look at, and getting to something worth looking at is four
+controls in a panel that has to load first. A scene is those four controls
+pre-answered, in a link that can be sent to somebody.
+
+**The date is derived, and that is the part worth writing down.** The obvious
+implementation is `'2026-09-17T14:15'` in `js/dev.js`, next to the ten JUMPS that
+are already literals. Those are defensible: each one names a specific argument
+the project makes, and Thanksgiving is a date. "A Thursday" is not. A literal
+would name a Thursday in a term that ended the moment Spring 1272 shipped, and
+nothing would catch it, because a dev tool has no user to notice.
+
+So `sceneClock()` asks the shipped index: walk the teaching range, take the first
+Thursday that is neither a closed day nor inside the exam window. `rooms-<term>.json`
+already carries all three fields for the engine. On Autumn 2026 that resolves to
+2026-08-27. Any Thursday would have done -- a class schedule is keyed to the day
+of the week, so every Thursday in term carries the same grid, and the only thing
+separating them is the calendar this skips.
+
+`scripts/test/dev.test.mjs` re-derives it the same way against the shipped files
+rather than asserting the answer, so the check that bites is "this term still has
+an open Thursday", which is the thing that can actually stop being true.
+
+**Verified by driving it**, not by reading it: headless Chrome on `?dev1`,
+`?dev=dev1`, `#dev1` and a bare reload after each all came up on Thursday
+8/27/2026 2:15pm from Dreese, 218 rooms free, no console errors, and a tapped
+duration returned Enarson Classroom Building 304 at a 2 minute walk. `?dev=1`
+still comes up on the live minute at the real location, unchanged.
+
+**Decided against** putting the scene in a query the app keeps. It is applied
+once and then lives in the two `sessionStorage` keys the panel already writes,
+which is what makes it survive the app rewriting its own URL on the first
+history entry. A scene that had to stay in the URL would be a scene that
+vanished on the first tap.
+
+**Cost.** `js/dev.js` and the arming block in `js/app.js`. Neither is in the
+service worker's shell list and `js/dev.js` is still loaded on demand, so a
+student who never types this downloads nothing. Suite 862 -> 866 tests.

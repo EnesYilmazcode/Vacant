@@ -259,6 +259,20 @@ week, Saturday at 3am or winter break. Then it hands off to the real app.
 Once you are in, `?dev=1` or three presses of **D** opens a panel that changes
 the same two things without leaving the screen you are on.
 
+**`?dev1` is one URL for a whole scene**: the panel, already standing at Dreese
+Laboratories on a Thursday at 2:15pm. It exists because the live minute is a bad
+one to look at the app in. Open it at 10pm and every building on campus is shut,
+the app correctly refuses to rank, and there is nothing on any screen. `#dev1`
+and `?dev=dev1` do the same, and the scene survives the reload that strips the
+query string.
+
+The **date** is derived rather than written down: `js/dev.js` walks the teaching
+range in the shipped index for the first Thursday that is neither a closed day
+nor inside exams. A literal date in that file would name a Thursday in a term
+that ended the moment the next one shipped. Any Thursday would do, because a
+class schedule is keyed to the day of the week, so every Thursday in term
+carries the same grid.
+
 It is not a preview. It moves the same clock every screen reads and the same
 origin the ranking measures from, then repaints through the same code path a
 duration button uses, so the answer on screen is the answer a student would get.

@@ -15,6 +15,9 @@
 // Off unless asked for. Add ?dev=1 to the URL, or press D three times. The
 // choice is kept in sessionStorage rather than the URL, because the app strips
 // its own query string on the first history entry it writes.
+//
+// ?dev1 goes one further and opens the panel already standing somewhere, on a
+// day, at a minute. See SCENES.
 
 import { devApply, devReadout, devState } from './app.js';
 
@@ -60,6 +63,17 @@ const JUMPS = [
   ['Winter break', '2027-01-05T11:00'],
 ];
 
+// Named scenes: one URL each, for a minute the app cannot otherwise be looked
+// at in. Enes asked for the first at 10pm on a Tuesday in September, when every
+// building on campus is shut, the app is right to say so, and there is nothing
+// on any screen to look at.
+//
+// `place` is a building code out of data/buildings-<term>.json. 279 is Dreese
+// Laboratories, which is where he is. `day` is getDay(): 4 is Thursday.
+const SCENES = {
+  dev1: { place: '279', day: 4, hour: 14, minute: 15 },
+};
+
 const pad = (n) => String(n).padStart(2, '0');
 const localValue = (d) =>
   `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -72,6 +86,34 @@ const parseLocal = (value) => {
 };
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// The DATE a scene lands on is asked of the shipped index rather than written
+// down. rooms-<term>.json carries the teaching range, the closed days and the
+// exam window, so "a Thursday in term" is a question the data can answer -- and
+// a literal 2026-09-17 in this file would be a Thursday in a term that has ended
+// the day Spring 1272 ships, with nothing to catch it.
+//
+// The first teaching Thursday that is neither closed nor inside exams. Any of
+// them would do: a class schedule is keyed to the day of the week, so every
+// Thursday in term carries the same grid, and the only thing that separates them
+// is the calendar this skips.
+function sceneClock({ day, hour, minute }) {
+  const index = devState.rooms;
+  if (!Array.isArray(index?.teaching)) return null;
+  const [from, to] = index.teaching;
+  const closed = index.closed ?? {};
+  const exams = index.exams;
+  const end = new Date(`${to}T12:00`);
+  for (const d = new Date(`${from}T12:00`); d <= end; d.setDate(d.getDate() + 1)) {
+    if (d.getDay() !== day) continue;
+    const date = localValue(d).slice(0, 10);
+    if (closed[date]) continue;
+    if (exams?.start && date >= exams.start && date <= exams.end) continue;
+    d.setHours(hour, minute, 0, 0);
+    return d.getTime();
+  }
+  return null;
+}
 
 function styles() {
   const css = `
@@ -209,7 +251,7 @@ function paintOut(out) {
   out.innerHTML = lines.join('\n');
 }
 
-export function start() {
+export function start(scene) {
   const { el, places } = panel();
   const when = el.querySelector('#dev-when');
   const slide = el.querySelector('#dev-slide');
@@ -306,13 +348,10 @@ export function start() {
     if (!devReadout().ready) return;
     clearInterval(ready);
     live = devState.origin ? { ...devState.origin } : null;
-    const s = saved();
-    // Always apply, even with nothing restored. devApply runs the same
-    // refresh() a duration button runs, which is what fills in the ranked answer
-    // the readout prints. Without it the panel opens claiming 0 rooms free,
-    // which is true only in the sense that nothing has been asked yet.
-    apply({ at: s.at ?? null, place: s.where });
-    // The building list is only knowable once the index has loaded.
+
+    // The building list is only knowable once the index has loaded, and it is
+    // built BEFORE anything is applied: a scene names its place by building code
+    // and apply() resolves that code through this map.
     if (!where.options.length || where.options.length < 3) {
       const places2 = buildingOptions();
       where.innerHTML =
@@ -321,8 +360,31 @@ export function start() {
         `<option value="oval">the Oval</option>` +
         places2.map((b) => `<option value="${b.code}">${b.name} (${b.rooms})</option>`).join('');
       for (const b of places2) byCode.set(b.code, b);
-      where.value = saved().where;
     }
+
+    // A scene, if the URL named one. It goes through the same apply() every
+    // control goes through, so it writes the same two session keys and survives
+    // the reload that strips the query string -- and the panel's own controls
+    // come up reading the scene rather than contradicting it.
+    //
+    // A place the index does not have falls back to the Oval instead of quietly
+    // leaving the origin alone, which would be a scene that only moved the clock
+    // and never said so.
+    const want = scene ? SCENES[scene] : null;
+    const s = saved();
+    if (want) {
+      apply({
+        at: sceneClock(want) ?? s.at ?? null,
+        place: byCode.has(want.place) ? want.place : 'oval',
+      });
+    } else {
+      // Always apply, even with nothing restored. devApply runs the same
+      // refresh() a duration button runs, which is what fills in the ranked
+      // answer the readout prints. Without it the panel opens claiming 0 rooms
+      // free, which is true only in the sense that nothing has been asked yet.
+      apply({ at: s.at ?? null, place: s.where });
+    }
+    where.value = saved().where;
   }, 120);
 }
 

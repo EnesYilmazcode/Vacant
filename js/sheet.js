@@ -18,13 +18,29 @@ export const ROOM_SHEET = 0.72;
 // viewport() used to hold a second copy of this that said peek on every screen,
 // so the room screen framed the walk line for a 324px sheet and drew it under a
 // 613px one: at 393x852, 164 of the 206px of target ink went under the panel.
-export const REST = { ask: 0, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: FULL, about: FULL };
+// `ask` is 0 because it has no sheet at all: the question is an overlay over the
+// flyover. A screen with no panel leaves the whole canvas as the band, and
+// bandFor reads this table, so leaving it out would frame the walk line for a
+// sheet that is not there.
+//
+// `way` was 0 for a day, while taking a room meant the map and one plate and
+// nothing else. It is PEEK now, because the ranking came back underneath it:
+// "the take it and the way should have the other nearby classes at the bottom
+// back". Same band as the list, and for the same reason -- there is a lit
+// footprint and a walk line on that canvas to leave room for.
+export const REST = { ask: 0, way: PEEK, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: FULL, about: FULL };
 
 // Where a screen rests once it is covering the map, and the strip it still has
 // to leave at the top: 44px of back button on a 0.6rem inset, plus air. In
 // pixels, because a button does not scale with the phone.
 export const COVER = 0.92;
 export const BACK_PX = 76;
+
+// The card screen is a photograph of a room and nothing else, so it is the
+// whole viewport: no strip at the top, no rounded sheet edge, no grip. The back
+// arrow floats ON the picture there and carries its own dark disc, which is why
+// this one does not reserve BACK_PX the way every other covered screen does.
+const FULL_BLEED = new Set(['card']);
 
 // A screen leaves a map band because there is a lit footprint and a walk line in
 // it. Before a row is tapped there is nothing on that canvas but your own dot:
@@ -33,12 +49,13 @@ export const BACK_PX = 76;
 // a row is what uncovers it.
 //
 // `ask` is the exception twice over: it has no sheet, and its map is a blurred
-// drifting background rather than one anybody reads.
+// drifting background rather than one anybody reads. `way` is the other: it is
+// only ever reached by taking a room, so it always has one.
 //
 // `targeted` is state.selected at every call site. Defaulted true so the screens
 // that always have one read unchanged.
 export const restFor = (screen, targeted = true) =>
-  (!targeted && screen !== 'ask' ? COVER : REST[screen]) ?? PEEK;
+  (FULL_BLEED.has(screen) ? 1 : !targeted && screen !== 'ask' && screen !== 'way' ? COVER : REST[screen]) ?? PEEK;
 
 // The strip the sheet is NOT covering, which is what the camera centres in.
 // Keyed to where the screen RESTS so a drag slides the sheet over a map that
@@ -54,8 +71,21 @@ export const restFor = (screen, targeted = true) =>
 // basemap, so panning the map, backing out to the list and tapping a row
 // uncovered a camera pointing at the middle of campus. Composing for 528 while
 // covered is what makes the reveal a finished frame.
+// A full-bleed screen is the exception, and it has to be taken out by hand:
+// restFor() answers 1 for the card, because the SHEET is the whole viewport
+// there, and 1 - 1 is a band of nothing. The camera is not composing for that
+// screen -- the map is switched off on it -- it is composing for the one the map
+// comes back on, and that peeks.
+//
+// Left at the full-bleed 1 this returned a 1px band, and clampView collapses on
+// it: measured at 393x852, halfW came out 393 times too large, `halfW * 2 >=
+// gridW` held, and cx was forced to the middle of the basemap. Reachable in
+// four taps -- take a room, pan the map, back to the card (the view is wrecked
+// here), take a room again -- because frame() stands down once the map has been
+// moved by hand and never puts it back. Same failure as the 68px one above, 68
+// times smaller.
 export const bandFor = (screen, height, rail = 0) =>
-  Math.max(1, Math.round(height * (1 - restFor(screen))) - rail);
+  Math.max(1, Math.round(height * (1 - (FULL_BLEED.has(screen) ? PEEK : restFor(screen)))) - rail);
 
 // The tallest the sheet may be, in PIXELS. FULL wherever the map is on screen.
 // Where it is covered there is nothing to leave room for but the back button, so
@@ -69,9 +99,11 @@ export const bandFor = (screen, height, rail = 0) =>
 // guard. PEEK is where these screens actually stopped before, and a rail that
 // tall has already broken the layout on its own.
 export const capFor = (screen, height, rail = 0, targeted = true) =>
-  restFor(screen, targeted) <= FULL
-    ? FULL * height
-    : Math.max(PEEK * height, Math.min(COVER * height, height - rail - BACK_PX));
+  FULL_BLEED.has(screen)
+    ? height - rail
+    : restFor(screen, targeted) <= FULL
+      ? FULL * height
+      : Math.max(PEEK * height, Math.min(COVER * height, height - rail - BACK_PX));
 
 // Where a screen rests, in pixels: its fraction, or the cap when the fraction
 // asks for more room than the button and the rail leave.

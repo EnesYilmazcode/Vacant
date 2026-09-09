@@ -70,6 +70,17 @@ const UA =
 
 const CHECK_ONLY = process.argv.includes('--check');
 
+// How far two captures of a still screen may differ, summed over R, G and B out
+// of 765. All three numbers behind this are measured at 393x852:
+//
+//   still, with a photograph on screen      0 to 27
+//   the card 60ms into its commit flight    623
+//   the sheet 80ms into a snap              743
+//
+// So 48 sits an order of magnitude above the noise and an order below the
+// smallest real movement either of the two animations on this screen produces.
+const STILL = 48;
+
 // One defect the frames are allowed to carry out of the door.
 //
 // It lives in js/app.js, which this script photographs and does not own, and
@@ -163,6 +174,81 @@ class Phone {
     await this.call('Input.dispatchMouseEvent', at(box.y + dy, 'mouseReleased', 0));
   }
 
+  // A slow downward pull on whatever is named, released at the bottom of it.
+  // dragSheet is the same motion hardwired to #handle; this one is for the
+  // gestures that live on something else, like the plate on the way screen.
+  async pullDown(selector, dy) {
+    const box = await this.evaluate(`(() => {
+      const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`);
+    const at = (y, type, buttons) => ({ x: box.x, y, type, buttons, button: 'left', clickCount: 1 });
+    await this.call('Input.dispatchMouseEvent', at(box.y, 'mouseMoved', 0));
+    await this.call('Input.dispatchMouseEvent', at(box.y, 'mousePressed', 1));
+    const steps = 12;
+    for (let i = 1; i <= steps; i++) {
+      await this.call('Input.dispatchMouseEvent', at(box.y + (dy * i) / steps, 'mouseMoved', 1));
+      await sleep(24);
+    }
+    await this.call('Input.dispatchMouseEvent', at(box.y + dy, 'mouseReleased', 0));
+  }
+
+  // The card, dragged and HELD. Every other frame in here is a screen at rest;
+  // this one is deliberately mid-gesture, because the stamp that says which
+  // verdict a release would fire only exists while a finger is on the card.
+  // Left down rather than released, so the frame is stable: nothing is
+  // animating, the transform is exactly where the pointer put it, and shoot()
+  // photographs it twice and compares.
+  async holdCard(dx) {
+    const box = await this.evaluate(`(() => {
+      const r = document.getElementById('c-top').getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`);
+    const at = (x, type, buttons) => ({ x, y: box.y, type, buttons, button: 'left', clickCount: 1 });
+    await this.call('Input.dispatchMouseEvent', at(box.x, 'mouseMoved', 0));
+    await this.call('Input.dispatchMouseEvent', at(box.x, 'mousePressed', 1));
+    const steps = 10;
+    for (let i = 1; i <= steps; i++) {
+      await this.call('Input.dispatchMouseEvent', at(box.x + (dx * i) / steps, 'mouseMoved', 1));
+      await sleep(24);
+    }
+    // Long enough for the snap the PREVIOUS drop started to have finished, and
+    // for the transform this one wrote to be the last thing that moved.
+    await sleep(500);
+    this.held = box;
+  }
+
+  // A throw that is meant to commit: it lets go past the threshold rather than
+  // back at the start. dy for the downward one, which opens the list.
+  async throwCard(dx, dy) {
+    const box = await this.evaluate(`(() => {
+      const r = document.getElementById('c-top').getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`);
+    const at = (x, y, type, buttons) => ({ x, y, type, buttons, button: 'left', clickCount: 1 });
+    await this.call('Input.dispatchMouseEvent', at(box.x, box.y, 'mouseMoved', 0));
+    await this.call('Input.dispatchMouseEvent', at(box.x, box.y, 'mousePressed', 1));
+    const steps = 10;
+    for (let i = 1; i <= steps; i++) {
+      await this.call(
+        'Input.dispatchMouseEvent',
+        at(box.x + (dx * i) / steps, box.y + (dy * i) / steps, 'mouseMoved', 1),
+      );
+      await sleep(20);
+    }
+    await this.call('Input.dispatchMouseEvent', at(box.x + dx, box.y + dy, 'mouseReleased', 0));
+    await sleep(500);
+  }
+
+  // Back to the middle, and let go. Under the threshold, so the card returns to
+  // rest and the deck is where it was.
+  async dropCard() {
+    const at = (x, type, buttons) => ({ x, y: this.held.y, type, buttons, button: 'left', clickCount: 1 });
+    await this.call('Input.dispatchMouseEvent', at(this.held.x, 'mouseMoved', 1));
+    await this.call('Input.dispatchMouseEvent', at(this.held.x, 'mouseReleased', 0));
+    await sleep(450);
+  }
+
   // The sheet snaps with a CSS transition, so a frame taken too early
   // photographs a drag in progress, which is not a state the app rests in.
   async settled() {
@@ -237,6 +323,40 @@ class Phone {
 // frame is drawn small on a canvas and the spread of its pixels is read back.
 // A dark app on a dark map still has hundreds of distinct colours; a frame
 // that failed to paint has one or two.
+// WHERE two frames differ, in CSS pixels, when one of them moved. "The screen
+// was still moving" used to be the whole report, and finding out what had moved
+// meant rebuilding this script by hand in a scratch file. It says which corner
+// now, and how much.
+async function whereMoved(lab, a, b) {
+  return lab.evaluate(`(async () => {
+    const load = async (b64) => {
+      const img = new Image();
+      img.src = 'data:image/webp;base64,' + b64;
+      await img.decode();
+      const c = new OffscreenCanvas(img.width, img.height);
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(img, 0, 0);
+      return { px: g.getImageData(0, 0, img.width, img.height).data, w: img.width, h: img.height };
+    };
+    const A = await load(${JSON.stringify(a)});
+    const B = await load(${JSON.stringify(b)});
+    let n = 0, worst = 0, minX = 1e9, minY = 1e9, maxX = -1, maxY = -1;
+    for (let i = 0; i < A.px.length; i += 4) {
+      const d = Math.abs(A.px[i] - B.px[i]) + Math.abs(A.px[i+1] - B.px[i+1]) + Math.abs(A.px[i+2] - B.px[i+2]);
+      if (d === 0) continue;
+      n++; if (d > worst) worst = d;
+      const x = (i / 4) % A.w, y = Math.floor((i / 4) / A.w);
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    const s = 3;
+    return n
+      ? { pixels: n, pct: +(n / (A.w * A.h) * 100).toFixed(3), worst,
+          css: [Math.round(minX/s), Math.round(minY/s), Math.round(maxX/s), Math.round(maxY/s)] }
+      : null;
+  })()`);
+}
+
 async function inspect(lab, base64) {
   return lab.evaluate(`(async () => {
     const img = new Image();
@@ -268,6 +388,11 @@ const clockTime = (s) => (String(s).match(/\d{1,2}:\d{2}[ap]m/) || [null])[0];
 
 // How far down the ranked list the search for a room is allowed to go.
 const PROBE_ROWS = 20;
+
+// How many times the run will press the bin before it decides the deck does not
+// end. The deck is the ranking, which is 35 rooms at the pinned minute; a run
+// that gets past this is looping, not walking.
+const DECK_MAX = 120;
 
 // Which room the last two frames are of. Decided by opening rooms and reading
 // them back, not by guessing from the list row.
@@ -403,7 +528,28 @@ async function run() {
       const data = await page.capture();
       await sleep(250);
       const again = await page.capture();
-      if (data !== again) problems.push(`${name}: the screen was still moving when it was photographed`);
+      // Not byte-for-byte any more, and the reason is worth writing down. The
+      // capture is `fromSurface`, so it reads the compositor's raster of the
+      // page rather than re-rendering it, and once a downscaled PHOTOGRAPH is
+      // on screen that raster is not reproducible to the bit: the card frame
+      // differed from its own retake by up to 3 levels per channel over the
+      // lower half of the screen, identically on every run, at any settle time,
+      // with the blur off, with the map hidden, and with the image on its own
+      // compositor layer. The same frames captured without `fromSurface` were
+      // byte-identical, which is what says it is the raster and not the app.
+      //
+      // So the check measures what it was always FOR: whether the screen was
+      // moving. Anything actually in motion -- a sheet mid-snap, a fade, a card
+      // sliding -- moves edges between hundreds and the full 765 apart. Three
+      // levels per channel is not motion, it is arithmetic.
+      const moved = await whereMoved(lab, data, again);
+      if (moved && moved.worst > STILL) {
+        problems.push(
+          `${name}: the screen was still moving when it was photographed -- ` +
+            `${moved.pixels} px (${moved.pct}%) changed, worst ${moved.worst}/765, ` +
+            `inside CSS box [${moved.css.join(', ')}]`,
+        );
+      }
       // What the screen says, kept beside the picture. A screenshot cannot be
       // read by a test and its alt text can drift off it without anyone
       // noticing, which is how the README came to print a time the app does
@@ -444,10 +590,253 @@ async function run() {
     // with a TypeError instead of reporting the failure it had just found.
     await shoot('ask', `${ask.opts.join(', ')}; ${(ask.chosen ?? 'none').trim()} chosen`);
 
-    // 2. the ranked list. Nothing is selected yet, so there is nothing on the
-    //    map, so the list has the screen: the sheet rests at full height and
-    //    the canvas is faded out under it.
+    // 2. the card. A duration opens ONE room now, not thirty-five: the
+    //    building, the room number, and two ways out of it. Nothing is selected
+    //    yet, so there is nothing on the map and the sheet covers it.
     await page.tapSelector('.opt[data-min="120"]');
+    await page.waitFor(`document.getElementById('c-top')`, 'the first card');
+    // The photograph arrives after the text and fades in over 350ms, and a
+    // frame taken during that fade is a different frame every run.
+    await page.waitFor(
+      `(() => {
+        const i = document.getElementById('c-img');
+        // Computed opacity is the END of the fade. The class goes on when the
+        // warp is drawn and the transition runs for another 350ms after that,
+        // and a frame taken inside it is a different frame every run.
+        return !i || getComputedStyle(i).opacity === '1';
+      })()`,
+      'the photograph to finish fading in',
+    );
+    // Settled AFTER the fade, not before it. The install rail mounts late and
+    // js/app.js resizes the sheet when it does, so a settle taken before the
+    // photograph had even arrived was a settle on a layout that then moved.
+    await page.settled();
+    await sleep(1400);
+    const card = await page.evaluate(`(() => {
+      const pick = (sel) => (document.querySelector('#card ' + sel) || {}).textContent || '';
+      const img = document.getElementById('c-img');
+      return {
+        title: pick('.c-b').trim(),
+        facts: pick('.c-facts').replace(/\\s+/g, ' ').trim(),
+        acts: [...document.querySelectorAll('.c-act')].map((b) => b.getAttribute('aria-label')),
+        nomap: document.body.classList.contains('nomap'),
+        photo: img ? (img.tagName === 'CANVAS' ? 'canvas' : img.getAttribute('src')) : null,
+        drawn: img ? img.width + 'x' + img.height : null,
+        plain: document.getElementById('c-top').classList.contains('plain'),
+        glyph: getComputedStyle(document.querySelector('#menu .ico')).width,
+      };
+    })()`);
+    console.log(`card   ${card.title}  ${card.facts}`);
+    console.log(`photo  ${card.photo ?? '(none)'}  ${card.drawn ?? ''}`);
+    // The room and the building are the two things this screen exists to say.
+    if (!card.title) problems.push('card: nothing names the room');
+    // The window is the answer to the question that was asked, so it leads the
+    // facts line. Losing it would leave a card that never says how long.
+    if (!/free till|no class|from |till /i.test(card.facts)) {
+      problems.push(`card: nothing says how long it is yours: "${card.facts}"`);
+    }
+    if (card.acts.length !== 2) problems.push(`card: ${card.acts.length} buttons, not two`);
+    // A swipe nothing announces is unreachable from a keyboard and invisible to
+    // a screen reader, so both verdicts have to exist as named controls.
+    if (card.acts.some((a) => !a)) problems.push('card: a verdict button has no accessible name');
+    if (!card.nomap) problems.push('card: the map is on screen with nothing on it');
+    // The whole point of the frame. A photograph that 404s leaves the plain
+    // card, which is correct for the 119 rooms that have none and wrong for
+    // this one: Cunz Hall 160 has one, and it is the room the run picks.
+    if (!card.photo) problems.push('card: no photograph on a room that has one');
+    else if (card.plain) problems.push('card: the photograph failed to load');
+    // The warp draws at the device pixel ratio, capped at 2, so a 393x852 phone
+    // gets a 786x1704 canvas. A canvas that came out 0 wide is a draw that
+    // happened before the pane had a size.
+    else if (!/^\d{3,}x\d{3,}$/.test(card.drawn ?? '')) problems.push(`card: the canvas is ${card.drawn}`);
+    await shoot('card', `${card.title}, ${card.facts}`, target.name);
+
+    // 2b. the menu. Three lines in the corner the back arrow used to have, and
+    //     behind it the choices this screen has nowhere else to put. Opened by
+    //     pressing it, closed by pressing off it, both with a pointer.
+    await page.tapSelector('#menu');
+    await page.waitFor(`!document.getElementById('menu-pop').hidden`, 'the menu to open');
+    await page.settled();
+    await sleep(600);
+    const menu = await page.evaluate(`(() => ({
+      items: [...document.querySelectorAll('#menu-pop .m-item')].map((b) => b.textContent.trim()),
+      expanded: document.getElementById('menu').getAttribute('aria-expanded'),
+      focused: (document.activeElement || {}).id,
+    }))()`);
+    console.log(`menu   ${menu.items.join(' / ')}`);
+    if (menu.items.length < 4) problems.push(`menu: ${menu.items.length} choices on it`);
+    if (!/back/i.test(menu.items[0] ?? '')) problems.push(`menu: the first choice is "${menu.items[0]}"`);
+    if (menu.expanded !== 'true') problems.push(`menu: aria-expanded is ${menu.expanded}`);
+    if (menu.focused !== 'm-back') problems.push(`menu: focus went to "${menu.focused}"`);
+    await shoot('menu', menu.items.join(', '), target.name);
+
+    // A press off the panel is "not this". The bottom of the screen is over the
+    // photograph and nothing else, so this is the backdrop and not a control.
+    await page.tap(SCREEN.width / 2, SCREEN.height - 120);
+    await page.waitFor(`document.getElementById('menu-pop').hidden`, 'the menu to close');
+    const shut = await page.evaluate(`(() => ({
+      expanded: document.getElementById('menu').getAttribute('aria-expanded'),
+      room: (document.querySelector('#card .c-b') || {}).textContent || '',
+    }))()`);
+    if (shut.expanded !== 'false') problems.push(`menu: aria-expanded stayed ${shut.expanded}`);
+    if (shut.room !== card.title) {
+      problems.push(`menu: closing it changed the card to "${shut.room}"`);
+    }
+    console.log('menu   pressed off it -> closed, card unchanged');
+    await page.settled();
+    await sleep(400);
+
+    // 2c and 2d. The same card, held mid-swipe in each direction. This is the
+    //   only part of the screen no still frame can show: the stamp that says
+    //   what letting go would do exists only while a finger is on the card.
+    //   Held short of the 84px commit threshold, so the room is still readable
+    //   under the verdict rather than half off the side of the phone.
+    const stampOf = () =>
+      page.evaluate(`(() => {
+        const seen = (sel) => {
+          const el = document.querySelector(sel);
+          return el ? Number(getComputedStyle(el).opacity) : -1;
+        };
+        const t = document.getElementById('c-top');
+        return { no: seen('.c-stamp.no'), yes: seen('.c-stamp.yes'), moved: t.getBoundingClientRect().left };
+      })()`);
+    const atRest = await stampOf();
+
+    await page.holdCard(-72);
+    const left = await stampOf();
+    if (!(left.no > 0.6)) problems.push(`swipe-next: the NEXT stamp is at ${left.no}`);
+    if (left.yes > 0.05) problems.push(`swipe-next: the GO stamp is showing too, at ${left.yes}`);
+    if (!(left.moved < atRest.moved - 50)) problems.push('swipe-next: the card did not follow the pointer');
+    await shoot(
+      'swipe-next',
+      `held ${Math.round(atRest.moved - left.moved)}px left, NEXT showing`,
+      target.name,
+    );
+    await page.dropCard();
+
+    await page.holdCard(72);
+    const right = await stampOf();
+    if (!(right.yes > 0.6)) problems.push(`swipe-go: the GO stamp is at ${right.yes}`);
+    if (right.no > 0.05) problems.push(`swipe-go: the NEXT stamp is showing too, at ${right.no}`);
+    if (!(right.moved > atRest.moved + 50)) problems.push('swipe-go: the card did not follow the pointer');
+    await shoot(
+      'swipe-go',
+      `held ${Math.round(right.moved - atRest.moved)}px right, GO showing`,
+      target.name,
+    );
+    await page.dropCard();
+
+    // Letting go under the threshold puts it back, so the deck is where it was.
+    const back = await stampOf();
+    if (Math.abs(back.moved - atRest.moved) > 1) {
+      problems.push(`the card did not return to rest: ${atRest.moved} -> ${back.moved}`);
+    }
+
+    // 3. the way. Taking a card is the whole flow now: the map with the walk
+    //    line on it, one plate naming the room, and the ranking peeked
+    //    underneath with that room's row lit. No calendar: that is the part
+    //    taking a room makes irrelevant.
+    //
+    await page.throwCard(150, 0);
+    await page.waitFor(`!document.getElementById('way').hidden`, 'the way screen');
+    await page.settled();
+    await sleep(1400);
+    const way = await page.evaluate(`(() => {
+      const pick = (sel) => (document.querySelector('#way ' + sel) || {}).textContent || '';
+      const lit = document.querySelector('#list .row.on');
+      return {
+        name: pick('.c-b').trim(),
+        facts: pick('.c-facts').replace(/\\s+/g, ' ').trim(),
+        panes: ['card','room','near','pick','about'].filter((id) => !document.getElementById(id).hidden),
+        rows: document.querySelectorAll('#list .row').length,
+        lit: lit ? lit.textContent.replace(/\\s+/g, ' ').trim() : '',
+        sheet: document.getElementById('sheet').getBoundingClientRect().height,
+        nomap: document.body.classList.contains('nomap'),
+        menu: !document.getElementById('menu').hidden,
+        back: document.getElementById('back').hidden,
+        // The same button on two consecutive screens has to be the same size.
+        // It was 44px in a bordered disc here and 60px bare on the card.
+        glyph: getComputedStyle(document.querySelector('#menu .ico')).width,
+      };
+    })()`);
+    console.log(`way    ${way.name}  ${way.facts}`);
+    console.log(`rows   ${way.rows} under it, lit: ${way.lit}`);
+    // What it shows, and the one thing it does not.
+    if (way.panes.length) problems.push(`way: ${way.panes.join(', ')} is still showing`);
+    if (way.nomap) problems.push('way: the map is covered, on the one screen that is a map');
+    if (!way.name) problems.push('way: nothing names the room');
+    if (!/min/.test(way.facts)) problems.push(`way: no walk on it: "${way.facts}"`);
+    if (!way.rows) problems.push('way: no other rooms under the map');
+    if (!way.lit.startsWith(way.name)) {
+      problems.push(`way: the plate says "${way.name}" and the lit row says "${way.lit}"`);
+    }
+    // Peeked, not covering: the arrow is the point of the screen.
+    if (way.sheet > 0.5 * SCREEN.height) {
+      problems.push(`way: the sheet rests at ${Math.round(way.sheet)}px, over the map`);
+    }
+    if (!way.menu) problems.push('way: no menu, and no back arrow either');
+    if (!way.back) problems.push('way: the back arrow is up beside the menu');
+    if (way.glyph !== card.glyph) {
+      problems.push(`way: the menu glyph is ${way.glyph} here and ${card.glyph} on the card`);
+    }
+    await shoot('way', `${way.name}, ${way.rows} rows under it`, target.name);
+
+    // The way has no back arrow, so the two things that leave it are the menu's
+    // Back and the sheet's own grip pulled through its dismiss travel. The grip
+    // is the one checked here, because it is the one that is a gesture: it goes
+    // back a step, which is the card that was taken with the deck still on the
+    // same room. No frame: what is being checked is that this screen goes away.
+    await page.dragSheet(140);
+    await page.waitFor(`!document.getElementById('card').hidden`, 'the card to come back');
+    await page.settled();
+    const leaving = await page.evaluate(`(() => ({
+      way: document.getElementById('way').hidden,
+      carding: document.body.classList.contains('carding'),
+      room: (document.querySelector('#card .c-b') || {}).textContent || '',
+    }))()`);
+    if (!leaving.way) problems.push('way: pulling the sheet down left the way screen up');
+    if (!leaving.carding) problems.push('way: pulling the sheet down did not land on the card');
+    if (leaving.room !== way.name) {
+      problems.push(`way: back from the way landed on "${leaving.room}", not "${way.name}"`);
+    }
+    console.log(`way    grip pulled down -> the card, still ${leaving.room}`);
+
+    // 4. the ranked list. It used to be a downward throw of the card; that
+    //    gesture goes back to the question now, and the list is the button at
+    //    the end of the deck instead -- which is exactly where somebody who has
+    //    said no to every room ends up. So the way to it is to say no to every
+    //    room, and that is what this does. Nothing is staged: every screen below
+    //    is reached by tapping, the same as every screen above it.
+    //
+    //    From the question, because the deck is back on its first room by then
+    //    and the walk has to start where a reader starts.
+    await page.boot(url);
+    await page.tapSelector('.opt[data-min="120"]');
+    await page.waitFor(`document.getElementById('c-top')`, 'the first card again');
+    //    Pressing the bin rather than throwing the card, because the button is
+    //    the thing that has to be pressed: it was dead to a finger until this
+    //    walk found it. The card captured the pointer on pointerdown, and
+    //    pointer capture retargets click onto the capturing element, so 120
+    //    presses of the bin left the first room on screen. Reading the room off
+    //    the plate each time is what turns that into a failure rather than a
+    //    hang.
+    const onDeck = () => page.evaluate(`(document.querySelector('#card .c-b') || {}).textContent || ''`);
+    let binned = 0;
+    while (!(await page.evaluate(`!!document.getElementById('c-list')`))) {
+      if (binned >= DECK_MAX) {
+        problems.push(`the deck had not ended after ${binned} rooms`);
+        break;
+      }
+      const was = await onDeck();
+      await page.tapSelector('#c-no');
+      if ((await onDeck()) === was) {
+        problems.push(`the bin did nothing: "${was}" is still on the card after pressing it`);
+        break;
+      }
+      binned += 1;
+    }
+    console.log(`deck   ${binned} rooms binned to reach the end of the deck`);
+    await page.tapSelector('#c-list');
     await page.waitFor(`document.querySelectorAll('#list .row').length > 3`, 'the list to fill');
     await page.settled();
     await sleep(1500);
@@ -459,6 +848,7 @@ async function run() {
       nomap: document.body.classList.contains('nomap'),
       sheet: document.getElementById('sheet').getBoundingClientRect().height,
     }))()`);
+    if (rows.length !== binned) problems.push(`list: ${rows.length} rows behind a deck of ${binned}`);
     if (!browsing.nomap) problems.push('list: the map is on screen with nothing on it');
     if (browsing.sheet < 0.7 * SCREEN.height) {
       problems.push(`list: the sheet rests at ${Math.round(browsing.sheet)}px, not over the map`);
@@ -477,7 +867,7 @@ async function run() {
       problems.push(`list: a 60px pull moved the sheet ${Math.round(browsing.sheet)} -> ${Math.round(pulled)}`);
     }
 
-    // 3. one room selected: the map comes out from under the list with the
+    // 5. one room selected: the map comes out from under the list with the
     //    footprint lit and an arrow drawn to it. The first tap on a row
     //    selects, so this is one tap and the sheet drops back to peek.
     // The chosen room is not always above the fold, so the list is scrolled to
@@ -511,7 +901,10 @@ async function run() {
       target.name,
     );
 
-    // 4. tap the same row again and the room screen opens
+    // 6. tap the same row again and the room screen opens: the whole day as a
+    //    calendar, doors included. This is the screen the card deliberately does
+    //    NOT show once a room has been taken -- by then the question is which
+    //    way to walk -- and it is still the screen for reading a room properly.
     await page.tapSelector(`#list .row[data-i="${target.i}"]`);
     await page.waitFor(`!document.getElementById('room').hidden`, 'the room screen');
     await page.waitFor(`document.querySelector('#room .day')`, "today's grid");

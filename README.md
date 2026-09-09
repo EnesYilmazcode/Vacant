@@ -5,12 +5,13 @@ Find an empty classroom near you at Ohio State, free for as long as you need it.
 ### **[enesyilmazcode.github.io/Vacant](https://enesyilmazcode.github.io/Vacant/)**
 
 It is a web page. No account, no search box, nothing to sign up for. It finds you,
-asks one question, and hands you rooms you can walk to, nearest first.
+asks one question, and hands you **one room** you can walk to, with a photograph of
+it. Bin it and it hands you the next one. Take it and it shows you the way.
 
 | | |
 | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![The ranked list, filling the screen with no map behind it. One room per building, under a line reading "You asked for 2h00." Cunz Hall 160, 4 min walk, no class rest of today, 42 seats. Dulles Hall 012, 4 min, no class rest of today, 25 seats. Seven more below them.](docs/media/list.webp) |
-| One question. | The answer, and nothing else. |
+| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![One card, filling the screen: a photograph of Cunz Hall 160, an empty classroom with rows of tables and yellow chairs, a clock and a door at the far end. A narrow frosted plate floats over the ceiling reading Cunz Hall 160, with no class, 4 min and 42 seats on the line under it. A bin and a tick sit on the bottom corners. Nothing else is on the screen.](docs/media/card.webp) |
+| One question. | One answer. |
 
 ## Yours for, not free until
 
@@ -22,23 +23,145 @@ in the room's schedule, subtracts the walk, and leaves ten minutes at the end so
 you are not packing up while the next class files in. Walk time is straight line
 distance times 1.3 for the fact that campus paths bend, at 78 metres a minute.
 
-Read the second row of the middle screenshot. PAES A111 says **free till 4:00pm**.
+Read the third row of the list further down. PAES A111 says **free till 4:00pm**.
 The next class in that room starts at 4:10pm, you are four minutes away, and
 4:00pm is when you have to be packed up.
 
-Tap it and the room screen says the same minute, then spells the rest out:
+Take it and the room screen says the same minute, then spells the rest out:
 **Yours for 5h36 once you get there.** The two screens agreeing is the point.
 They did not for a while: the room screen printed the raw class start, handing
 back the ten minutes the row had already taken off
 ([#77](https://github.com/EnesYilmazcode/Vacant/issues/77)).
 
-A row that says **no class rest of today** instead of a time means no class is
+A card that says **no class rest of today** instead of a time means no class is
 coming at all, and the timeline behind it ends where the building locks.
+
+## Bin it, or take it
+
+Drag the card and it tells you what letting go will do. Each badge sits on the
+corner the card is *not* leaving by, so the word is still on screen at the moment
+you commit to it.
+
+| | |
+| :--: | :--: |
+| ![The same card dragged left and held. The photograph of Cunz Hall 160 has slid off the left edge and tilted, and a grey NEXT badge has appeared on the corner still on screen.](docs/media/swipe-next.webp) | ![The same card dragged right and held. The photograph has slid right and tilted the other way, and a red GO badge has appeared on the corner still on screen, over the plate reading Cunz Hall 160.](docs/media/swipe-go.webp) |
+| Left: the next room, nearest first. | Right: this one, and the way there. |
+
+The buttons under the card do the same two things, and so do the left and right
+arrow keys. A gesture nothing announces is unreachable from a keyboard and
+invisible to a screen reader. They were also, until `scripts/shoot.mjs` tried to
+press one, doing nothing at all: the card takes the pointer capture to follow a
+drag, and pointer capture retargets the *click* onto the capturing element, so
+every press of the bin went to the card and was swallowed. A hundred and twenty
+presses left the first room on screen. The card steps aside for a control now,
+the way the sheet already did for its handle and its search field.
+
+**Throw the card down and you are back at the question.** There is no back arrow
+on this screen: it was a third piece of chrome on a photograph, and the duration
+is one tap to set again. The gesture is not printed anywhere either, because a
+label is one more thing to read on a screen whose whole argument is that one room
+is the answer -- but it is in the card's accessible name, where a screen reader
+reads it out, since a gesture nothing announces is not learnable at all by
+somebody who cannot see the card move.
+
+## Three lines in the corner
+
+What the back arrow used to be, on the two screens that no longer have one. It
+holds the choices a screen with one room on it has nowhere else to put.
+
+| |
+| :--: |
+| ![The same photograph of Cunz Hall 160, darkened, with a dark rounded panel open under three lines at the top left. It reads Back, See all rooms, Pick your building, Check again, What Vacant knows.](docs/media/menu.webp) |
+| Back first, because that is the one a screen without an arrow is missing. |
+
+It is a disclosure and not a `role="menu"`: that role promises the arrow keys
+move between the items, and announcing a keyboard model the app does not
+implement is worse than announcing none. Escape closes it, so does a press
+anywhere off the panel, and so does leaving the screen it was opened on.
+
+## Take it and it shows you the way
+
+The map with the room lit on it, an arrow to it, one plate naming it, and the
+rest of the ranking peeked underneath. The room's **calendar** is what taking a
+room makes irrelevant, not the other rooms: one tap on a row moves the arrow and
+the plate to it, which is the cheapest change of mind in the app.
+
+| |
+| :--: |
+| ![The campus map at night filling the top of the screen, with Cunz Hall's footprint outlined in red, a dashed line running from the blue dot to it and an arrowhead pointing into the building. A frosted plate near the top reads Cunz Hall 160, with no class, 4 min and 42 seats under it. Below the map, the ranked list with Cunz Hall 160 lit in red at the top of it, then Dulles Hall 012, PAES A111 and Journalism Building 106.](docs/media/way.webp) |
+| The answer, the way to it, and the runners-up. |
+
+This screen has no back arrow either. The menu's **Back** leaves it, and so does
+pulling the sheet's grip down through its travel, which is the same gesture that
+leaves every other screen in the app. Both land on the card you took, deck still
+on the same room, so one more swipe is the next one.
+
+## Say no to all of them
+
+Then the last card offers the ranking as a list, which is every row the deck
+would have shown you, one per building, nearest first.
+
+| |
+| :--: |
+| ![The ranked list, filling the screen with no map behind it. One room per building, under a line reading "You asked for 2h00." Cunz Hall 160, 4 min walk, no class rest of today, 42 seats. Dulles Hall 012, 4 min, no class rest of today, 25 seats. Seven more below them.](docs/media/list.webp) |
+| Behind the end of the deck, for when you would rather scan. |
 
 | | |
 | :--: | :--: |
 | ![The same list after one tap, dropped to make room for the map. Cunz Hall 160's building footprint is outlined in red, a dashed line runs from the blue dot to it with an arrowhead pointing into the building, and its row is lit in the list below.](docs/media/room.webp) | ![The room screen for Cunz Hall 160: no class in here for the rest of today, yours for 8h26 once you get there, 4 min walk, 42 seats, classroom, then Wednesday drawn as a calendar from 6 AM with two red blocks, KNSISM 3208 from 8:00am to 8:55am and KNSISM 3550 from 9:10am to 10:05am, and everything else empty](docs/media/timeline.webp) |
-| Tap a room and the map comes up pointing at it. | Tap it again for its whole day, doors included. |
+| Take a room and the map comes up pointing at it. | Tap it again for its whole day, doors included. |
+
+## The picture is the room
+
+The card shows the room, because a room you can see is a room you can recognise
+from the corridor, and "Cunz Hall 160" never told anybody that. It is the whole
+screen: one frosted plate near the top, and the two verdicts on the bottom
+corners. The plate is narrower than the phone and centred in it, so it reads as a
+label ON the photograph rather than as a bar across it.
+
+**The top of the frame is stretched to make it fit.** A 3:2 photograph in a
+1:2.2 screen is a 3.25x aspect gap, and a cover crop pays for it in width: 31%
+of the room, and since every one of these is shot from the back, half of that
+column is foreground carpet. So the ceiling pays instead. It is flat, the plate
+sits over it, and stretching it buys back **72% of the width** for the part of
+the room you are looking at. `drawWarp()` maps the source to the screen as
+`y ** p` over 240 bands on a canvas. The exponent is derived per photograph
+rather than fixed, because 219 of the 306 are 3:2 and the rest run from 4:3 to
+16:9: the knob is how much taller than natural the BOTTOM of the picture may be
+drawn, and `p` falls out of that and the aspect. At the shipped 1.23x, the top
+120px of the phone comes from the top 14 source rows of a 3:2 room and the top 6
+of a 16:9 one, and both read as a high ceiling rather than as a distortion.
+`dev/warp.html` is the bench those numbers came off: both sliders, all 306
+rooms, and a line showing how much of the picture the plate hides.
+
+The screen is the picture and two icons, the same size and the same distance
+from their own corner. There is no third one. The back arrow that used to sit
+opposite them went because the card is a photograph and every glyph on it is
+something between the reader and the room, and the ranking has never had a
+control because an unlabelled glyph is a puzzle and a label is one more thing to
+read.
+
+**306 of the 425** have one. The other 119 are departmental rooms nobody has
+photographed, and they get the same card without a picture: the words were always
+the answer.
+
+They come from OTDI's [Learning Spaces
+directory](https://learningspaces.osu.edu/classrooms), which serves them from
+`rooms.app.it.osu.edu` at an address that can be built from a room id. The
+Registrar publishes the same rooms behind an opaque `/media/<hash>/` path with
+a **REGISTRAR - 2022** watermark burnt into the frame, so that copy is neither
+addressable nor the one you want.
+
+The originals are 1620x1080 JPEGs of up to 1.34 MB. `scripts/fetch-room-photos.mjs`
+resizes them to 900 wide and re-encodes them as WebP, which is **39 KB each and
+11.7 MB for all 306**, and commits them. Hotlinking would have put a megabyte on
+the one screen a student opens in a stairwell, would break the day OSU moves a
+file, and would tell OSU's server which room each reader is looking at, which
+[the privacy page](privacy.html) promises this app does not do with anything
+else. None of them are precached: each arrives with the card that shows it, and
+is kept from then on.
+
+Photographs &copy; The Ohio State University, OTDI Classroom Services.
 
 ## Put it on your home screen
 
@@ -50,7 +173,7 @@ sits at the bottom, then **Add to Home Screen**. iOS 26 defaults to that Compact
 layout, which is why the app offers you both. On Android, Chrome has **Install
 app** in its menu.
 
-Installed, the whole app is 70 KB of shell and 63 KB of schedule, gzipped, and
+Installed, the whole app is 147 KB of shell and 90 KB of schedule, gzipped, and
 none of it is fetched again to answer a question. Turn the network off, open it,
 and it still ranks rooms. That matters because the moment you want it most is the
 moment you are in a basement with one bar.
@@ -103,7 +226,7 @@ the first answer rather than before it.
 | Where | What is in it |
 | --- | --- |
 | `index.html` | The whole shell. Markup and CSS, no framework. |
-| `js/app.js` | Three screens in one sheet: the question, the list, one room. |
+| `js/app.js` | Four screens in one sheet: the card, the list, one room, the buildings. |
 | `js/engine.js` | The ranking, and the formula that decides how long a room is yours. |
 | `js/map.js` | The campus map, drawn as vectors on a canvas. No tiles, no key. |
 | `js/campus.js` | Latitude and longitude into map grid space. |
@@ -122,7 +245,7 @@ Then open `http://localhost:8000`. It has to be served rather than opened as a
 file, because the page is ES modules and it fetches JSON.
 
 ```sh
-npm test                        # node --test, 589 tests, no network
+npm test                        # node --test, 842 tests, no network
 node scripts/shoot.mjs          # redraw docs/media from the real app
 ```
 

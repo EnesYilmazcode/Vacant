@@ -125,6 +125,19 @@ test('the photographed room screen agrees with its own list row', () => {
 // the time it was read, which is the failure this repo's own rule exists to
 // stop. These recompute from the shipped files, so the next filter change
 // breaks the build instead of the sentence.
+// The README said 70 KB of shell and 63 KB of schedule for long enough that the
+// real figures had grown past them by 72 KB and 27 KB. sw.js carries the byte
+// counts in its header and scripts/test/sw.test.mjs holds THOSE to the files it
+// caches, so the only link missing was this one.
+test('the README ships the sizes sw.js measured', () => {
+  const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
+  const said = sw.match(/Shell ([0-9,]+) bytes, data ([0-9,]+)/);
+  assert.ok(said, 'no measured shell and data figures in the sw.js header');
+  const kb = (n) => Math.round(Number(n.replace(/,/g, '')) / 1024);
+  const phrase = `${kb(said[1])} KB of shell and ${kb(said[2])} KB of schedule`;
+  assert.ok(readme.includes(phrase), `the README does not say "${phrase}"`);
+});
+
 test('the README counts are the counts in the shipped index', () => {
   const index = JSON.parse(readFileSync(join(ROOT, 'data', 'rooms-1268.json'), 'utf8'));
   const current = JSON.parse(readFileSync(join(ROOT, 'data', 'current.json'), 'utf8'));

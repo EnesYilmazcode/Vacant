@@ -557,7 +557,7 @@ test('the sheet holds a capped column instead of stretching to the window', () =
   assert.doesNotMatch(css, /#sheet > \* \{[^}]*max-width/, 'the children are capped as well as the sheet');
   assert.equal(css.split('max-width: var(--col)').length - 1, 1, 'the column width is set twice');
   // And the back arrow rides the same column rather than the window corner.
-  assert.match(css, /#back \{ left: max\(.+, calc\(50% - var\(--col\) \/ 2\)\); \}/);
+  assert.match(css, /#back, #menu \{ left: max\(.+, calc\(50% - var\(--col\) \/ 2\)\); \}/);
 });
 
 test('every control answers a mouse before it has been clicked', () => {
@@ -1204,11 +1204,13 @@ test('the back button on the room screen names the pane back lands on', () => {
   const open = bodyOf('openRoom');
   assert.match(open, /pushState\(\{[^}]*from: state\.screen/);
 
-  // The pairing, not the presence. Both strings are in this function either
-  // way, so three separate matches all hold with the two arms swapped, which is
-  // the reported defect back again.
+  // The pairing, not the presence. Every string is in this function either way,
+  // so separate matches all hold with the arms swapped, which is the reported
+  // defect back again. Three arms now: the way opens rooms too, and it is not
+  // the room list.
   const show = bodyOf('showRoom');
-  assert.match(show, /from === 'near'\s*\?\s*'Back to the nearest buildings'\s*:\s*'Back to the room list'/);
+  assert.match(show, /from === 'near'\s*\?\s*'Back to the nearest buildings'/);
+  assert.match(show, /from === 'way'\s*\?\s*'Back to the way'\s*:\s*'Back to the room list'/);
 });
 
 // ---- the duration, and where the list says it
@@ -1290,11 +1292,344 @@ test('the ranked list says which question it is answering', () => {
   assert.doesNotMatch(line, /[Ff]ree for/);
 });
 
-test('back is the way to the question, and it says so on the list', () => {
-  // The only route to the duration now, so its accessible name has to name the
-  // screen it lands on rather than reading "Back".
-  const show = bodyOf('showList');
-  assert.match(show, /\$\('back'\)\.setAttribute\('aria-label', 'Back to the question'\)/);
+// ---- the card, which is what a duration opens now
+
+test('a duration opens one room, not the ranking', () => {
+  // Colin, who uses this on campus every day, asked for "a single button that
+  // just finds the nearest empty classroom and if its full u swipe and gives u
+  // next best". The list is still there, one tap behind it, but it is no longer
+  // what answering the question puts on screen.
+  const choose = bodyOf('choose');
+  assert.match(choose, /showCard\(\)/);
+  assert.doesNotMatch(choose, /showList\(\)/, 'a duration still opens the list');
+  assert.match(choose, /history\.pushState\(\{ v: 'card' \}/);
+  // And the card is a pane of the same sheet, so it inherits the drag, the
+  // dismiss and the covered map rather than reimplementing them.
+  assert.match(APP, /const PANES = \['card', 'list'/);
+});
+
+test('the card carries the two things Enes said were the point, and nothing else', () => {
+  // "the room number is important and also the building is important", and
+  // "remove all the filler text". The picture is the room, and one plate over it
+  // carries the name and the three facts. The count, the walk cap and the
+  // coverage paragraph stay on the list -- a card carrying them is a list with
+  // one row on it.
+  const paint = bodyOf('paintCard');
+  for (const bit of ['c-photo', 'c-plate', 'c-b', 'c-facts']) {
+    assert.ok(paint.includes(bit), `the card lost ${bit}`);
+  }
+  assert.ok(paint.includes('cardParts(r)'), 'the card stopped naming the building and the room');
+  assert.equal(paint.includes('caveatHtml'), false, 'the coverage paragraph is back on the card');
+  assert.equal(paint.includes('MAX_WALK'), true, 'the end of the deck stopped naming the walk cap');
+
+  // The strip is NOT filler. It is the only thing that says the answer is
+  // degraded, and a card without it claims more than the ranking does.
+  assert.ok(paint.includes('state.tally?.shorter'), 'the card stopped admitting a short answer');
+  assert.ok(paint.includes('state.tally?.waiting'), 'the card stopped admitting an empty minute');
+});
+
+// ---- the photograph
+
+test('a room with no photograph gets a card, not a broken frame', () => {
+  // 119 of the 425 have none, and photoFor() is the only thing that decides.
+  // Null means BOTH "OSU never photographed this room" and "the manifest has
+  // not arrived yet", because the card is the same either way: the words are
+  // the answer and the picture was always the bonus.
+  const src = bodyOf('photoFor');
+  assert.match(src, /state\.photos\?\.has\(id\)/);
+  assert.match(src, /: null/);
+  const paint = bodyOf('paintCard');
+  assert.match(paint, /photo \? '' : ' plain'/, 'a photoless room stopped getting the plain card');
+  // And a file that 404s or decodes to nothing falls back to the same card
+  // rather than leaving an empty frame under the plate.
+  assert.match(paint, /source\.onerror/);
+  assert.match(paint, /classList\.add\('plain'\)/);
+  // The warp draws into a canvas the pane may have replaced under a slow
+  // decode -- a swipe, or a background re-rank -- and drawing into one nothing
+  // holds any more is how a stale room ends up under the right name.
+  assert.match(paint, /canvas\.isConnected/);
+});
+
+test('the photographs are on demand, never precached, and never re-fetched', () => {
+  // 11.7 MB together. Precaching them would be the install this app refuses to
+  // make a student wait for; revalidating them would spend 39 KB of somebody's
+  // allowance on every card, on the one screen that exists for one bar of LTE.
+  const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
+  assert.match(sw, /const PHOTO = /, 'sw.js does not recognise a photograph');
+  assert.match(sw, /if \(PHOTO\.test\(url\.pathname\)\) \{[\s\S]{0,80}immutable\(request\)/);
+  const immutableFn = sw.slice(sw.indexOf('async function immutable('), sw.indexOf('async function staleWhileRevalidate('));
+  assert.equal(/waitUntil|event\./.test(immutableFn), false, 'the photograph branch revalidates');
+  assert.equal(/photos/.test(sw.slice(sw.indexOf('const SHELL_ASSETS'), sw.indexOf('];', sw.indexOf('const SHELL_ASSETS')))), false,
+    'a photograph is in the precached shell');
+  assert.equal(/photos/.test(sw.slice(sw.indexOf('const WARM_ALWAYS'), sw.indexOf(';', sw.indexOf('const WARM_ALWAYS')))), false,
+    'a photograph is warmed on install');
+
+  // And the eviction that clears last term's files must not reach them: they
+  // are not term keyed, and the same regex once ate the building hours.
+  const evict = sw.slice(sw.indexOf('async function evictOldTerms('));
+  const pattern = evict.match(/pathname\.match\((\/[^;]+\/)\)/)[1];
+  assert.equal(new RegExp(pattern.slice(1, -1)).test('/Vacant/data/photos/CZ0160.webp'), false,
+    'the term eviction deletes photographs');
+});
+
+test('the manifest is off the critical path, like the map is', () => {
+  // data/photos.json is 2 KB and no answer needs it. boot() must not wait on
+  // it, and a card painted before it lands is a card without a picture rather
+  // than a card that waited for one.
+  const boot = bodyOf('boot');
+  const at = boot.indexOf("json('photos.json')");
+  assert.ok(at > 0, 'boot() stopped fetching the photo manifest');
+  assert.equal(boot.slice(Math.max(0, at - 40), at).includes('await'), false,
+    'boot() waits for the photo manifest');
+  assert.match(boot.slice(at), /\.catch\(/, 'a missing manifest is not survivable');
+});
+
+test('the swipe is not the only way to answer the card', () => {
+  // A gesture nothing announces is unreachable from a keyboard and invisible to
+  // a screen reader. Both verdicts are real buttons with written names, the
+  // card takes focus, and the arrow keys do what the swipe does.
+  const paint = bodyOf('paintCard');
+  assert.match(paint, /id="c-no"[^>]*aria-label="[^"]+"/);
+  assert.match(paint, /id="c-yes"[^>]*aria-label="[^"]+"/);
+  assert.match(paint, /id="c-top"[^>]*tabindex="0"/);
+  const swipe = bodyOf('attachSwipe');
+  assert.match(swipe, /ArrowLeft/);
+  assert.match(swipe, /ArrowRight/);
+  // Down goes back to the question, and the card's own name is where that is
+  // said: a gesture nothing announces is invisible to a reader who cannot see
+  // the card move, and nothing on this screen prints it.
+  assert.match(swipe, /ArrowDown/);
+  assert.match(swipe, /toAsk\(\)/);
+  assert.match(bodyOf('paintCard'), /Swipe down to start over/);
+  // No back arrow either. It was a third piece of chrome on a photograph, and
+  // the corner belongs to the menu now. Decided in showPane and nowhere else:
+  // a CSS rule hiding it while showPane un-hid it is two mechanisms for one
+  // fact, which is how they drift.
+  assert.match(bodyOf('showPane'), /\$\('back'\)\.hidden = name === 'card'/);
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.equal(/body\.carding #back \{/.test(css), false, 'the CSS hides #back as well');
+
+  // Scoped to the card itself. The end of the deck still has a button, and
+  // should: there is no photograph on that screen, no gesture, and no room left
+  // to swipe -- the list is the only thing to offer.
+  const card = paint.slice(paint.indexOf('c-deck'));
+  assert.equal(/c-more|i-list/.test(card), false, 'the list grew a control on the card again');
+  // And the repaint does not drop the reader on the body.
+  assert.match(bodyOf('rejectCard'), /\$\('c-top'\)\?\.focus/);
+});
+
+test('neither screen without a back arrow is a dead end', () => {
+  // The card and the way both dropped the arrow, and on an installed icon there
+  // is no browser chrome behind them either, so each needs its own way out.
+  // The card has the downward throw and the way has the sheet's grip, and both
+  // have the menu, whose first item is the one Enes asked for by name.
+  assert.match(bodyOf('attachMenu'), /act\('m-back', \(\) => history\.back\(\)\)/);
+  assert.match(APP, /attachMenu\(\);/);
+  // Which means the way needs a history entry of its own for back to land on.
+  assert.match(bodyOf('openWay'), /history\.pushState\(\{ v: 'way'/);
+
+  // One corner, two controls, never both, and the menu is on the two screens
+  // the arrow left.
+  const pane = bodyOf('showPane');
+  assert.match(pane, /\$\('back'\)\.hidden = name === 'card'/);
+  assert.match(pane, /\$\('menu'\)\.hidden = name !== 'card'/);
+  const way = bodyOf('showWay');
+  assert.match(way, /\$\('back'\)\.hidden = true/);
+  assert.match(way, /\$\('menu'\)\.hidden = false/);
+
+  // A panel that outlives the screen it was opened on is a set of choices about
+  // somewhere the reader has left.
+  for (const fn of ['showPane', 'showAsk', 'showWay']) {
+    assert.match(bodyOf(fn), /closeMenu\(\)/, `${fn} leaves the menu open`);
+  }
+
+  // A disclosure, not a menu: role="menu" promises arrow keys move between the
+  // items, and the app does not implement that.
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(css, /<button id="menu"[^>]*aria-expanded="false"[^>]*aria-controls="menu-pop"/s);
+  assert.equal(/role="menu"/.test(css), false, 'the menu claims a keyboard model it does not have');
+  // Escape closes it, and so does a press on the backdrop.
+  const menu = bodyOf('attachMenu');
+  assert.match(menu, /e\.key !== 'Escape'/);
+  assert.match(menu, /pop\.addEventListener\('pointerdown'/);
+});
+
+test('a press on a verdict button is not eaten by the card under it', () => {
+  // The card captures the pointer to follow a drag, and pointer capture
+  // retargets pointerup and CLICK onto the capturing element. So a press of the
+  // bin or the tick was delivered to the card and swallowed: scripts/shoot.mjs
+  // pressed the bin 120 times and never left the first room. The guard is the
+  // one the sheet has had all along, and both are checked here so neither can
+  // be dropped again.
+  const card = bodyOf('attachSwipe');
+  assert.match(card, /if \(e\.target\.closest\('button'\)\) return;/);
+  assert.match(card, /setPointerCapture/);
+  assert.ok(
+    card.indexOf("closest('button')") < card.indexOf('setPointerCapture'),
+    'the card captures the pointer before it checks what was pressed',
+  );
+});
+
+// ---- what a review of this branch found
+
+// Six defects, one shape: a new screen that does its own pane work, and a new
+// control on two screens, both reaching code written before either existed.
+// Only the first of these is a real runtime check -- js/sheet.js is arithmetic
+// and can be run. The rest are regex over source, which is what this suite can
+// do without a browser, and that limit is why the screenshot run exists.
+
+test('a full-bleed screen still composes the camera for a band it can see', () => {
+  const H = 852;
+  // restFor answers 1 for the card, because the SHEET is the whole viewport
+  // there, and 1 - 1 is a band of nothing. bandFor used to pass that straight
+  // through: measured at 393x852 it returned 1px, and clampView collapses on it
+  // -- halfW came out 393 times too large, `halfW * 2 >= gridW` held, and cx was
+  // forced to the middle of the basemap. Four taps reach it, because frame()
+  // stands down once the map has been moved by hand.
+  assert.equal(restFor('card'), 1, 'the card stopped being full bleed');
+  assert.equal(bandFor('card', H), bandFor('list', H));
+  assert.ok(bandFor('card', H) > 400, `the card composes for a ${bandFor('card', H)}px band`);
+  // And the rail still comes off it, the same as everywhere else.
+  assert.equal(bandFor('card', H, 80), bandFor('list', H, 80));
+});
+
+test('checking again on the way does not switch the map off under the plate', () => {
+  // answer() drops the selection, and paintMap() reads that: nothing targeted
+  // means body.nomap, so the footprint, the walk line and the map go, leaving a
+  // plate naming a room over a black screen. Two ways in, both new: the menu's
+  // Check again, and the same button in the list footer, which is scrollable
+  // under the plate now.
+  const refresh = bodyOf('refresh');
+  assert.match(refresh, /\['card', 'list', 'room', 'way'\]\.includes\(state\.screen\)/);
+  assert.match(refresh, /state\.screen === 'way' \? state\.selected\?\.id : null/);
+  // Back to the same room if it survived the re-rank, and to the card if a
+  // class has taken it.
+  assert.match(refresh, /state\.results\.some\(\(r\) => r\.id === held\)\) showWay\(held\)/);
+  assert.match(refresh, /history\.replaceState\(\{ v: 'card' \}/);
+});
+
+test('the menu holds the keyboard as well as the screen', () => {
+  // The backdrop stops a finger and nothing else. Tab walked off the last
+  // choice onto #c-top, whose keydown makes Enter, Space and ArrowRight take
+  // the room, so a reader could accept a room while looking at a menu.
+  const menu = bodyOf('attachMenu');
+  assert.match(menu, /const behind = \['sheet', 'way', 'ask'\]/);
+  assert.match(menu, /for \(const id of behind\) \$\(id\)\.inert = on/);
+  assert.match(menu, /for \(const id of behind\) \$\(id\)\.inert = false/);
+  // And a touch press on the backdrop must not click through: the compat click
+  // is hit-tested after the panel has gone, so it would land on the row under it.
+  assert.match(menu, /e\.preventDefault\(\);\n\s*show\(false\)/);
+});
+
+test('the photograph is redrawn when its box changes', () => {
+  // drawWarp sizes the bitmap to the canvas box once, on decode, and CSS
+  // stretches it to fill from then on. The install rail mounts seconds after
+  // boot and the sheet gives up its height, so the room lost 9% of its own at
+  // 393x852. Rotation is the same failure, larger.
+  const paint = bodyOf('paintCard');
+  assert.match(paint, /new ResizeObserver\(/);
+  assert.match(paint, /again\.disconnect\(\)/);
+  // Guarded on the size actually differing, because observe() fires once on its
+  // own and the draw is 240 drawImage calls.
+  assert.match(paint, /if \(now === box\) return;/);
+});
+
+test('a verdict cannot fire onto a screen the reader has already left', () => {
+  // The 200ms is the card sliding off. A back gesture inside it lands on the
+  // question, and the timer then dragged the reader forward to a room.
+  const swipe = bodyOf('attachSwipe');
+  assert.match(swipe, /if \(state\.screen !== 'card'\) return;/);
+});
+
+test('the deck is ranked before the screen that shows it', () => {
+  // The other way round, paintCard() ran once against the previous answer. On
+  // the first duration of a session that is no rows at all, so the reader got
+  // "That is all of them. You went through 0 rooms", and focusHeading() moved
+  // focus onto a heading answer() then replaced, dropping a keyboard reader on
+  // the body.
+  const choose = bodyOf('choose');
+  assert.ok(
+    choose.indexOf('answer();') < choose.indexOf('showCard();'),
+    'choose() paints the card before it has an answer to paint',
+  );
+});
+
+test('a full photo cache does not throw away a photograph that arrived', () => {
+  // 306 photographs at 39 KB is 11.7 MB of a quota nothing here caps, and a
+  // QuotaExceededError inside the try discarded a response the phone was
+  // already holding.
+  const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
+  const fn = sw.slice(sw.indexOf('async function immutable('), sw.indexOf('\n}', sw.indexOf('async function immutable(')));
+  assert.match(fn, /data\.put\(request, response\.clone\(\)\)\.catch\(\(\) => \{\}\)/);
+  assert.ok(
+    fn.indexOf('} catch {') < fn.indexOf('data.put('),
+    'the cache write is still inside the try that swallows it',
+  );
+});
+
+test('every screen that leaves the room screen puts the compass down', () => {
+  // The two deviceorientation listeners are bound while the room screen's
+  // needle is live, and they close over nodes the next repaint replaces. Every
+  // exit has to call orientationOff, and the way is an exit that does not go
+  // through showPane: take a room, tap its lit row, press Point me, go back.
+  for (const fn of ['showPane', 'showAsk', 'showWay', 'repaintRoom']) {
+    assert.match(bodyOf(fn), /orientationOff\(\)/, `${fn} walks off with the compass still bound`);
+  }
+});
+
+test('taking a room shows the way to it, and the calendar is what it leaves out', () => {
+  // By the time you have said yes the day as a calendar is not the question,
+  // and which way to walk is. The other ROOMS are a different matter: they are
+  // in the sheet underneath, one tap from moving the arrow.
+  assert.match(bodyOf('acceptCard'), /openWay\(r\.id\)/);
+  assert.match(bodyOf('openWay'), /history\.pushState/);
+  const way = bodyOf('showWay');
+  assert.match(way, /for \(const pane of PANES\) \$\(pane\)\.hidden = pane !== 'list'/);
+  assert.match(way, /\$\('sheet'\)\.hidden = false/);
+  assert.match(way, /markRows\(\)/);
+  // The room the arrow points at is the one that is lit, so the camera composes
+  // for the same band the list leaves.
+  assert.equal(REST.way, PEEK, 'the way frames the map for a sheet that is not the list\'s');
+
+  // And tapping another row moves the plate with the arrow, rather than leaving
+  // the headline naming a room the map is no longer pointing at.
+  assert.match(bodyOf('select'), /if \(state\.screen === 'way'\) paintWay\(r\.id, r\)/);
+});
+
+test('a re-rank puts the deck back on top', () => {
+  // "the third one" is a different room after the ranking moves, so the index
+  // cannot survive it. answer() is where both screens are repainted.
+  const ans = bodyOf('answer');
+  assert.match(ans, /state\.cardIndex = 0;/);
+  assert.match(ans, /paintCard\(\);/);
+  assert.match(ans, /paintList\(\);/);
+});
+
+test('the sheet drag stands aside for the card', () => {
+  // The card owns the horizontal gesture. Left in, a diagonal drag begun on it
+  // becomes a sheet drag on its eighth pixel and throws the answer away
+  // mid-swipe, which is the same defect the dismiss travel was narrowed for.
+  const sheet = bodyOf('attachSheet');
+  assert.match(sheet, /if \(e\.target\.closest\('\.c-card'\)\) return;/);
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(css, /\.c-card \{[^}]*touch-action: none/);
+});
+
+test('back names the screen it lands on, at every step of the answer', () => {
+  // Its accessible name has to name the screen it reaches rather than reading
+  // "Back", and there are three steps now: the card is what a duration opens,
+  // the list is one tap behind the card, and a room is behind either.
+  assert.match(
+    bodyOf('showCard'),
+    /\$\('back'\)\.setAttribute\('aria-label', 'Back to the question'\)/,
+  );
+  // The list is reached from the card and, through the menu, from the way, so
+  // its label is a pair rather than a string.
+  assert.match(bodyOf('openList'), /pushState\(\{[^}]*from: state\.screen/);
+  assert.match(
+    bodyOf('showList'),
+    /from === 'way'\s*\?\s*'Back to the way'\s*:\s*'Back to the card'/,
+  );
   const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.match(html, /id="back"[^>]*aria-label="Back to the question"/);
   // The four .opt buttons are what back lands on, and they are the four the
@@ -1760,7 +2095,10 @@ test('the question screen is repainted when the app comes back to the foreground
   // on a minute the app is willing to rank.
   const app = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
   const hook = app.slice(app.indexOf("addEventListener('visibilitychange'"));
-  assert.match(hook.slice(0, 500), /state\.screen === 'ask'/);
+  assert.match(hook.slice(0, 600), /'ask'/);
+  // And the card is in it too. It is what a duration opens now, so it is the
+  // screen most sessions are actually looking at when the phone comes back.
+  assert.match(hook.slice(0, 600), /'card'/);
 });
 
 test('the buildings screen names the door it is already holding the hours for', () => {

@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 133,694 bytes, data 91,951.
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 150,285 bytes, data 91,951.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these sixteen files, which is most of a percent of
@@ -31,11 +31,35 @@
 // screens lane put it 34.3% out in one merge. scripts/test/sw.test.mjs
 // recomputes both now.
 //
+// It read 146,240 before the ranking came back under the way and the corner got
+// a menu instead of an arrow, which cost 4,045 with the review of it: 1,224 on
+// index.html for the panel, its backdrop and the glyph, 2,340 on js/app.js for
+// opening and closing it and for the six defects that review found, and 481 on
+// js/sheet.js for a screen that rests where the list does and for a camera band
+// that stopped collapsing on the card.
+//
+// It read 143,433 before taking a room became a screen of its own, which cost
+// 2,807: 2,160 on js/app.js for the way -- the map with the walk drawn on it and
+// one plate, which is where the tick goes now instead of the room's calendar --
+// 524 on index.html for that screen and for the frosted plate over the
+// photograph, and 123 on js/sheet.js for a screen that has no sheet at all.
+//
 // It read 130,647 before the map learned to stay off screen until a row is
 // tapped, which cost 3,047 gzipped bytes over four files. 1,510 of them are on
 // js/sheet.js, which was 1.5 KB: that file stopped assuming every screen rests
 // at PEEK and every ceiling is FULL, and gained the pixels a back button and an
 // install rail need on top of the fractions it already held.
+//
+// It read 138,629 before the card started showing the ROOM, and 3,634 of what
+// is here now is that: the picture, the plate over it, the sheet losing its
+// frame on that one screen, and drawWarp(), which is the thing that makes a 3:2
+// photograph fill a 1:2.2 phone. The photographs themselves are 11.7 MB and
+// none of it is here -- they are 306 files under data/photos/, fetched one at a
+// time by the card that shows them and never precached.
+//
+// It read 133,694 before the answer became one card you swipe rather than a
+// list you scan, which cost another 4,935: 3,082 on js/app.js for the deck, the
+// two verdicts and the gesture, and 1,853 on index.html for the card itself.
 //
 // It read 98,246 while four modules js/app.js imports were missing from the
 // list below. They are 23,296 gzipped bytes, so the figure was measuring a list
@@ -47,7 +71,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-a2bc234';
+const SHELL_CACHE = 'vacant-shell-4559dcd';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also
@@ -69,6 +93,11 @@ const DATA_PREFIX = SCOPE + 'data/';
 const CURRENT = DATA_PREFIX + 'current.json';
 const SHELL_DOC = SCOPE + 'index.html';
 
+// The 306 room photographs. NOT precached and never warmed: they are 11.7 MB
+// together, and a student who asks one question wants one of them. Each arrives
+// with the card that shows it and is kept from then on.
+const PHOTO = /\/data\/photos\/[^/]+\.webp$/;
+
 // `/Vacant/` and `/Vacant/index.html` are the same bytes at two cache keys and a
 // navigation can arrive as either, so both are precached.
 //
@@ -84,8 +113,8 @@ const SHELL_DOC = SCOPE + 'index.html';
 // restating it, because the restatement is what drifted.
 //
 // They are in addAll rather than a second best-effort pass, and that is the
-// argued half: the four are 25,425 of the 133,694 gzipped bytes here, so
-// install does 23.5% more work before it resolves, and a strict tier that fails
+// argued half: the four are 26,197 of the 150,285 gzipped bytes here, so
+// install does 21.1% more work before it resolves, and a strict tier that fails
 // fails the whole install. It is still right. A best-effort tier is for things
 // the app is better with; js/app.js cannot evaluate without js/state.js. And a
 // rejected install is retried where a resolved lie is not.
@@ -177,6 +206,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (url.pathname.startsWith(DATA_PREFIX)) {
+    // A room photograph never changes under its own name. Both other strategies
+    // revalidate in the background, and for a 39 KB image nobody edited that is
+    // 39 KB of somebody's data allowance for every card they look at -- on the
+    // one screen this app exists to answer on one bar of LTE. This branch
+    // returns the cached copy and stops asking.
+    if (PHOTO.test(url.pathname)) {
+      event.respondWith(immutable(request));
+      return;
+    }
     // The term pointer and dated event overlay must never be stale. The event
     // filename is stable for a whole term even though its covered week changes,
     // so an old cached response can otherwise hide the current week's events.
@@ -245,6 +283,29 @@ async function networkFirst(request) {
   // rendered.
   if (request.cache === 'no-store') return Response.error();
   return (await data.match(request)) || Response.error();
+}
+
+// Written once, kept. A new photograph is a deploy rather than an edit, so the
+// only thing that can strand an old one is a room being rephotographed under the
+// same id, which would need DATA_CACHE bumping to reach a phone that has it.
+// That is the trade: one stale picture in a case that has not happened yet,
+// against a re-download on every single card.
+async function immutable(request) {
+  const data = await caches.open(DATA_CACHE);
+  const cached = await data.match(request);
+  if (cached) return cached;
+  let response;
+  try {
+    response = await fetch(request);
+  } catch {
+    return Response.error();
+  }
+  // The write is outside the try on purpose. 306 photographs at 39 KB is 11.7 MB
+  // of a quota nothing here caps, and a QuotaExceededError inside the try threw
+  // away a response that had already arrived: the card fell back to the plain
+  // one over a picture the phone was holding.
+  if (response && response.ok) await data.put(request, response.clone()).catch(() => {});
+  return response;
 }
 
 async function staleWhileRevalidate(event, request) {

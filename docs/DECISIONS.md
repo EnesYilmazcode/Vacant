@@ -3373,3 +3373,525 @@ are removed before the overlay so the event survives; passing the old blanket
 `classesSuspended` flag to the engine would have erased both. The service worker
 warms and evicts the term-keyed event file with the room index, and the weekly
 workflow refreshes it after rebuilding that index.
+
+## 2026-09-08  The answer is one card you swipe, not a list you scan
+
+**Decided.** A duration opens ONE room. Bin it -- swipe left, tap the bin, or
+press the left arrow -- and the next one comes up. Take it -- swipe right, tap
+the tick, press the right arrow or Enter -- and it opens the room screen, which
+is where the map and the day calendar already were. The ranking is still all
+there, one tap behind the card under **See all 35 in a list**.
+
+**Whose idea it was, which is the part worth writing down.** Colin, who uses this
+on campus every day and is the only user of it who is not its author, asked for
+"a single button that just finds the nearest empty classroom and if its full u
+swipe and gives u next best". Enes took the call and added the rest: "if you
+don't have a classroom selected, there's no reason to even see a map", the trash
+can on the left, and "remove all the filler text ... the room number is important
+and also the building is important".
+
+**What the card carries, and what it does not.** The building, the room number at
+3.6rem, how long it is yours, the walk and the seats. Nothing else. The count of
+what is left, the walk cap, the two "N more" sentences and the coverage paragraph
+all stay on the list, because a card carrying them is a list with one row on it.
+`roomLabel()` joins the building and the room for a list row, which is one line;
+`cardParts()` splits them, because the room number is the thing you are walking
+to and it is the only text on the screen that gets to be that size.
+
+**The strip is not filler and it stays.** It is the only thing that says the
+answer is degraded -- shorter than you asked for, nothing free this second, every
+building we have hours for closed -- and a card that drops it claims more than
+the ranking does.
+
+**The swipe is not the only way.** Both verdicts are real buttons with written
+names, the card takes focus, and the arrow keys do what the swipe does. A gesture
+nothing announces is unreachable from a keyboard and invisible to a screen
+reader, and it is also just harder to find. One bug caught while building it:
+paintCard() replaces the whole screen, so a keyboard user who pressed the left
+arrow lost focus to the body and had nothing left to press it on. Focus moves to
+the new card now, guarded on focus having been in there already -- answer()
+repaints this screen from a background refresh, and stealing focus off another
+screen is worse than losing it on this one.
+
+**Distance OR velocity commits.** 84 px, or a flick over 0.45 px/ms that moved at
+least 24. Distance alone makes people drag the card halfway across the phone
+every time; a short flick is the gesture they actually make. The card leaves the
+screen in the direction it was thrown and the verdict fires when it is gone
+rather than on release, so the next answer does not appear under a card still
+sliding over it.
+
+**The sheet drag had to stand aside.** The card owns the horizontal gesture and
+carries `touch-action: none`. Left in, a diagonal drag begun on the card becomes
+a sheet drag on its eighth pixel and throws the answer away mid-swipe, which is
+the same defect the dismiss travel was narrowed for two entries ago.
+
+**Centred, not stacked.** The first build put the card at the top of a sheet that
+covers the whole screen and left 55% of the phone as empty ground under it.
+`justify-content: safe center`, for the same reason `#ask` uses the safe keyword:
+plain centring on a scroll container puts overflow ABOVE the scroll origin, where
+a large root font size would put the two buttons out of reach of every way of
+scrolling.
+
+**The verdict stamp goes on the corner the card is NOT leaving by, and it needs
+its own band.** Three drafts, each caught by photographing the gesture rather
+than reasoning about it. NEXT started on the LEFT of the card, so a card thrown
+left took the word telling you what you were about to do off the screen first --
+the stamp was gone at the exact moment you committed to it. Swapped: a card going
+left keeps its right corner, so NEXT lives right and GO lives left. Then GO drew
+on top of the deck position in the top-left corner and neither could be read; the
+position line moved out of the card entirely, which it should have been anyway,
+because how deep you are in the deck is a fact about the DECK and has no business
+flying off the side of the phone with a room it is not about. Then GO drew on top
+of the building name instead. The card carries a reserved 3.2rem band at the top
+for them now, which is why its top padding is twice its bottom.
+
+**scripts/shoot.mjs photographs a HELD gesture.** Every other frame in it is a
+screen at rest. `holdCard()` presses, drags and does not release, because the
+stamp only exists while a finger is on the card. Held at 72px, short of the 84px
+commit threshold, so the room is still readable under the verdict rather than
+half off the side of the phone -- and stable to photograph, since nothing is
+animating and shoot() takes every frame twice and compares them. `dropCard()`
+returns it to the middle and lets go, and the run asserts the card came back to
+exactly where it started before it moves on to the list.
+
+**Cost.** The shell went 133,694 -> 138,629 gzipped bytes, +3.7%: 3,082 on
+js/app.js for the deck, the two verdicts and the gesture, and 1,853 on index.html
+for the card. Suite 842 -> 848 tests. scripts/shoot.mjs photographs seven frames
+now: the question, the card, the card held in each direction, the list, a room
+lit on the map, and its day.
+
+## 2026-09-08  The card shows the room
+
+**Decided.** The card is a photograph of the classroom, with one plate over it
+carrying the name and the three facts, and the two verdict buttons on its bottom
+corners. 306 of the 425 have one; the other 119 get the same card without a
+picture. Enes: "instead of 160 being the big word here, like have an image of the
+class, its a great visualization."
+
+**Where they come from, and the one that looks right and is not.** OSU publishes
+these twice. The Registrar's per-room pages, which is the link Enes sent, serve
+them from `/media/<opaque-hash>/` -- the URL cannot be built from a room id, so
+learning it means scraping all 327 pages -- and that copy has **REGISTRAR - 2022**
+burnt into the middle of the frame. OTDI's Learning Spaces directory serves the
+same rooms from `rooms.app.it.osu.edu` at
+`<buildingNumber>-<floor>-<room>-<view>.jpg`, unwatermarked, with
+`access-control-allow-origin: *`. `data/room-features.json` has carried those
+URLs since 09-03, so nothing had to be crawled to find them.
+
+**Resized and committed, not hotlinked.** The originals are 1620x1080 JPEGs of
+218 KB to 1.34 MB and the whole app is 108 KB over the wire. Hotlinking would put
+a megabyte on the one screen a student opens in a stairwell on one bar, would
+break the day OSU moves a file, and would tell OSU's server which room each
+reader is looking at -- which the privacy page promises the app does not do with
+anything else. Resized to 900 wide at q0.62 they are **39 KB each and 11.7 MB for
+all 306**, which roughly doubles the tracked repo from 12 MB. That is the cost,
+and it is the one thing in this entry that is a judgement rather than a
+measurement.
+
+**Chrome does the resizing, because there is no image library here and there is
+not going to be one.** `scripts/fetch-room-photos.mjs` drives the same headless
+Chrome `scripts/shoot.mjs` already needs: it decodes each JPEG, draws it smaller
+and encodes WebP, wearing the User-Agent `scripts/lib/fetch.mjs` promises,
+because the politeness is about the server and not about which client asked.
+
+### The picture is the whole screen, and getting there took four shapes
+
+**Decided.** No card. The photograph is the viewport: a back arrow over it, one
+translucent plate near the top, the two verdicts on the bottom corners, and one
+small line between them that is both how deep into the ranking you are and the
+way to the list. Nothing else. The sheet loses its rounded top, its border and
+its grip on that one screen, and `js/sheet.js` rests it at the full viewport
+height to match.
+
+**The arithmetic nothing gets around.** These photographs are 3:2 and the screen
+is about 1:2.2, a 3.25x aspect gap. Something has to give, and each of the first
+three shapes gave away the wrong thing:
+
+| | what it gave away |
+| --- | --- |
+| a 22rem card, room number at 3.6rem | the picture entirely |
+| the same card, cover crop | 55% of the phone was empty ground under it |
+| a 4:5 card, contained, blurred fill | read as a small picture in a field of dark |
+| full-bleed cover | 31% of the width, and half of that column is carpet |
+
+Cover can only ever show a 277x600 slice of the 900x600 source: the full height
+and 31% of the width. Every one of these is shot from the back of the room, so
+half of that column is foreground carpet. Measured, the full-bleed cover build
+was 60% carpet with the screen, the boards and both ends of the room gone.
+Cropping the source makes the column narrower, not wider.
+
+**The fifth shape is Enes's, and it is the one that works: stretch the TOP.**
+"could we experiment with a fisheye thing? like it stretches out the top, since
+the top will be covered by the translucence anyways, people won't see so that
+won't hurt too much." The top of the frame is ceiling, it is flat, and the plate
+sits over it, so spending most of the screen's height on a few rows of it costs
+nothing anybody can see -- and it buys back the width of the room, which is the
+part you are actually looking at.
+
+`drawWarp()` in js/app.js does it on a canvas, in 240 horizontal bands, each a
+straight `drawImage` from a thin source slice into a taller destination one. The
+curve is `source = sh * (y / H) ** p`, and `WARP_WIDTH = 0.72` keeps 72% of the
+source width against 31% for cover. The whole draw is under 3ms.
+
+**The exponent is derived, not set, because these are not all the same shape.**
+219 of the 306 are 3:2; the rest run from 4:3 to 16:9 across 24 distinct sizes.
+A fixed exponent leaves a 16:9 room visibly more stretched at its bottom edge
+than a 4:3 one, which is the part of the picture a reader is actually looking
+at. So the knob is `WARP_BOTTOM`, how much taller than natural the BOTTOM may be
+drawn, and `p` falls out of it:
+
+    local vertical scale at t = h / (sh * p * t ** (p - 1))
+    at the bottom edge, t = 1 = h / (sh * p)
+    over the horizontal scale w / sw  ->  h * sw / (sh * p * w)
+    set that to WARP_BOTTOM           ->  p = h * sw / (sh * BOTTOM * w)
+
+Floored at 1, which is a straight stretch: a picture already tall enough for the
+screen needs no warp and must not get a backwards one. At `WARP_BOTTOM = 1.23`
+that gives p = 1.91 for a 3:2 room, 1.69 for 4:3 and 2.26 for 16:9, and the top
+120px of the phone comes from the top 14, 24 and 6 source rows respectively.
+
+**`dev/warp.html` is the knob those came off.** A phone-sized frame at 393x852,
+the real plate over it, both sliders, a picker over all 306 rooms, and a dashed
+line showing exactly how much of the picture the plate hides -- which is the
+whole argument for stretching that part. It prints the derived exponent, the
+stretch at three heights, and the two lines to paste into js/app.js. It reads
+the same files the app does and runs the same arithmetic; it is not loaded by
+the app and nothing in the app imports it.
+
+The canvas is the only copy on screen: the decode happens on an `Image` that
+never enters the DOM, because an `<img>` in the tree as well would be a second
+thing to keep in step. It checks `canvas.isConnected` before drawing, since a
+swipe or a background re-rank can replace the pane under a slow decode, and
+drawing into a canvas nothing holds any more is how a stale room ends up under
+the right name.
+
+**One bug that made the card undraggable.** An `<img>` is natively draggable, and
+a pointerdown on one starts a browser image-drag that CANCELS the pointer stream.
+The swipe saw a `pointercancel` instead of a move and put the card straight back,
+so a card with a photograph on it could not be swiped at all. The picture has no
+interaction of its own, so `pointer-events: none` gives the events to the card.
+
+**The photographs never touch the critical path.** `data/photos.json` is 2 KB and
+is fetched the way `campus.json` is: off to one side, and a card painted before
+it lands is a card without a picture rather than a card that waited. `sw.js`
+routes them to a new `immutable()` branch: 306 files, never precached, never
+warmed, and never revalidated, because both other strategies re-fetch in the
+background and 39 KB of somebody's allowance per card is exactly the waste this
+app exists to avoid.
+
+### The frame check stopped being byte-exact, and that took measuring
+
+`scripts/shoot.mjs` photographs every frame twice a quarter second apart and
+refuses to write if the two differ. With a photograph on the card, the card frame
+differed from its own retake by up to **3 levels per channel over the lower half
+of the screen** -- identically on every run, at any settle time, with the blur
+off, with the map hidden, with the image on its own compositor layer, and with a
+warm-up capture in front. The same frames captured WITHOUT `fromSurface` were
+byte-identical, which is what says it is the compositor's raster and not the app.
+
+So the check now measures what it was always for. Three numbers, all measured at
+393x852:
+
+| | worst difference, out of 765 |
+| --- | --- |
+| still, with a photograph on screen | 0 to 27 |
+| the card 60ms into its commit flight | 623 |
+| the sheet 80ms into a snap | 743 |
+
+`STILL = 48` sits an order of magnitude above the noise and an order below the
+smallest real movement either animation on this screen produces. And when a frame
+does fail, `whereMoved()` now reports how many pixels moved, by how much, and the
+CSS box they are in -- finding that out used to mean rebuilding the script by
+hand in a scratch file, which is what it took here.
+
+### What the screen ended up being
+
+Four things on a photograph, and nothing else. Back arrow top left, the list top
+right, the plate centred under both, the two verdicts on the bottom corners.
+
+**The plate is centred and sits below the icons.** It used to be inset on the
+left to dodge the back arrow, which made it the only thing on the screen that
+was not symmetrical; an off-centre plate over a centred photograph reads as a
+mistake. It is also bigger, because it is the only text on the screen and it is
+read at arm's length.
+
+**None of the three icons has a disc any more.** A ring around a glyph is a
+second shape to read before the glyph, and over a photograph it is a second
+thing to keep legible. The tap targets stay 44 and 56px -- that is the thumb,
+not the ink -- and the ink grew to fill them. A drop shadow holds a white glyph
+over a lit ceiling, which is the job the translucent disc was doing worse.
+
+**"1 of 35 - see all" is gone.** How many rooms are left is not a thing anybody
+does anything with, and it was the only number on a screen whose whole argument
+is that one room is the answer. The way to the ranking is now an icon opposite
+the back arrow, the same size as it, which is also what makes the top row
+symmetrical.
+
+### The numbers off the bench, and the last control to come off the screen
+
+**0.55 of the width and 1.10x at the bottom**, picked by Enes on dev/warp.html
+over Orton Hall 110. Tighter and straighter than the 0.72 and 1.23 first guess:
+less of the room across, but what is there stands up rather than leaning, and
+the height it gives up all comes out of ceiling nobody reads.
+
+**One size and one corner inset for all three icons.** The back arrow was 26px
+at .35rem and the two verdicts 34px at 1.1rem, which read as a small thing at
+the top and two big ones at the bottom rather than as one set. They are 40px
+glyphs in 60px targets, 1.1rem from their own corner, and the plate moved down
+to 5.6rem to clear them.
+
+**The list lost its control entirely and lives on a downward throw.** It was a
+pill reading "1 of 35 - see all", then three bars opposite the back arrow, and
+Enes on the second of those: "idk what the 3 bars are for, lowkey I dont think
+we need them too much". He is right that an unlabelled glyph is a puzzle, and a
+label would be one more thing to read on a screen whose whole argument is that
+one room is the answer. So it is the one gesture the card was not already using:
+down opens the ranking, ArrowDown does it from a keyboard, and the card's
+accessible name ends "Swipe down for all of them", because a gesture nothing
+announces is invisible to a reader who cannot see the card move.
+
+The end of the deck keeps a button, and should. No photograph, no gesture and no
+room left to swipe, so the list is the only thing there is to offer.
+
+**Cost.** The shell went 138,629 -> 143,433 gzipped bytes, +3.5%: the picture,
+the plate, the sheet losing its frame on that one screen, and `drawWarp()`. The
+photographs are none of that -- they are 11.7 MB of `data/photos/`, fetched one
+at a time and never precached. Suite 848 -> 851 tests.
+
+**One upstream gap, recorded so it is not rediscovered.** UH0037's Learning
+Spaces entry links a photograph that 404s. The script asks Node for the real
+status when a browser fetch fails -- a browser cannot tell a dead link from a
+dead network, because the 404 page has no CORS header on it -- and reports a
+genuine 404 as OSU's gap rather than its own failure.
+
+---
+
+## 2026-09-08  The tick goes to the way, the back arrow goes, and the bin was never working
+
+Eleven instructions from Enes in one message, and one bug found while proving
+they landed.
+
+**Decided. Taking a room opens a screen that is the map and nothing else.** The
+tick used to call the same `openRoom()` the list's second tap fires, which is the
+room screen: the day drawn as a calendar, the ranking still under it, the sheet
+over the map. Enes: "once they click check on a room they dont need to see the
+other rooms tbh, just the arrow pointing them to the room, also maybe the room
+schedule, like the list of other classes is irrelevant." He is right about when
+it stops being relevant. The calendar is how you *choose* a room; by the time you
+have said yes the only question left is which way to walk.
+
+So `#way` is an overlay, not a pane: no sheet, no panel, no rows. The map is
+already fixed behind every screen and already knows how to light a footprint and
+draw an arrow to it, so the screen is that map with one plate on it. `REST.way`
+is 0 in `js/sheet.js` for the same reason `ask` is -- a screen with no sheet
+leaves the whole canvas as the band, and `bandFor()` reads that table, so leaving
+it out would have framed the walk line for a panel that is not there.
+
+The room screen is not deleted and is not unreachable. It is where it always was,
+two taps behind a row of the list.
+
+**Decided. No back arrow on the card, and down goes back to the question.** This
+reverses the down gesture decided in *The answer is one card you swipe* above,
+where down opened the ranking. Enes: "lowkey the back arrow is ugly ... people
+will just have to swipe down to go back to the initial screen, but like yea, dont
+have text that says swipe down, it should be something ppl learn."
+
+Three icons on a photograph was one too many, and the thing the arrow did -- go
+back and set a different duration -- is one tap once you are at the question. The
+gesture is printed nowhere on the screen. It is in the card's accessible name,
+which ends "Swipe down to start over", because a gesture nothing announces is not
+learnable at all by somebody who cannot see the card move; that is the same
+reason the previous entry gave for announcing the old one.
+
+**The list moved rather than closing.** It was on the down throw and the down
+throw now goes to the question, so the ranking is behind the button at the end of
+the deck -- which is where somebody who has said no to all 35 rooms already ends
+up, and the one place a list is obviously what they want.
+
+**Found while proving it: the two verdict buttons had never worked.** The card
+calls `setPointerCapture` on `pointerdown` to follow a drag, and pointer capture
+retargets `pointerup`, `mouseup` **and `click`** onto the capturing element. So
+every press of the bin or the tick was delivered to the card and swallowed. Only
+the keyboard path worked, which is the exact reverse of what those buttons are
+for: they exist because a swipe is invisible to a screen reader and unreachable
+from a keyboard, and the pointer is the one input they were failing.
+
+Measured with `scripts/shoot.mjs`, which walks to the end of the deck by pressing
+the bin: **120 presses left the first room on screen.** The fix is the guard the
+sheet has had since it learned to drag -- it already steps aside for `#handle`,
+`#find` and the card itself -- and the card was simply missing it. A press that
+lands on a control is a press of that control.
+
+This is why the screenshot script refuses to stage a screen. Nothing about a
+dead button shows up in a unit test of `rejectCard()`; it took something that had
+to actually reach the end of the deck with a finger.
+
+**The plate, in four smaller changes.** Narrower and centred (`max-width: 20rem`,
+`translateX(-50%)`) so it reads as a label ON the photograph rather than a bar
+across it. Frosted -- `backdrop-filter: blur(14px) saturate(1.3)` over a 55%
+ground instead of a flat 78% panel -- to match the reference Enes sent. "no class
+rest of today" shortened to "no class" on the card and the way only, because the
+long form is what the list rows say and the list has the room to say it. The walk
+glyph dropped from the facts line: "4 min" beside a walking figure was the icon
+saying what the words already said.
+
+`backdrop-filter` was taken out of this file once before, because it made
+`scripts/shoot.mjs` refuse the frame as still moving. That check compares within
+a tolerance now -- for the raster noise a downscaled photograph brings -- and the
+blur sits well inside it.
+
+**The way is not a dead end.** It has no back button, no sheet to pull down,
+and on an installed icon no browser chrome behind it either, so without a gesture
+of its own the only way off the last screen of the flow is to relaunch the app.
+Enes is relaxed about that -- "they could just refresh tbh" -- but the fix is the
+gesture the card already has: the plate follows a finger pulled down, and letting
+go goes back a step. From here that is the card that was just taken, with the
+deck still on the same room, so the gesture is an undo and one more swipe is the
+next room; two pulls reaches the question. On the plate and not on the section,
+because the rest of that screen is a map and a handler over it would swallow
+every pan. Escape and the down arrow do it from a keyboard, off the heading the
+screen already moves focus to.
+
+**Cost.** The shell went 143,433 -> 146,240 gzipped bytes, +2.0%: 2,160 on
+`js/app.js` for the way screen and its gesture, 524 on `index.html` for it and
+the frosted plate, 123 on `js/sheet.js` for a screen that has no sheet. Suite
+851 -> 854 tests.
+
+**Two stale numbers fixed on the way past.** The README said the installed app is
+"70 KB of shell and 63 KB of schedule". It is 143 KB and 90 KB, and has been for
+a while: nothing was reading those two figures. `sw.js` already holds its own
+header to the files it caches, so `scripts/test/readme.test.mjs` now holds the
+README to that header and the chain is measured end to end.
+
+---
+
+## 2026-09-08  A menu behind three lines, and the runners-up back under the way
+
+Two corrections from Enes, an hour after the entry above.
+
+**Decided. The corner gets three lines and a menu behind them.** "the top left
+should have the 3 lines thing, and when pressed it should have choices like to go
+back or other stuff." This is not the three bars he took OFF the card earlier
+that day. That one was an unlabelled glyph that did exactly one thing, open the
+list, and "idk what the 3 bars are for" is the correct reaction to a puzzle. A
+glyph that opens a list of words is not a puzzle: the words are the label.
+
+Five choices, and Back is first because it is the one the two chrome-less screens
+were missing. It is `history.back()` rather than a named screen, so from the card
+it is the question and from the way it is the card that was taken, which is the
+entry underneath in both cases. The other four already existed with nowhere to
+be reached from: the ranking, the origin picker, a re-rank, and what the app does
+not know.
+
+**A disclosure, not a `role="menu"`.** That role promises the arrow keys move
+between the items, and announcing a keyboard model the app does not implement is
+worse than announcing none. Tab already walks five buttons in order. Escape
+closes it, a press anywhere off the panel closes it, and every screen change
+closes it: a panel that outlives the screen it was opened on is a set of choices
+about somewhere the reader has left.
+
+The panel is over a scrim, and the plate fades while it is open. Measured on the
+card frame without that: the panel covered "Cunz Hall" and left "160 / 42 seats"
+sticking out beside it, which reads as a collision rather than as a layer.
+
+**Decided. The ranking comes back under the way.** "the take it and the way
+should have the other nearby classes at the bottom back." This narrows the entry
+above rather than reversing it. What taking a room makes irrelevant is the room's
+own CALENDAR, which is what "the list of other classes is irrelevant" said; the
+other ROOMS are the cheapest change of mind the app has, and the tick was
+throwing them away.
+
+So the way is the map with the footprint lit, the arrow, one plate, and the
+ranking peeked underneath with that room's row lit. Tapping another row moves the
+arrow and the plate together, because a headline naming a room the map is no
+longer pointing at is worse than no headline. `REST.way` goes 0 to `PEEK`: same
+band as the list, for the same reason, since there is a lit footprint and a walk
+line on that canvas to leave room for.
+
+**And the plate stops being a handle.** The pull that left the way screen was on
+the plate, because that screen had no sheet. It has one now, and the sheet's grip
+has carried the same gesture, through the same dismiss travel, to the same
+`toAsk()`, since long before either of these screens existed. Two mechanisms for
+one gesture is one too many, so `attachWaySwipe()` is gone.
+
+**One button, one size.** The menu came out 44px in a bordered disc on the way
+and 60px bare on the card, because the way inherited #back's rule and the card
+had its own. Enes, on two consecutive screens in the PR: "in the 3rd picture the
+hamburger icon like the 3 lines is different, make image 3 match image 2." Both
+screens carry the bare 60px one now; the drop shadow is what the disc was for,
+and it holds over a photograph and a night map alike. `scripts/shoot.mjs`
+compares the two computed glyph widths, so they cannot come apart again.
+
+### Six defects the review found, and the shape they share
+
+A new screen that does its own pane work, and a new control on two screens, both
+reached the parts of the app that were written before either existed. Every one
+of these is that.
+
+**1. Check again on the way switched the map off.** `refresh()` had no `way`
+case, so it fell through to `answer()`, which drops the selection. `paintMap()`
+reads that: nothing targeted means `body.nomap`, and the footprint, the walk line
+and the map itself go. What was left was a plate naming a room over a black
+screen, with the ranking underneath re-ranked and nothing lit. Two ways in, both
+new: the menu's Check again, and the same button in the list footer, which is now
+scrollable under the plate. `refresh()` re-enters the way afterwards, on the same
+room if it survived the re-rank and on the card if a class has taken it, which is
+the honest answer to the question that was asked.
+
+**2. `bandFor('card')` returned a 1px band and clampView collapsed on it.**
+`restFor` answers 1 for the card because the SHEET is the whole viewport there,
+and `1 - 1` is a band of nothing. Measured at 393x852: `halfW` came out 393 times
+too large, `halfW * 2 >= gridW` held, and `cx` was forced to the middle of the
+basemap. Four taps reach it -- take a room, pan the map, back to the card, take a
+room again -- because `frame()` stands down once the map has been moved by hand
+and never puts it back. This is the failure the 68px paragraph in `js/sheet.js`
+already records, 68 times smaller. The camera now composes the card for PEEK,
+which is the band the map is actually revealed through.
+
+**3. The menu held the screen but not the keyboard.** The backdrop stops a
+finger and nothing else: Tab walked off the last choice onto `#c-top`, whose
+keydown makes Enter, Space and ArrowRight take the room. A reader could accept a
+room while looking at a menu. `inert` on the sheet, the way and the question
+takes them out of the tab order and out of the accessibility tree together.
+
+**4. `showWay()` never put the compass down.** It reproduces `showPane()`'s pane
+work and skipped its first line. Take a room, tap its lit row for the calendar,
+press Point me, press back: the two `deviceorientation` listeners stayed bound to
+nodes the next repaint throws away, and the next room's Point me would overwrite
+the only closure that could remove them. Verbatim the leak `repaintRoom()`'s own
+comment exists to stop, arriving through a door that did not exist when it was
+written.
+
+**5. The photograph was never redrawn.** `drawWarp()` sizes the bitmap to the
+canvas box once, on decode, and CSS stretches it to fill from then on. The
+install rail mounts seconds after boot and the sheet gives up its height, so the
+room lost 9% of its own at 393x852. Rotation is the same failure, larger. A
+`ResizeObserver` redraws on a real change of box.
+
+**6. The commit timer outlived the screen.** The 200ms is the card sliding off.
+A back gesture inside it lands on the question, and the timer then fired
+`acceptCard()` and dragged the reader forward to a room they had just left the
+screen to avoid.
+
+Three smaller ones went with them: a touch press on the menu backdrop could close
+the menu and take the row underneath, because the synthesised click is
+hit-tested after the panel has gone (`preventDefault` on pointerdown stops the
+compatibility events); `choose()` painted the card before ranking, so the first
+duration of a session flashed "That is all of them. You went through 0 rooms" and
+dropped a keyboard reader on the body when that heading was replaced; and
+`immutable()` in `sw.js` had its cache write inside the try, so a quota error
+threw away a photograph the phone was already holding.
+
+**What none of the new tests caught.** They are regex over source, which is what
+this suite can do without a browser, and every one of the six above is a runtime
+path. The screenshot run is the other half and it found the dead verdict buttons,
+but it walks one route. The gap is real and worth naming rather than papering
+over: a source-shaped test suite plus one scripted walk does not cover a state
+machine, and this branch added a state to it.
+
+**Cost.** The shell went 146,240 -> 150,285 gzipped bytes, +2.8%: 1,224 on
+`index.html`, 2,340 on `js/app.js`, 481 on `js/sheet.js`. Suite 854 -> 862
+tests, seven of them for the defects above; five more were rewritten rather than
+added, because they described screens that have changed shape. `scripts/shoot.mjs` takes nine frames now: the menu is opened with
+a press and closed with a press off it, and the way is checked for rows under the
+map and for the lit row agreeing with the plate.

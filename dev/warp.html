@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vacant &middot; warp bench</title>
+<meta name="robots" content="noindex">
+<style>
+  :root {
+    --bg: #0b0d10; --fg: #eef1f5; --dim: #a0a9b6; --line: #1d232c;
+    --card: #121821; --accent: #ff4d3d; --line-hi: #39434f; --warn: #ffb02e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 1rem/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; gap: 1.5rem; padding: 1.25rem; flex-wrap: wrap; align-items: flex-start;
+  }
+  h1 { font-size: 1.1rem; margin: 0 0 .2rem; }
+  p.why { margin: 0 0 1rem; color: var(--dim); font-size: .85rem; max-width: 34rem; }
+  .panel { flex: 1 1 22rem; max-width: 34rem; }
+  /* The phone, at the size scripts/shoot.mjs photographs. Everything measured
+     on this bench is measured at the size the app is actually looked at, and it
+     carries the same four icons the card does, because whether the picture
+     works is partly whether they stay legible over it. */
+  .phone {
+    position: relative; width: 393px; height: 852px; flex: none;
+    border: 1px solid var(--line-hi); border-radius: 22px; overflow: hidden;
+    background: #000;
+  }
+  .phone canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .ico {
+    fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
+  }
+  .chrome { position: absolute; z-index: 2; color: var(--fg); pointer-events: none; }
+  /* One size and one corner inset for all three, which is what makes them read
+     as one set rather than as a small thing at the top and two big ones at the
+     bottom. Same numbers as index.html. */
+  .chrome.tl { top: 1.1rem; left: 1.1rem; }
+  .chrome.bl { bottom: 1.1rem; left: 1.1rem; }
+  .chrome.br { bottom: 1.1rem; right: 1.1rem; color: var(--accent); }
+  .chrome .ico { width: 40px; height: 40px; stroke-width: 2.1; }
+  .chrome.br .ico { stroke-width: 2.6; }
+  .scrim {
+    position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background:
+      linear-gradient(180deg, rgba(11,13,16,.55) 0%, rgba(11,13,16,.28) 14%, rgba(11,13,16,0) 32%),
+      linear-gradient(0deg, rgba(11,13,16,.55) 0%, rgba(11,13,16,0) 18%);
+  }
+  .plate {
+    position: absolute; z-index: 2; top: 5.6rem; left: .9rem; right: .9rem;
+    background: rgba(18, 24, 33, .78); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 16px; padding: .85rem 1rem; text-align: center;
+    pointer-events: none;
+  }
+  .plate b { display: block; font-size: 1.6rem; font-weight: 700; letter-spacing: -.01em; }
+  .plate span { color: var(--dim); font-size: .95rem; }
+  /* The strip the plate covers. Everything above this line is the part of the
+     picture nobody reads, which is the whole argument for stretching it. */
+  .hidden-band {
+    position: absolute; z-index: 3; left: 0; right: 0; top: 0;
+    border-bottom: 1px dashed rgba(255,77,61,.75); pointer-events: none;
+  }
+  .hidden-band span {
+    position: absolute; right: 6px; top: 100%; margin-top: 4px; font-size: .68rem;
+    color: var(--accent); background: rgba(11,13,16,.7); padding: 1px 5px; border-radius: 4px;
+  }
+  label { display: block; margin: .9rem 0 .2rem; font-size: .85rem; }
+  label b { font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; }
+  select { width: 100%; padding: .5rem; background: var(--card); color: var(--fg);
+           border: 1px solid var(--line-hi); border-radius: 8px; font: inherit; }
+  .out {
+    margin-top: 1rem; padding: .75rem .9rem; background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem;
+    white-space: pre-wrap; line-height: 1.5;
+  }
+  .out.bad { border-color: var(--warn); color: var(--warn); }
+  .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+  button {
+    appearance: none; border: 1px solid var(--line-hi); background: var(--card);
+    color: var(--fg); font: inherit; font-size: .85rem; padding: .45rem .7rem;
+    border-radius: 8px; cursor: pointer;
+  }
+  .note { color: var(--dim); font-size: .8rem; margin-top: .6rem; }
+  code { background: var(--card); padding: 1px 4px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="phone">
+  <canvas id="cv"></canvas>
+  <div class="scrim"></div>
+  <div class="chrome tl"><svg class="ico" viewBox="0 0 24 24"><path d="M15 4 7 12 15 20"/></svg></div>
+  <div class="chrome bl">
+    <svg class="ico" viewBox="0 0 24 24"><path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg>
+  </div>
+  <div class="chrome br"><svg class="ico" viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6"/></svg></div>
+  <div class="hidden-band" id="band"><span>under the plate</span></div>
+  <div class="plate"><b id="p-name">&mdash;</b><span id="p-facts">no class rest of today &middot; 4 min &middot; 42 seats</span></div>
+</div>
+
+<div class="panel">
+  <h1>Warp bench</h1>
+  <p class="why">
+    The card fills the phone with a photograph that is the wrong shape for it, and the
+    stretch goes into the ceiling because the plate sits over it. These two knobs are
+    the ones js/app.js reads. The exponent underneath is <em>derived</em>, per photograph,
+    so a 4:3 room and a 16:9 room come out looking the same &mdash; 219 of the 306 are
+    3:2 and the rest are not.
+  </p>
+
+  <label for="room">Room</label>
+  <select id="room"><option>loading&hellip;</option></select>
+
+  <label for="width">Width kept &mdash; <b id="v-width">0.55</b> of the source</label>
+  <input type="range" id="width" min="0.3" max="1" step="0.01" value="0.55">
+
+  <label for="bottom">Bottom stretch &mdash; <b id="v-bottom">1.10</b>&times; natural</label>
+  <input type="range" id="bottom" min="1" max="2.4" step="0.01" value="1.10">
+
+  <div class="row" style="margin-top:.9rem">
+    <button id="prev">&larr; prev room</button>
+    <button id="next">next room &rarr;</button>
+    <button id="reset">Reset to shipped</button>
+    <button id="copy">Copy these numbers</button>
+    <button id="band-toggle">Hide the plate line</button>
+  </div>
+
+  <div class="out" id="out">starting&hellip;</div>
+  <p class="note">
+    This page has to be <b>served</b>, not opened from disk: it fetches the same JSON the
+    app does, and <code>file://</code> pages are not allowed to. From the repo root run
+    <code>python3 -m http.server 8000</code> and open
+    <code>http://localhost:8000/dev/warp.html</code>.
+  </p>
+</div>
+
+<script type="module">
+// The bench. It draws with the same mapping js/app.js does, and the two are kept
+// honest by both being written from the same three lines of arithmetic:
+//
+//   source y = sh * (dest y / H) ** p
+//   p        = h * sw / (sh * BOTTOM * w)     so the bottom edge lands on BOTTOM
+//   bands    = 240 straight drawImage calls approximating that curve
+const BANDS = 240;
+const SHIPPED = { width: 0.55, bottom: 1.10 };
+
+const $ = (id) => document.getElementById(id);
+const cv = $('cv');
+const state = { ...SHIPPED, img: null, id: null, names: {}, ids: [] };
+
+const warpPower = (w, h, sw, sh, bottom) => Math.max(1, (h * sw) / (sh * bottom * w));
+
+// Loudly. The first build of this page did all of its loading in top-level
+// await with no catch, so a single failed fetch killed the module and left the
+// picker empty, the canvas black and NOTHING on screen saying why -- which is
+// exactly what happens when the page is opened from disk instead of served.
+function fail(what, err) {
+  const out = $('out');
+  out.classList.add('bad');
+  out.textContent = [
+    `Could not load ${what}.`,
+    '',
+    location.protocol === 'file:'
+      ? 'This page is open as a file:// URL, and a file:// page is not allowed to\n' +
+        'fetch anything. That is the whole problem: serve the repo instead.\n\n' +
+        '  cd <the repo>\n' +
+        '  python3 -m http.server 8000\n\n' +
+        'then open  http://localhost:8000/dev/warp.html'
+      : `Tried: ${state.base}\n\n${err}\n\n` +
+        'If the path above looks wrong, this page works out where the repo root is\n' +
+        'from its own URL, so serve the repo root and open /dev/warp.html under it.\n' +
+        'If data/photos.json is missing, run:  node scripts/fetch-room-photos.mjs',
+  ].join('\n');
+  $('room').innerHTML = '<option>could not load</option>';
+}
+
+function draw() {
+  const img = state.img;
+  if (!img) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = cv.clientWidth;
+  const h = cv.clientHeight;
+  cv.width = Math.round(w * dpr);
+  cv.height = Math.round(h * dpr);
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  const sw = img.naturalWidth * state.width;
+  const sx = (img.naturalWidth - sw) / 2;
+  const sh = img.naturalHeight;
+  const p = warpPower(w, h, sw, sh, state.bottom);
+  const at = (t) => sh * t ** p;
+
+  for (let i = 0; i < BANDS; i++) {
+    const t0 = i / BANDS;
+    const t1 = (i + 1) / BANDS;
+    const sy = at(t0);
+    ctx.drawImage(img, sx, sy, sw, Math.max(at(t1) - sy, 0.5), 0, h * t0, w, h * (t1 - t0) + 1);
+  }
+  report(w, h, sw, sh, p);
+}
+
+// What the numbers actually cost, in the units a reader would notice.
+function report(w, h, sw, sh, p) {
+  const img = state.img;
+  // The strip the plate covers: its top plus its own height, at the phone size.
+  const plateBottom = Math.round(5.6 * 16 + 84);
+  $('band').style.height = `${plateBottom}px`;
+  const rowsHidden = Math.round(sh * (plateBottom / h) ** p);
+  const natural = w / sw;
+  const bottomScale = h / (sh * p) / natural;
+  const midScale = h / (sh * p * 0.5 ** (p - 1)) / natural;
+  $('out').classList.remove('bad');
+  $('out').textContent = [
+    `photograph      ${state.id}  ${img.naturalWidth}x${img.naturalHeight}  aspect ${(img.naturalWidth / sh).toFixed(3)}`,
+    `width kept      ${state.width.toFixed(2)}  (${Math.round(sw)} of ${img.naturalWidth} px)`,
+    `bottom stretch  ${state.bottom.toFixed(2)}x`,
+    `derived p       ${p.toFixed(3)}`,
+    ``,
+    `under the plate ${rowsHidden} source rows fill the top ${plateBottom}px`,
+    `mid screen      ${midScale.toFixed(2)}x taller than natural`,
+    `bottom edge     ${bottomScale.toFixed(2)}x taller than natural`,
+    ``,
+    `js/app.js:`,
+    `  const WARP_WIDTH = ${state.width.toFixed(2)};`,
+    `  const WARP_BOTTOM = ${state.bottom.toFixed(2)};`,
+  ].join('\n');
+}
+
+async function load(id) {
+  const img = new Image();
+  img.decoding = 'async';
+  try {
+    await new Promise((res, rej) => {
+      img.onload = res;
+      img.onerror = () => rej(new Error('the image did not load'));
+      img.src = `${state.base}data/photos/${encodeURIComponent(id)}.webp`;
+    });
+  } catch (e) {
+    fail(`the photograph for ${id}`, String(e));
+    return;
+  }
+  state.img = img;
+  state.id = id;
+  $('p-name').textContent = state.names[id] ?? id;
+  $('room').value = id;
+  draw();
+}
+
+function bind(id, key, digits) {
+  const input = $(id);
+  input.oninput = () => {
+    state[key] = Number(input.value);
+    $(`v-${key}`).textContent = state[key].toFixed(digits);
+    draw();
+  };
+}
+bind('width', 'width', 2);
+bind('bottom', 'bottom', 2);
+
+const step = (by) => {
+  const at = state.ids.indexOf(state.id);
+  if (at < 0) return;
+  load(state.ids[(at + by + state.ids.length) % state.ids.length]);
+};
+$('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
+
+$('reset').onclick = () => {
+  Object.assign(state, SHIPPED);
+  for (const [id, key] of [['width', 'width'], ['bottom', 'bottom']]) {
+    $(id).value = SHIPPED[key];
+    $(`v-${key}`).textContent = SHIPPED[key].toFixed(2);
+  }
+  draw();
+};
+$('copy').onclick = async () => {
+  const text = `WARP_WIDTH = ${state.width.toFixed(2)}; WARP_BOTTOM = ${state.bottom.toFixed(2)};`;
+  try {
+    await navigator.clipboard.writeText(text);
+    $('copy').textContent = 'Copied';
+    setTimeout(() => ($('copy').textContent = 'Copy these numbers'), 1200);
+  } catch {
+    $('out').textContent = `${text}\n\n${$('out').textContent}`;
+  }
+};
+$('band-toggle').onclick = () => {
+  const b = $('band');
+  const off = b.style.display === 'none';
+  b.style.display = off ? '' : 'none';
+  $('band-toggle').textContent = off ? 'Hide the plate line' : 'Show the plate line';
+};
+
+// Where the repo root is, worked out from this page's own URL rather than
+// assumed: served at the root it is /, and on Pages it is /Vacant/.
+const json = async (rel) => {
+  const res = await fetch(state.base + rel);
+  if (!res.ok) throw new Error(`${state.base}${rel} -> HTTP ${res.status}`);
+  return res.json();
+};
+
+async function boot() {
+  state.base = new URL('..', location.href).pathname;
+  let photos;
+  let rooms;
+  try {
+    photos = await json('data/photos.json');
+    const current = await json('data/current.json');
+    rooms = await json(current.rooms);
+  } catch (e) {
+    fail('the room data', String(e && e.message ? e.message : e));
+    return;
+  }
+  // Names are a nicety, so a missing buildings table is not a failure.
+  const buildings = await json('data/buildings.json')
+    .then((d) => d.buildings)
+    .catch(() => ({}));
+
+  state.ids = photos.rooms ?? [];
+  if (!state.ids.length) {
+    fail('any photographs (data/photos.json lists none)', 'run node scripts/fetch-room-photos.mjs');
+    return;
+  }
+  for (const id of state.ids) {
+    const r = rooms.rooms[id];
+    const b = buildings[r?.b];
+    state.names[id] = b?.name ? `${b.name} ${r.n ?? ''}`.trim() : id;
+  }
+  const select = $('room');
+  select.innerHTML = '';
+  for (const id of [...state.ids].sort((a, b) => (state.names[a] < state.names[b] ? -1 : 1))) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = `${state.names[id]}  (${id})`;
+    select.append(opt);
+  }
+  select.onchange = () => load(select.value);
+  await load(state.ids.includes('CZ0160') ? 'CZ0160' : state.ids[0]);
+}
+
+boot().catch((e) => fail('the bench', String(e && e.stack ? e.stack : e)));
+</script>
+</body>
+</html>

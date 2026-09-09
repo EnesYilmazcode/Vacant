@@ -102,7 +102,7 @@
      finished frame rather than one built while you watch; js/sheet.js rests the
      sheet over the whole of it. pointer-events because a pan on an invisible
      canvas still latches state.userMoved. */
-  body.nomap #map { opacity: 0; pointer-events: none; }
+  body.nomap #map { opacity: 0; pointer-events: none; visibility: hidden; }
   @media (prefers-reduced-motion: reduce) {
     #map { transition: none; }
   }
@@ -250,13 +250,301 @@
   }
 
   /* --- the back arrow, over the map, never on the root --- */
-  #back {
+  #back, #menu {
     position: fixed; top: calc(var(--safe-t) + .6rem); left: .6rem; z-index: 3;
     appearance: none; border: 1px solid var(--line); background: rgba(11,13,16,.72);
     color: var(--fg); font: inherit; min-width: 44px; min-height: 44px;
     padding: .4em; border-radius: 999px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
   }
+
+  /* The menu, and the surface that closes it. One element does both: the whole
+     screen catches the tap that means "not this", and the panel inside it hangs
+     under the button that opened it. */
+  /* Darkened, because the panel is a decision and the screen behind it is not
+     available until it is made. It is also what makes "press off it" look like
+     something you can do. */
+  #menu-pop { position: fixed; inset: 0; z-index: 6; background: rgba(6,8,11,.55); }
+  .m-panel {
+    position: absolute; top: calc(var(--safe-t) + 3.4rem); left: .6rem;
+    min-width: 13rem; max-width: min(20rem, calc(100vw - 1.2rem));
+    background: rgba(18, 24, 33, .93);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    backdrop-filter: blur(14px) saturate(1.3);
+    border: 1px solid rgba(255,255,255,.14); border-radius: 14px;
+    padding: .3rem; display: flex; flex-direction: column;
+    box-shadow: 0 12px 32px rgba(0,0,0,.55);
+  }
+  .m-item {
+    appearance: none; border: 0; background: none; color: var(--fg); font: inherit;
+    text-align: left; padding: .7rem .8rem; border-radius: 10px;
+    min-height: 44px; cursor: pointer;
+  }
+  .m-item:hover { background: rgba(255,255,255,.07); }
+  .m-item:focus-visible { background: rgba(255,255,255,.12); }
+
+  /* The panel opens over the corner the plate is next to, and a plate sticking
+     out from behind it reads as a collision rather than as a layer: measured on
+     the card frame, "Cunz Hall" went under the panel and "160 / 42 seats" did
+     not. So the plate stands down while the menu is up. */
+  body.menuing .c-plate { opacity: 0; }
+  .c-plate { transition: opacity .16s linear; }
+  @media (prefers-reduced-motion: reduce) {
+    .c-plate { transition: none; }
+  }
+
+  /* --- the card ---
+
+     The photograph IS the screen. Colin, who uses this on campus, asked for "a
+     single button that just finds the nearest empty classroom and if its full u
+     swipe and gives u next best"; Enes asked for the room to be the picture,
+     edge to edge: "the image of the classroom is the most important part as it
+     provides a good visual aspect and a visual reference".
+
+     So there is no card floating on a background. There is a room, a back arrow
+     over it, one translucent plate near the top, and the two verdicts on the
+     bottom corners. Everything the list says around its rows -- the count, the
+     walk cap, the coverage paragraph -- stays on the list.
+
+     Three earlier shapes are gone and worth not repeating. A 22rem card with the
+     room number at 3.6rem: no picture at all. The same card filled by a cover
+     crop: 55% of the phone was empty ground under it. A 4:5 card holding the
+     photograph contained, with a blurred copy behind: the whole room was
+     visible, and it read as a small picture in a lot of dark. */
+  #card {
+    position: relative;
+    padding: 0;
+    /* The pane does not scroll and the photograph does not letterbox: this
+       screen is exactly one viewport, and a thrown card leaves sideways out of
+       it. */
+    overflow: hidden;
+  }
+  .c-deck { position: absolute; inset: 0; }
+  .c-card {
+    position: absolute; inset: 0; overflow: hidden;
+    background: var(--card-hi);
+    touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none;
+  }
+  /* Only while the finger is off it. During a drag the transform is written
+     every frame and a transition would lag the thumb. */
+  .c-card.snap { transition: transform .26s cubic-bezier(.2,.8,.3,1), opacity .26s ease; }
+
+  /* A canvas, not an img, because the picture is WARPED to fit.
+
+     The arithmetic that forces it: these photographs are 3:2 and the screen is
+     about 1:2.2, so a cover crop can only ever show a 277x600 slice of the
+     900x600 source -- 31% of the width, full height -- and since every one of
+     them is shot from the back of the room, half of that column is foreground
+     carpet. Measured, the first full-bleed build was 60% carpet with the
+     screen, the boards and both ends of the room gone. Cropping the source
+     makes the column narrower, not wider. Containing it shows the whole room
+     and leaves two bands of something else.
+
+     Enes's idea, and it is the one that works: stretch the TOP. The top of the
+     frame is ceiling, it is flat, and the plate sits over it, so spending most
+     of the screen's height on a few rows of it costs nothing anybody can see --
+     and it buys the width back for the part of the room you are looking at.
+     js/app.js drawWarp() does the mapping and says how. */
+  .c-photo {
+    position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%;
+    /* Loaded per card and never precached, so it arrives after the text. Fading
+       it in stops the room appearing as a flash under words already being read.
+       js/app.js adds .on when the decode finishes. */
+    opacity: 0; transition: opacity .35s ease;
+  }
+  .c-photo.on { opacity: 1; }
+  /* An img is natively draggable, and a pointerdown on one starts a browser
+     image-drag that CANCELS the pointer stream. The swipe then saw a
+     pointercancel instead of a move and put the card straight back, so a card
+     with a photograph on it could not be dragged at all. The picture has no
+     interaction of its own, so the events belong to the card under it. */
+  .c-photo, .c-scrim { pointer-events: none; }
+  /* Under the plate and under the buttons, and nowhere else. A single wash over
+     a whole room greys out the thing the screen exists to show. */
+  .c-scrim {
+    position: absolute; z-index: 1; inset: 0;
+    background:
+      linear-gradient(180deg, rgba(11,13,16,.55) 0%, rgba(11,13,16,.28) 14%, rgba(11,13,16,0) 32%),
+      linear-gradient(0deg, rgba(11,13,16,.55) 0%, rgba(11,13,16,0) 18%);
+  }
+  /* No photograph for this room, and 119 of the 425 have none. A flat panel
+     rather than a broken-image glyph: the answer is the words, and the picture
+     was always the bonus. */
+  .c-card.plain { background: var(--card-hi); }
+  .c-card.plain .c-scrim { background: none; }
+
+  /* The plate. Everything the card SAYS is on it, so the text has one contrast
+     problem to solve instead of one per line, and it reads at the same weight
+     over a dark lecture hall and a wall of windows. It is bigger than it was:
+     this is the only text on the screen and it is read at arm's length.
+
+     Narrower than the phone and centred in it, so it reads as a label ON the
+     photograph rather than as a bar across it. max-width rather than a pair of
+     insets -- the insets were what made it the width of the screen -- and it was
+     inset on the left before that, to dodge a back arrow this screen no longer
+     has.
+
+     Frosted: the reference Enes sent is a plate you can see the room through,
+     and a flat 78% panel is not that. backdrop-filter was taken out of this rule
+     once, because it made scripts/shoot.mjs refuse the frame as still moving;
+     that check compares within a tolerance now, for the raster noise a
+     photograph brings, and this sits well inside it. */
+  .c-plate {
+    position: absolute; z-index: 2; top: calc(var(--safe-t) + 5.6rem);
+    left: 50%; transform: translateX(-50%);
+    width: calc(100% - 1.8rem); max-width: 20rem;
+    background: rgba(18, 24, 33, .55);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    backdrop-filter: blur(14px) saturate(1.3);
+    border: 1px solid rgba(255,255,255,.14); border-radius: 16px;
+    padding: .8rem .9rem; text-align: center;
+  }
+  .c-b {
+    margin: 0; font-size: clamp(1.35rem, 7vw, 1.8rem); font-weight: 700;
+    letter-spacing: -.01em; line-height: 1.15;
+  }
+  /* One line, three facts. The window comes first because it is the answer to
+     the question that was asked; the walk and the seats are what you weigh it
+     against. */
+  .c-facts {
+    margin: .35rem 0 0; color: var(--dim); font-size: .95rem;
+    display: flex; align-items: center; justify-content: center; gap: .45rem;
+    flex-wrap: wrap;
+  }
+  .c-facts .ico { width: 1em; height: 1em; }
+  .c-facts .sep { opacity: .45; }
+  .c-facts .warn { color: var(--warn); }
+  /* What the answer has to admit, when it has anything to admit -- a window
+     shorter than the one you asked for, a minute with nothing free in it, a
+     campus whose published doors are all shut. It rides on the plate rather
+     than above it, because the room fills the screen and anything in the flow
+     before the deck would be painted over by it. Absent 94.1% of the time. */
+  .c-admits { margin: .5rem 0 0; border-top: 1px solid rgba(255,255,255,.1); padding-top: .45rem; }
+  .c-admits .strip, .c-admits p {
+    margin: 0; color: var(--warn); font-size: .78rem; text-align: center;
+  }
+
+  /* The two verdicts, painted on the card as it moves so the gesture says what
+     it will do before it is finished. Opacity is driven from js/app.js.
+     Each sits on the side of the card that stays ON SCREEN, which is the
+     opposite side to the direction of travel: a card thrown left takes its left
+     edge away first, so NEXT lives on the right. The first build had them the
+     other way round and the word telling you what you were about to do slid off
+     the screen exactly as you committed to it. */
+  .c-stamp {
+    position: absolute; z-index: 3; top: 40%; font-size: 1.15rem; font-weight: 800;
+    letter-spacing: .08em; padding: .4rem .8rem; border-radius: 10px;
+    border: 2px solid currentColor; opacity: 0; pointer-events: none;
+    background: rgba(11,13,16,.5);
+  }
+  .c-stamp.no { right: 1.4rem; color: #fff; transform: rotate(12deg); }
+  .c-stamp.yes { left: 1.4rem; color: var(--accent); transform: rotate(-12deg); }
+
+  /* On the picture, at its two bottom corners, which is where a thumb already
+     is. The side each one sits on is the direction its swipe goes. */
+  .c-acts {
+    position: absolute; z-index: 2; left: 0; right: 0;
+    bottom: calc(1.1rem + var(--safe-b));
+    display: flex; justify-content: space-between; align-items: center;
+    margin: 0; padding: 0 1.1rem; pointer-events: none;
+  }
+  .c-acts .c-act { pointer-events: auto; }
+  /* No disc. A ring around a glyph is a second shape to read before the glyph
+     itself, and on a photograph it is a second thing to keep legible. The
+     target stays 56px square -- that is the thumb, not the ink -- and the ink
+     grows to fill it. The drop shadow is what holds a white glyph over a lit
+     ceiling; a translucent disc was doing that job and doing it worse. */
+  .c-act {
+    appearance: none; width: 60px; height: 60px; padding: 0;
+    border: 0; background: none; color: var(--fg); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .c-act .ico {
+    width: 40px; height: 40px; stroke-width: 2.1;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
+  }
+  .c-act.yes { color: var(--accent); }
+  .c-act.yes .ico { stroke-width: 2.6; }
+  .c-act:active { transform: scale(.9); }
+
+  /* Nothing here any more. The way to the ranking was a pill reading
+     "1 of 35 - see all", then three bars opposite the back arrow, and both were
+     one more thing to work out on a screen whose whole argument is that one
+     room is the answer. It is a downward throw on the card now, and the card's
+     accessible name says so. */
+  .c-end { margin: 0; text-align: center; color: var(--dim); font-size: .9rem; }
+  /* The end of the deck is the one place a control for the list survives: no
+     photograph, no gesture, and no room left to swipe, so it is the only thing
+     there is to offer. */
+  #card.done .c-more {
+    appearance: none; border: 1px solid var(--line-hi); background: var(--card);
+    color: var(--fg); font: inherit; font-size: .9rem;
+    padding: .6rem 1rem; border-radius: 10px; cursor: pointer;
+  }
+  /* The end of the deck has no photograph and no gesture, so it is laid out
+     like every other message pane in this app rather than like a screen. */
+  #card.done {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; justify-content: safe center;
+    gap: .85rem; padding: 1rem;
+  }
+  #card.done .c-deck { position: static; }
+  @media (prefers-reduced-motion: reduce) {
+    .c-card.snap { transition: none; }
+  }
+
+  /* The sheet is the photograph's frame on this screen, so it has no frame:
+     no rounded top, no border, no grip, and it starts at the top of the phone.
+     js/sheet.js rests it at the full viewport height to match. */
+  body.carding #sheet { border-radius: 0; border-top: 0; background: none; }
+  body.carding #sheet .handle { display: none; }
+  /* No back arrow on the card. It was a third piece of chrome on a photograph
+     for a screen you leave by throwing the card down, and the duration behind it
+     is one tap to set again. The gesture is not printed anywhere: Enes,
+     "dont have text that says swipe down, it should be something ppl learn".
+     It is in the card's accessible name, where only a screen reader reads it,
+     because a gesture nothing announces is not learnable at all by somebody who
+     cannot see the card move.
+
+     Which of the two corner controls a screen gets is decided once, in
+     showPane(), rather than here as well: this rule used to hide #back on the
+     card while showPane un-hid it, and two mechanisms for one fact is how they
+     drift. */
+  /* On the two screens the menu owns, it loses its disc and grows to the size of
+     the two verdicts on the card, so the set reads as one set. A bordered pill
+     over a room reads as a control panel bolted to the picture, and the same
+     button two sizes on two consecutive screens reads as two buttons: Enes,
+     "in the 3rd picture the hamburger icon like the 3 lines is different, make
+     image 3 match image 2". The drop shadow is what the disc was for, and it
+     works over a photograph and a night map alike. */
+  body.carding #menu, body.waying #menu {
+    border: 0; background: none; padding: 0;
+    min-width: 60px; min-height: 60px; width: 60px; height: 60px;
+    top: calc(var(--safe-t) + 1.1rem);
+    /* The column rule below is (1,0,0) and this is (1,1,1), so writing a bare
+       1.1rem here beat it on every window -- and these are the only two screens
+       the menu appears on, which made that rule dead. Measured at 1900px: the
+       hamburger sat at x=17 while the 512px column started at x=694. */
+    left: max(1.1rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2 + .5rem));
+  }
+  body.carding #menu .ico, body.waying #menu .ico {
+    width: 40px; height: 40px; stroke-width: 2.1;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
+  }
+  body.carding .m-panel, body.waying .m-panel {
+    top: calc(var(--safe-t) + 4.6rem);
+    left: max(1.1rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2 + .5rem));
+  }
+
+  /* The way: the map with the room lit on it, one plate naming the room, and the
+     ranking peeked underneath. Enes on the schedule, "the list of other classes
+     is irrelevant", and on the rooms a message later, "the take it and the way
+     should have the other nearby classes at the bottom back". */
+  /* The map is fixed behind everything, the ranking is in the sheet below, so
+     the way itself is one plate over the canvas between them. It lets every
+     pointer through: the map is meant to be panned, and the plate is a label
+     rather than a control. */
+  #way { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
 
   /* --- the answer --- */
   /* The sheet carries the column width itself, rather than running the full
@@ -657,7 +945,8 @@
      it sat at x=9.6 with the column starting at x=694, and lands on 694 now.
      Below 32rem the term is negative and max() drops it, so on a phone the
      arrow does not move: 9.6 at 320, 390 and 430px, before and after. */
-  #back { left: max(.6rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2)); }
+  #back, #menu { left: max(.6rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2)); }
+  .m-panel { left: max(.6rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2)); }
   #sheet {
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
@@ -734,6 +1023,11 @@
   </symbol>
   <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M12 3 12 21M12 3 6 9M12 3l6 6"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M5 5 19 19M19 5 5 19"/></symbol>
+  <symbol id="i-bin" viewBox="0 0 24 24">
+    <path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6"/>
+  </symbol>
+  <symbol id="i-tick" viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
 </svg>
 
 <canvas id="map"></canvas>
@@ -743,7 +1037,37 @@
 <button id="back" hidden aria-label="Back to the question">
   <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg>
 </button>
+<!-- The menu, on the two screens that have no back arrow. Enes: "the top left
+     should have the 3 lines thing, and when pressed it should have choices like
+     to go back or other stuff". A disclosure and not a menu ROLE: that role
+     promises arrow-key navigation between the items, and announcing a keyboard
+     model the app does not implement is worse than announcing none. Tab already
+     walks the five buttons in order. -->
+<button id="menu" type="button" hidden aria-expanded="false" aria-controls="menu-pop"
+  aria-label="More">
+  <svg class="ico" aria-hidden="true"><use href="#i-menu"/></svg>
+</button>
+<div id="menu-pop" hidden>
+  <div class="m-panel">
+    <button type="button" class="m-item" id="m-back">Back</button>
+    <button type="button" class="m-item" id="m-list">See all rooms</button>
+    <button type="button" class="m-item" id="m-pick">Pick your building</button>
+    <button type="button" class="m-item" id="m-recheck">Check again</button>
+    <button type="button" class="m-item" id="m-about">What Vacant knows</button>
+  </div>
+</div>
 <p id="say" class="sr" aria-live="polite"></p>
+
+<!-- Where the room is, and nothing else. Reached by taking a card, and the
+     only thing between a reader and the walk. It is an overlay rather than a
+     pane of the sheet because it has no panel: it is the campus map with one
+     plate over it. -->
+<section id="way" hidden>
+  <div class="c-plate" id="way-plate">
+    <h2 class="c-b" id="way-name"></h2>
+    <p class="c-facts" id="way-facts"></p>
+  </div>
+</section>
 
 <section id="ask">
   <h1>Vacant<span>.</span></h1>
@@ -789,6 +1113,7 @@
       <svg class="ico" aria-hidden="true"><use href="#i-x"/></svg>
     </button>
   </div>
+  <section id="card" class="pane" hidden></section>
   <div id="list" class="pane"></div>
   <section id="room" class="pane" hidden></section>
   <section id="near" class="pane" hidden></section>

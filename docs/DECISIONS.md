@@ -3530,11 +3530,33 @@ part you are actually looking at.
 
 `drawWarp()` in js/app.js does it on a canvas, in 240 horizontal bands, each a
 straight `drawImage` from a thin source slice into a taller destination one. The
-curve is `source = height * (y / H) ** 1.9`. At that exponent the top 120px of
-the screen -- the strip the plate covers -- is drawn from the top **15 rows** of
-the photograph, and the bottom half is stretched about 1.35x, which reads as a
-room with a high ceiling rather than as a distortion. `WARP_WIDTH = 0.72` keeps
-72% of the source width, against 31% for cover. The whole draw is under 3ms.
+curve is `source = sh * (y / H) ** p`, and `WARP_WIDTH = 0.72` keeps 72% of the
+source width against 31% for cover. The whole draw is under 3ms.
+
+**The exponent is derived, not set, because these are not all the same shape.**
+219 of the 306 are 3:2; the rest run from 4:3 to 16:9 across 24 distinct sizes.
+A fixed exponent leaves a 16:9 room visibly more stretched at its bottom edge
+than a 4:3 one, which is the part of the picture a reader is actually looking
+at. So the knob is `WARP_BOTTOM`, how much taller than natural the BOTTOM may be
+drawn, and `p` falls out of it:
+
+    local vertical scale at t = h / (sh * p * t ** (p - 1))
+    at the bottom edge, t = 1 = h / (sh * p)
+    over the horizontal scale w / sw  ->  h * sw / (sh * p * w)
+    set that to WARP_BOTTOM           ->  p = h * sw / (sh * BOTTOM * w)
+
+Floored at 1, which is a straight stretch: a picture already tall enough for the
+screen needs no warp and must not get a backwards one. At `WARP_BOTTOM = 1.23`
+that gives p = 1.91 for a 3:2 room, 1.69 for 4:3 and 2.26 for 16:9, and the top
+120px of the phone comes from the top 14, 24 and 6 source rows respectively.
+
+**`dev/warp.html` is the knob those came off.** A phone-sized frame at 393x852,
+the real plate over it, both sliders, a picker over all 306 rooms, and a dashed
+line showing exactly how much of the picture the plate hides -- which is the
+whole argument for stretching that part. It prints the derived exponent, the
+stretch at three heights, and the two lines to paste into js/app.js. It reads
+the same files the app does and runs the same arithmetic; it is not loaded by
+the app and nothing in the app imports it.
 
 The canvas is the only copy on screen: the decode happens on an `Image` that
 never enters the DOM, because an `<img>` in the tree as well would be a second
@@ -3581,6 +3603,29 @@ smallest real movement either animation on this screen produces. And when a fram
 does fail, `whereMoved()` now reports how many pixels moved, by how much, and the
 CSS box they are in -- finding that out used to mean rebuilding the script by
 hand in a scratch file, which is what it took here.
+
+### What the screen ended up being
+
+Four things on a photograph, and nothing else. Back arrow top left, the list top
+right, the plate centred under both, the two verdicts on the bottom corners.
+
+**The plate is centred and sits below the icons.** It used to be inset on the
+left to dodge the back arrow, which made it the only thing on the screen that
+was not symmetrical; an off-centre plate over a centred photograph reads as a
+mistake. It is also bigger, because it is the only text on the screen and it is
+read at arm's length.
+
+**None of the three icons has a disc any more.** A ring around a glyph is a
+second shape to read before the glyph, and over a photograph it is a second
+thing to keep legible. The tap targets stay 44 and 56px -- that is the thumb,
+not the ink -- and the ink grew to fill them. A drop shadow holds a white glyph
+over a lit ceiling, which is the job the translucent disc was doing worse.
+
+**"1 of 35 - see all" is gone.** How many rooms are left is not a thing anybody
+does anything with, and it was the only number on a screen whose whole argument
+is that one room is the answer. The way to the ranking is now an icon opposite
+the back arrow, the same size as it, which is also what makes the top row
+symmetrical.
 
 **Cost.** The shell went 138,629 -> 142,263 gzipped bytes, +2.6%: the picture,
 the plate, the sheet losing its frame on that one screen, and `drawWarp()`. The

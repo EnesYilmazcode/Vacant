@@ -1173,29 +1173,42 @@ function select(i) {
 const SWIPE_PX = 84;
 const SWIPE_V = 0.45;
 
-// The warp. How much of the source WIDTH the card keeps, centred, and how hard
-// the top of the frame is stretched to make up the height.
+// The warp, in two numbers that are both about what a READER sees.
 //
-// A 900x600 photograph in a 393x852 screen is a 3.25x aspect gap, and something
-// has to give. Cover gives the width away: 31% of it, and half of what is left
-// is carpet. This gives the CEILING away instead. 0.72 of the width is 648
-// source pixels, which at 393 across is a natural height of 393; the screen
-// wants 852, so 459px have to come from somewhere, and the power curve below
-// takes them off the top of the frame.
+// A photograph in this screen is a 3-ish times aspect gap and something has to
+// give. Cover gives the width away: 31% of it, and half of what is left is the
+// carpet these are all shot across. This gives the CEILING away instead, which
+// is flat and sits under the plate.
 //
-// WARP_POWER is the exponent on that curve: source = height * (y / H) ** p. At
-// 1.9, the top 120px of the screen -- the strip the plate covers -- is drawn
-// from the top 15 rows of the photograph, and the bottom half of the screen is
-// stretched about 1.35x, which reads as a slightly tall room rather than as a
-// distortion. Raising it smears more and straightens the bottom; 1 is no warp
-// at all and letterboxes.
+// WARP_WIDTH is how much of the source width the card keeps, centred.
+// WARP_BOTTOM is how much taller than natural the BOTTOM of the picture may be
+// drawn -- the part of the room you are actually looking at.
+//
+// The exponent is NOT a constant, because these are not all the same shape: 219
+// of the 306 are 3:2, and the rest run from 4:3 to 16:9. A fixed exponent
+// leaves a 16:9 room visibly more stretched at the bottom than a 4:3 one, so it
+// is derived per photograph from the two numbers above and the aspect it
+// actually has. dev/warp.html is the knob these came off.
 const WARP_WIDTH = 0.72;
-const WARP_POWER = 1.9;
+const WARP_BOTTOM = 1.23;
 
 // Horizontal bands the warp is drawn in. Each is a straight drawImage, so this
 // is a piecewise approximation of the curve: at 240 the seams are under a
 // device pixel at 393x852 and the whole draw is under 3ms.
 const WARP_BANDS = 240;
+
+// The exponent that puts the whole aspect gap into the TOP of the frame while
+// leaving the bottom edge at WARP_BOTTOM times its natural height.
+//
+// The curve is source = sh * t ** p, so the local vertical scale at t is
+// h / (sh * p * t ** (p - 1)), which at the bottom edge is h / (sh * p). Divide
+// that by the horizontal scale w / sw and the ratio is h * sw / (sh * p * w),
+// so p falls out of setting the ratio to WARP_BOTTOM. Floored at 1, which is a
+// straight stretch: a picture already tall enough for the screen needs no warp
+// and must not get a backwards one.
+function warpPower(w, h, sw, sh) {
+  return Math.max(1, (h * sw) / (sh * WARP_BOTTOM * w));
+}
 
 // Draw `img` into `canvas`, stretched so the room fills the screen.
 //
@@ -1218,7 +1231,7 @@ function drawWarp(canvas, img) {
   const sw = img.naturalWidth * WARP_WIDTH;
   const sx = (img.naturalWidth - sw) / 2;
   const sh = img.naturalHeight;
-  const at = (t) => sh * t ** WARP_POWER;
+  const at = (t) => sh * t ** warpPower(w, h, sw, sh);
 
   for (let i = 0; i < WARP_BANDS; i++) {
     const t0 = i / WARP_BANDS;
@@ -1345,9 +1358,8 @@ function paintCard() {
         </p>
       </article>
     </div>
-    <button type="button" class="c-more" id="c-list"
-      aria-label="Room ${state.cardIndex + 1} of ${total}. See all ${total} in a list">
-      ${state.cardIndex + 1} of ${total} &middot; see all
+    <button type="button" class="c-more" id="c-list" aria-label="See every room in a list">
+      <svg class="ico" aria-hidden="true"><use href="#i-list"/></svg>
     </button>`;
 
   $('card').classList.remove('done');

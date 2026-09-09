@@ -10,7 +10,7 @@ it. Bin it and it hands you the next one. Take it and it shows you the way.
 
 | | |
 | :--: | :--: |
-| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![One card in the middle of a dark screen: a photograph of Cunz Hall 160, an empty classroom with rows of tables and yellow chairs, a clock and a door at the far end. A plate across the top of it reads Cunz Hall 160, and under that no class rest of today, 4 min walk, 42 seats. A bin button sits at the bottom left of the picture and a tick at the bottom right.](docs/media/card.webp) |
+| ![The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected](docs/media/ask.webp) | ![One card in the middle of a dark screen: a photograph of Cunz Hall 160, an empty classroom with rows of tables and yellow chairs, a clock and a door at the far end. The photograph is the whole screen. A back arrow sits over it at the top left and a list icon at the top right, a translucent plate under them reads Cunz Hall 160 with no class rest of today, 4 min walk and 42 seats beneath, and a bin and a tick sit on the bottom corners.](docs/media/card.webp) |
 | One question. | One answer. |
 
 ## Yours for, not free until
@@ -51,8 +51,8 @@ The buttons under the card do the same two things, and so do the left and right
 arrow keys. A gesture nothing announces is unreachable from a keyboard and
 invisible to a screen reader.
 
-The ranking is still all there. **See all 35 in a list** under the card opens it,
-and every row is the same answer the card gives, one per building, nearest first.
+The ranking is still all there, behind the list icon opposite the back arrow.
+Every row is the same answer the card gives, one per building, nearest first.
 
 | |
 | :--: |
@@ -77,9 +77,14 @@ of the room, and since every one of these is shot from the back, half of that
 column is foreground carpet. So the ceiling pays instead. It is flat, the plate
 sits over it, and stretching it buys back **72% of the width** for the part of
 the room you are looking at. `drawWarp()` maps the source to the screen as
-`y ** 1.9` over 240 bands on a canvas: the top 120px of the phone comes from the
-top 15 rows of the photograph, and the bottom half is stretched about 1.35x,
-which reads as a high ceiling rather than as a distortion.
+`y ** p` over 240 bands on a canvas. The exponent is derived per photograph
+rather than fixed, because 219 of the 306 are 3:2 and the rest run from 4:3 to
+16:9: the knob is how much taller than natural the BOTTOM of the picture may be
+drawn, and `p` falls out of that and the aspect. At the shipped 1.23x, the top
+120px of the phone comes from the top 14 source rows of a 3:2 room and the top 6
+of a 16:9 one, and both read as a high ceiling rather than as a distortion.
+`dev/warp.html` is the bench those numbers came off: both sliders, all 306
+rooms, and a line showing how much of the picture the plate hides.
 
 **306 of the 425** have one. The other 119 are departmental rooms nobody has
 photographed, and they get the same card without a picture: the words were always

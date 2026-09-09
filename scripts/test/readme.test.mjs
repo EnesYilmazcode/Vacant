@@ -20,11 +20,25 @@ const MEDIA = join(ROOT, 'docs', 'media');
 const readme = readFileSync(join(ROOT, 'README.md'), 'utf8');
 const manifest = JSON.parse(readFileSync(join(MEDIA, 'frames.json'), 'utf8'));
 
-// Every ![alt](path) in the README, in order.
-const images = [...readme.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)].map((m) => ({
-  alt: m[1],
-  src: m[2],
-}));
+// Every picture in the README, in order. The screenshots are `<img>` rather
+// than `![alt](path)` because a phone screenshot is 1179x2556 and markdown has
+// no way to say how wide to draw one: left to itself GitHub prints each of them
+// at the full width of the column, two thousand pixels tall. The alt text is the
+// same text either way, so this reads both forms and everything below is blind
+// to which one a picture used.
+const unescape = (s) =>
+  s
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+const attr = (tag, name) => (tag.match(new RegExp(`\\b${name}="([^"]*)"`)) || [, ''])[1];
+const images = [...readme.matchAll(/!\[([^\]]*)\]\(([^)]+)\)|<img\b[^>]*>/g)].map((m) =>
+  m[2] === undefined
+    ? { alt: unescape(attr(m[0], 'alt')), src: attr(m[0], 'src') }
+    : { alt: m[1], src: m[2] },
+);
 const shots = images.filter((i) => i.src.startsWith('docs/media/'));
 const frameOf = (src) => src.replace('docs/media/', '').replace('.webp', '');
 

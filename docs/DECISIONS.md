@@ -3762,3 +3762,62 @@ the frosted plate, 123 on `js/sheet.js` for a screen that has no sheet. Suite
 a while: nothing was reading those two figures. `sw.js` already holds its own
 header to the files it caches, so `scripts/test/readme.test.mjs` now holds the
 README to that header and the chain is measured end to end.
+
+---
+
+## 2026-09-08  A menu behind three lines, and the runners-up back under the way
+
+Two corrections from Enes, an hour after the entry above.
+
+**Decided. The corner gets three lines and a menu behind them.** "the top left
+should have the 3 lines thing, and when pressed it should have choices like to go
+back or other stuff." This is not the three bars he took OFF the card earlier
+that day. That one was an unlabelled glyph that did exactly one thing, open the
+list, and "idk what the 3 bars are for" is the correct reaction to a puzzle. A
+glyph that opens a list of words is not a puzzle: the words are the label.
+
+Five choices, and Back is first because it is the one the two chrome-less screens
+were missing. It is `history.back()` rather than a named screen, so from the card
+it is the question and from the way it is the card that was taken, which is the
+entry underneath in both cases. The other four already existed with nowhere to
+be reached from: the ranking, the origin picker, a re-rank, and what the app does
+not know.
+
+**A disclosure, not a `role="menu"`.** That role promises the arrow keys move
+between the items, and announcing a keyboard model the app does not implement is
+worse than announcing none. Tab already walks five buttons in order. Escape
+closes it, a press anywhere off the panel closes it, and every screen change
+closes it: a panel that outlives the screen it was opened on is a set of choices
+about somewhere the reader has left.
+
+The panel is over a scrim, and the plate fades while it is open. Measured on the
+card frame without that: the panel covered "Cunz Hall" and left "160 / 42 seats"
+sticking out beside it, which reads as a collision rather than as a layer.
+
+**Decided. The ranking comes back under the way.** "the take it and the way
+should have the other nearby classes at the bottom back." This narrows the entry
+above rather than reversing it. What taking a room makes irrelevant is the room's
+own CALENDAR, which is what "the list of other classes is irrelevant" said; the
+other ROOMS are the cheapest change of mind the app has, and the tick was
+throwing them away.
+
+So the way is the map with the footprint lit, the arrow, one plate, and the
+ranking peeked underneath with that room's row lit. Tapping another row moves the
+arrow and the plate together, because a headline naming a room the map is no
+longer pointing at is worse than no headline. `REST.way` goes 0 to `PEEK`: same
+band as the list, for the same reason, since there is a lit footprint and a walk
+line on that canvas to leave room for.
+
+**And the plate stops being a handle.** The pull that left the way screen was on
+the plate, because that screen had no sheet. It has one now, and the sheet's grip
+has carried the same gesture, through the same dismiss travel, to the same
+`toAsk()`, since long before either of these screens existed. Two mechanisms for
+one gesture is one too many, so `attachWaySwipe()` is gone.
+
+**Cost.** The shell went 146,240 -> 147,855 gzipped bytes, +1.1%: 957 on
+`index.html` for the panel, its backdrop and the glyph, 503 on `js/app.js` for
+opening and closing it, 155 on `js/sheet.js`. Suite stays at 854 tests; three of
+them were rewritten rather than added, because both described a screen that has
+changed shape. `scripts/shoot.mjs` takes nine frames now: the menu is opened with
+a press and closed with a press off it, and the way is checked for rows under the
+map and for the lit row agreeing with the plate.

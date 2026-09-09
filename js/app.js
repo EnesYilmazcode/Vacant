@@ -466,6 +466,67 @@ function paintMap() {
   document.body.classList.toggle('nomap', state.screen !== 'ask' && !targeted());
 }
 
+// The menu. Three lines in the corner the back arrow has everywhere else, on
+// the two screens that do not have one: the card, where a bordered pill over a
+// photograph was the thing Enes called ugly, and the way, which is a map with a
+// plate on it. Behind it are the choices those two screens had nowhere to put.
+// Enes: "the top left should have the 3 lines thing, and when pressed it should
+// have choices like to go back or other stuff".
+//
+// A disclosure and not role="menu". That role promises arrow keys move between
+// the items, and announcing a keyboard model the app does not implement is
+// worse than announcing none; Tab already walks five buttons in order.
+let closeMenu = () => {};
+
+function attachMenu() {
+  const btn = $('menu');
+  const pop = $('menu-pop');
+  const show = (on) => {
+    pop.hidden = !on;
+    btn.setAttribute('aria-expanded', String(on));
+    document.body.classList.toggle('menuing', on);
+    if (on) pop.querySelector('.m-item').focus({ preventScroll: true });
+    else if (!btn.hidden) btn.focus({ preventScroll: true });
+  };
+  // Every screen change closes it. A panel that outlives the screen it was
+  // opened on is a set of choices about somewhere the reader has left.
+  closeMenu = () => {
+    if (pop.hidden) return;
+    pop.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('menuing');
+  };
+
+  btn.onclick = () => show(pop.hidden);
+  // #menu-pop is the whole viewport, so a press outside the panel is "not this".
+  // On pointerdown rather than click, because a press that starts on the
+  // backdrop and ends on a row underneath should close the menu and not also
+  // take the room the finger happened to land on.
+  pop.addEventListener('pointerdown', (e) => {
+    if (e.target === pop) show(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || pop.hidden) return;
+    e.preventDefault();
+    show(false);
+  });
+
+  const act = (id, go) => {
+    $(id).onclick = () => {
+      show(false);
+      go();
+    };
+  };
+  // Back first, because it is the one Enes named and the one both screens lack.
+  // history.back() rather than a screen: from the card it is the question, from
+  // the way it is the card that was taken, and both are the entry underneath.
+  act('m-back', () => history.back());
+  act('m-list', () => openList());
+  act('m-pick', () => openPick());
+  act('m-recheck', () => refresh());
+  act('m-about', () => openAbout());
+}
+
 function attachSheet() {
   const sheet = $('sheet');
   const handle = $('handle');
@@ -1164,6 +1225,10 @@ function select(i) {
   markRows();
   setSheet(restNow(), true);
   frame(r);
+  // On the way screen the plate is the headline over the map, so it has to name
+  // whatever the arrow points at. Tapping a row there is a change of
+  // destination, not a preview of one.
+  if (state.screen === 'way') paintWay(r.id, r);
   say(`${roomLabel(r)}, ${r.walk} minute walk, shown on the map.`);
 }
 
@@ -2469,7 +2534,11 @@ function showPane(name) {
   $('origin').hidden = !originBarOn(name);
   $('ask').hidden = true;
   $('sheet').hidden = false;
-  $('back').hidden = false;
+  // One corner, two controls, never both. The card is a photograph and gets the
+  // menu; everything else is a panel or a map and keeps the arrow.
+  $('back').hidden = name === 'card';
+  $('menu').hidden = name !== 'card';
+  closeMenu();
   document.body.classList.remove('asking');
   const arrived = state.screen !== name;
   state.screen = name;
@@ -2497,6 +2566,8 @@ function showAsk() {
   document.body.classList.remove('carding');
   $('sheet').hidden = true;
   $('back').hidden = true;
+  $('menu').hidden = true;
+  closeMenu();
   for (const id of PANES) $(id).hidden = id !== 'list';
   state.settled = false;
   state.selected = null;
@@ -2684,43 +2755,49 @@ function showRoom(id, { keepDay = false } = {}) {
   }
 }
 
-// Where the room is. The map is already fixed behind every screen and already
-// knows how to draw a lit footprint and an arrow to it, so this screen is that
-// map with the sheet out of the way and one plate on top.
+// Where the room is: the map with the footprint lit, an arrow to it, one plate
+// naming it, and the ranking peeked underneath with that room's row lit.
 //
-// It is not the room screen. That one carries the day as a calendar, and Enes on
-// the moment after you have said yes: "they dont need to see the other rooms
-// tbh, just the arrow pointing them to the room ... the list of other classes is
-// irrelevant". By then the question is which way to walk.
+// It is not the room screen. That one opens the day as a calendar, and Enes on
+// the moment after you have said yes: "the room schedule, like the list of other
+// classes is irrelevant". By then the question is which way to walk.
+//
+// The other ROOMS are a different matter, and they came back the same day they
+// went: "the take it and the way should have the other nearby classes at the
+// bottom back". One tap on a row moves the arrow and the plate to that room,
+// which is the cheapest change of mind the app has.
+//
+// This does its own pane work rather than calling showPane('list'), because
+// showPane names the screen after the pane and this screen is not the list: it
+// has a plate, no back arrow, and a selection the list deliberately clears.
 function showWay(id) {
   const room = state.rooms?.rooms?.[id];
   if (!room) return showCard();
-  state.screen = 'way';
   const r = state.results.find((x) => x.id === id);
+  // Before the panes, for the same reason showList and showRoom set it there:
+  // reframe() composes the camera for the band this decides.
   state.selected = r ?? { id, building: room.b, walk: null };
 
-  for (const pane of PANES) $(pane).hidden = true;
-  $('sheet').hidden = true;
+  for (const pane of PANES) $(pane).hidden = pane !== 'list';
+  $('find').hidden = true;
+  $('origin').hidden = true;
   $('ask').hidden = true;
+  $('sheet').hidden = false;
   $('back').hidden = true;
+  $('menu').hidden = false;
   $('way').hidden = false;
+  closeMenu();
   document.body.classList.remove('asking', 'carding');
-  // The sheet is gone, and the height it was last dragged to is not. bandFor
-  // composes from REST.way, which is 0, so the camera already knows the whole
-  // canvas is the band; this is the other half of the same fact, for everything
-  // that reads the live height instead.
-  sheetH = 0;
-  $('way-plate').style.transform = 'translate(-50%, 0)';
+  const arrived = state.screen !== 'way';
+  state.screen = 'way';
+  syncPaneTouch();
   paintWay(id, r);
-  paintMap();
+  markRows();
+  sheetHeight();
+  if (arrived) reframe();
   frames.wake();
   if (r) frame(r);
   focusHeading($('way-name'));
-  $('way-name').onkeydown = (e) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'Escape') return;
-    e.preventDefault();
-    history.back();
-  };
 }
 
 function paintWay(id, r) {
@@ -2747,52 +2824,10 @@ function paintWay(id, r) {
   say(`${name}. ${r ? `${r.walk} minute walk. ` : ''}The map is showing you the way.`);
 }
 
-// The way is the one screen with no back button and no sheet to pull down, and
-// on an installed icon there is no browser chrome behind it either. So the plate
-// -- the only object on it -- carries the card's gesture: pull it down and you
-// go back a step, which from here is the card you just took. That is the undo:
-// the deck is still on the same room, so one more swipe is the next one. Two
-// pulls from here reaches the question, which is where the card's own pull goes.
-//
-// Everything else on this screen is map, and a handler over the map would fight
-// every pan, which is why this is on the plate and not on the section. The plate
-// follows the finger, because a gesture with no feedback is a gesture nobody
-// finds. Escape and the down arrow do it from a keyboard, off the heading
-// showWay() has just focused.
-function attachWaySwipe(plate) {
-  let drag = null;
-  const move = (dy) => {
-    plate.style.transform = `translate(-50%, ${Math.max(0, dy)}px)`;
-  };
-  plate.addEventListener('pointerdown', (e) => {
-    drag = { id: e.pointerId, y0: e.clientY };
-    plate.classList.remove('snap');
-    try {
-      plate.setPointerCapture(e.pointerId);
-    } catch {
-      /* another element already owns it; the moves still arrive */
-    }
-  });
-  plate.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    move(e.clientY - drag.y0);
-    e.preventDefault();
-  });
-  const end = (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const dy = e.clientY - drag.y0;
-    const released = e.type === 'pointerup';
-    drag = null;
-    plate.classList.add('snap');
-    move(0);
-    if (released && dy > SWIPE_PX) history.back();
-  };
-  plate.addEventListener('pointerup', end);
-  plate.addEventListener('pointercancel', end);
-}
-
-// Its own history entry, so the phone's back gesture and the pull on the plate
-// both land on the card that was showing.
+// Its own history entry, so the phone's back gesture, the menu's Back, and a
+// pull on the sheet's grip all land on the card that was showing. The grip's
+// dismiss travel is the sheet's own, unchanged: it calls toAsk(), which is
+// history.back(), and from here that is one step.
 function openWay(id) {
   history.pushState({ v: 'way', room: id }, '', `?room=${encodeURIComponent(id)}`);
   showWay(id);
@@ -3356,7 +3391,7 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   attachSheet();
-  attachWaySwipe($('way-plate'));
+  attachMenu();
   window.addEventListener('resize', () => {
     if (state.screen !== 'ask') sheetHeight();
     // surface() reallocates the backing store on the next frame and the band

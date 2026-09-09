@@ -557,7 +557,7 @@ test('the sheet holds a capped column instead of stretching to the window', () =
   assert.doesNotMatch(css, /#sheet > \* \{[^}]*max-width/, 'the children are capped as well as the sheet');
   assert.equal(css.split('max-width: var(--col)').length - 1, 1, 'the column width is set twice');
   // And the back arrow rides the same column rather than the window corner.
-  assert.match(css, /#back \{ left: max\(.+, calc\(50% - var\(--col\) \/ 2\)\); \}/);
+  assert.match(css, /#back, #menu \{ left: max\(.+, calc\(50% - var\(--col\) \/ 2\)\); \}/);
 });
 
 test('every control answers a mouse before it has been clicked', () => {
@@ -1393,18 +1393,19 @@ test('the swipe is not the only way to answer the card', () => {
   const swipe = bodyOf('attachSwipe');
   assert.match(swipe, /ArrowLeft/);
   assert.match(swipe, /ArrowRight/);
-  // The ranking has no control any more -- the screen is a photograph and three
-  // icons, and a fourth was one more thing to work out -- so it lives on the one
-  // gesture the card was not already using. A gesture nothing announces is
-  // invisible to a reader who cannot see the card move, so the card's name says
-  // it and the down arrow does it.
+  // Down goes back to the question, and the card's own name is where that is
+  // said: a gesture nothing announces is invisible to a reader who cannot see
+  // the card move, and nothing on this screen prints it.
   assert.match(swipe, /ArrowDown/);
   assert.match(swipe, /toAsk\(\)/);
   assert.match(bodyOf('paintCard'), /Swipe down to start over/);
-  // No back arrow either. It was a third piece of chrome on a photograph for a
-  // screen you leave by throwing the card down.
+  // No back arrow either. It was a third piece of chrome on a photograph, and
+  // the corner belongs to the menu now. Decided in showPane and nowhere else:
+  // a CSS rule hiding it while showPane un-hid it is two mechanisms for one
+  // fact, which is how they drift.
+  assert.match(bodyOf('showPane'), /\$\('back'\)\.hidden = name === 'card'/);
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
-  assert.match(css, /body\.carding #back \{ display: none; \}/);
+  assert.equal(/body\.carding #back \{/.test(css), false, 'the CSS hides #back as well');
 
   // Scoped to the card itself. The end of the deck still has a button, and
   // should: there is no photograph on that screen, no gesture, and no room left
@@ -1415,27 +1416,40 @@ test('the swipe is not the only way to answer the card', () => {
   assert.match(bodyOf('rejectCard'), /\$\('c-top'\)\?\.focus/);
 });
 
-test('the way is not a dead end', () => {
-  // It has no back button and no sheet to pull down, and on an installed icon
-  // there is no browser chrome behind it either -- so without a gesture of its
-  // own the only way off the last screen of the flow is to relaunch the app.
-  // The plate carries the card's gesture: down goes back a step, which from
-  // here is the card that was taken, with the deck still on the same room.
-  const swipe = bodyOf('attachWaySwipe');
-  assert.match(swipe, /dy > SWIPE_PX/);
-  assert.match(swipe, /history\.back\(\)/);
-  // On the plate and not on the section: the rest of that screen is a map, and
-  // a handler over it would swallow every pan.
-  assert.match(APP, /attachWaySwipe\(\$\('way-plate'\)\)/);
-  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
-  assert.match(css, /#way \{[^}]*pointer-events: none/);
-  assert.match(css, /#way \.c-plate \{[^}]*touch-action: none/);
-  // And from a keyboard, off the heading showWay moves focus to.
-  const keys = bodyOf('showWay');
-  assert.match(keys, /way-name'\)\.onkeydown/);
-  assert.match(keys, /e\.key !== 'ArrowDown' && e\.key !== 'Escape'/);
+test('neither screen without a back arrow is a dead end', () => {
+  // The card and the way both dropped the arrow, and on an installed icon there
+  // is no browser chrome behind them either, so each needs its own way out.
+  // The card has the downward throw and the way has the sheet's grip, and both
+  // have the menu, whose first item is the one Enes asked for by name.
+  assert.match(bodyOf('attachMenu'), /act\('m-back', \(\) => history\.back\(\)\)/);
+  assert.match(APP, /attachMenu\(\);/);
   // Which means the way needs a history entry of its own for back to land on.
   assert.match(bodyOf('openWay'), /history\.pushState\(\{ v: 'way'/);
+
+  // One corner, two controls, never both, and the menu is on the two screens
+  // the arrow left.
+  const pane = bodyOf('showPane');
+  assert.match(pane, /\$\('back'\)\.hidden = name === 'card'/);
+  assert.match(pane, /\$\('menu'\)\.hidden = name !== 'card'/);
+  const way = bodyOf('showWay');
+  assert.match(way, /\$\('back'\)\.hidden = true/);
+  assert.match(way, /\$\('menu'\)\.hidden = false/);
+
+  // A panel that outlives the screen it was opened on is a set of choices about
+  // somewhere the reader has left.
+  for (const fn of ['showPane', 'showAsk', 'showWay']) {
+    assert.match(bodyOf(fn), /closeMenu\(\)/, `${fn} leaves the menu open`);
+  }
+
+  // A disclosure, not a menu: role="menu" promises arrow keys move between the
+  // items, and the app does not implement that.
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(css, /<button id="menu"[^>]*aria-expanded="false"[^>]*aria-controls="menu-pop"/s);
+  assert.equal(/role="menu"/.test(css), false, 'the menu claims a keyboard model it does not have');
+  // Escape closes it, and so does a press on the backdrop.
+  const menu = bodyOf('attachMenu');
+  assert.match(menu, /e\.key !== 'Escape'/);
+  assert.match(menu, /pop\.addEventListener\('pointerdown'/);
 });
 
 test('a press on a verdict button is not eaten by the card under it', () => {
@@ -1454,17 +1468,23 @@ test('a press on a verdict button is not eaten by the card under it', () => {
   );
 });
 
-test('taking a room shows the way to it, not a second list of rooms', () => {
-  // The room screen carries the day as a calendar and the ranking behind it,
-  // and by the time you have said yes the question is which way to walk.
+test('taking a room shows the way to it, and the calendar is what it leaves out', () => {
+  // By the time you have said yes the day as a calendar is not the question,
+  // and which way to walk is. The other ROOMS are a different matter: they are
+  // in the sheet underneath, one tap from moving the arrow.
   assert.match(bodyOf('acceptCard'), /openWay\(r\.id\)/);
   assert.match(bodyOf('openWay'), /history\.pushState/);
-  // It is the map and one plate: no sheet, no pane, no rows.
   const way = bodyOf('showWay');
-  assert.match(way, /\$\('sheet'\)\.hidden = true/);
-  assert.match(way, /for \(const pane of PANES\) \$\(pane\)\.hidden = true/);
-  // And the camera composes for a screen with nothing over it.
-  assert.equal(REST.way, 0, 'the way reserves room for a sheet it does not have');
+  assert.match(way, /for \(const pane of PANES\) \$\(pane\)\.hidden = pane !== 'list'/);
+  assert.match(way, /\$\('sheet'\)\.hidden = false/);
+  assert.match(way, /markRows\(\)/);
+  // The room the arrow points at is the one that is lit, so the camera composes
+  // for the same band the list leaves.
+  assert.equal(REST.way, PEEK, 'the way frames the map for a sheet that is not the list\'s');
+
+  // And tapping another row moves the plate with the arrow, rather than leaving
+  // the headline naming a room the map is no longer pointing at.
+  assert.match(bodyOf('select'), /if \(state\.screen === 'way'\) paintWay\(r\.id, r\)/);
 });
 
 test('a re-rank puts the deck back on top', () => {

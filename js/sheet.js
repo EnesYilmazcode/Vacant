@@ -18,11 +18,17 @@ export const ROOM_SHEET = 0.72;
 // viewport() used to hold a second copy of this that said peek on every screen,
 // so the room screen framed the walk line for a 324px sheet and drew it under a
 // 613px one: at 393x852, 164 of the 206px of target ink went under the panel.
-// `ask` and `way` are 0 because neither has a sheet: the question is an overlay
-// over the flyover, and the way is the map with one plate on it. A screen with
-// no panel leaves the whole canvas as the band, and bandFor reads this table, so
-// leaving them out would frame the walk line for a sheet that is not there.
-export const REST = { ask: 0, way: 0, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: FULL, about: FULL };
+// `ask` is 0 because it has no sheet at all: the question is an overlay over the
+// flyover. A screen with no panel leaves the whole canvas as the band, and
+// bandFor reads this table, so leaving it out would frame the walk line for a
+// sheet that is not there.
+//
+// `way` was 0 for a day, while taking a room meant the map and one plate and
+// nothing else. It is PEEK now, because the ranking came back underneath it:
+// "the take it and the way should have the other nearby classes at the bottom
+// back". Same band as the list, and for the same reason -- there is a lit
+// footprint and a walk line on that canvas to leave room for.
+export const REST = { ask: 0, way: PEEK, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: FULL, about: FULL };
 
 // Where a screen rests once it is covering the map, and the strip it still has
 // to leave at the top: 44px of back button on a 0.6rem inset, plus air. In
@@ -43,7 +49,8 @@ const FULL_BLEED = new Set(['card']);
 // a row is what uncovers it.
 //
 // `ask` is the exception twice over: it has no sheet, and its map is a blurred
-// drifting background rather than one anybody reads.
+// drifting background rather than one anybody reads. `way` is the other: it is
+// only ever reached by taking a room, so it always has one.
 //
 // `targeted` is state.selected at every call site. Defaulted true so the screens
 // that always have one read unchanged.

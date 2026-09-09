@@ -64,21 +64,37 @@ is the answer -- but it is in the card's accessible name, where a screen reader
 reads it out, since a gesture nothing announces is not learnable at all by
 somebody who cannot see the card move.
 
-## Take it and it shows you the way
+## Three lines in the corner
 
-Nothing else. Not the ranking you just said no to, not the room's calendar: by
-the time you have said yes, the only question left is which way to walk.
+What the back arrow used to be, on the two screens that no longer have one. It
+holds the choices a screen with one room on it has nowhere else to put.
 
 | |
 | :--: |
-| ![The campus map filling the screen at night, with Cunz Hall's footprint outlined in red, a dashed line running from the blue dot to it and an arrowhead pointing into the building. One frosted plate near the top reads Cunz Hall 160, with no class, 4 min and 42 seats under it.](docs/media/way.webp) |
-| The answer, and the way to it. |
+| ![The same photograph of Cunz Hall 160, darkened, with a dark rounded panel open under three lines at the top left. It reads Back, See all rooms, Pick your building, Check again, What Vacant knows.](docs/media/menu.webp) |
+| Back first, because that is the one a screen without an arrow is missing. |
 
-Pull the plate down and you are back on the card you took, deck still on the same
-room, so one more swipe is the next one. That gesture is on the plate rather than
-on the screen because the rest of the screen is a map you want to pan. It is also
-the only thing between a reader and a screen they cannot leave: an installed icon
-has no browser chrome behind it, and this one has no back button.
+It is a disclosure and not a `role="menu"`: that role promises the arrow keys
+move between the items, and announcing a keyboard model the app does not
+implement is worse than announcing none. Escape closes it, so does a press
+anywhere off the panel, and so does leaving the screen it was opened on.
+
+## Take it and it shows you the way
+
+The map with the room lit on it, an arrow to it, one plate naming it, and the
+rest of the ranking peeked underneath. The room's **calendar** is what taking a
+room makes irrelevant, not the other rooms: one tap on a row moves the arrow and
+the plate to it, which is the cheapest change of mind in the app.
+
+| |
+| :--: |
+| ![The campus map at night filling the top of the screen, with Cunz Hall's footprint outlined in red, a dashed line running from the blue dot to it and an arrowhead pointing into the building. A frosted plate near the top reads Cunz Hall 160, with no class, 4 min and 42 seats under it. Below the map, the ranked list with Cunz Hall 160 lit in red at the top of it, then Dulles Hall 012, PAES A111 and Journalism Building 106.](docs/media/way.webp) |
+| The answer, the way to it, and the runners-up. |
+
+This screen has no back arrow either. The menu's **Back** leaves it, and so does
+pulling the sheet's grip down through its travel, which is the same gesture that
+leaves every other screen in the app. Both land on the card you took, deck still
+on the same room, so one more swipe is the next one.
 
 ## Say no to all of them
 
@@ -157,7 +173,7 @@ sits at the bottom, then **Add to Home Screen**. iOS 26 defaults to that Compact
 layout, which is why the app offers you both. On Android, Chrome has **Install
 app** in its menu.
 
-Installed, the whole app is 143 KB of shell and 90 KB of schedule, gzipped, and
+Installed, the whole app is 144 KB of shell and 90 KB of schedule, gzipped, and
 none of it is fetched again to answer a question. Turn the network off, open it,
 and it still ranks rooms. That matters because the moment you want it most is the
 moment you are in a basement with one bar.

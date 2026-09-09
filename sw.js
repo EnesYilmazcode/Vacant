@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 146,240 bytes, data 91,951.
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 147,855 bytes, data 91,951.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these sixteen files, which is most of a percent of
@@ -30,6 +30,11 @@
 // wrong; the correction then went stale by 758 bytes, and integrating the
 // screens lane put it 34.3% out in one merge. scripts/test/sw.test.mjs
 // recomputes both now.
+//
+// It read 146,240 before the ranking came back under the way and the corner got
+// a menu instead of an arrow, which cost 1,615: 957 on index.html for the panel,
+// its backdrop and the glyph, 503 on js/app.js for opening and closing it, and
+// 155 on js/sheet.js for a screen that rests where the list does.
 //
 // It read 143,433 before taking a room became a screen of its own, which cost
 // 2,807: 2,160 on js/app.js for the way -- the map with the walk drawn on it and
@@ -106,8 +111,8 @@ const PHOTO = /\/data\/photos\/[^/]+\.webp$/;
 // restating it, because the restatement is what drifted.
 //
 // They are in addAll rather than a second best-effort pass, and that is the
-// argued half: the four are 25,716 of the 146,240 gzipped bytes here, so
-// install does 21.3% more work before it resolves, and a strict tier that fails
+// argued half: the four are 25,871 of the 147,855 gzipped bytes here, so
+// install does 21.2% more work before it resolves, and a strict tier that fails
 // fails the whole install. It is still right. A best-effort tier is for things
 // the app is better with; js/app.js cannot evaluate without js/state.js. And a
 // rejected install is retried where a resolved lie is not.

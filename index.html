@@ -250,12 +250,47 @@
   }
 
   /* --- the back arrow, over the map, never on the root --- */
-  #back {
+  #back, #menu {
     position: fixed; top: calc(var(--safe-t) + .6rem); left: .6rem; z-index: 3;
     appearance: none; border: 1px solid var(--line); background: rgba(11,13,16,.72);
     color: var(--fg); font: inherit; min-width: 44px; min-height: 44px;
     padding: .4em; border-radius: 999px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
+  }
+
+  /* The menu, and the surface that closes it. One element does both: the whole
+     screen catches the tap that means "not this", and the panel inside it hangs
+     under the button that opened it. */
+  /* Darkened, because the panel is a decision and the screen behind it is not
+     available until it is made. It is also what makes "press off it" look like
+     something you can do. */
+  #menu-pop { position: fixed; inset: 0; z-index: 6; background: rgba(6,8,11,.55); }
+  .m-panel {
+    position: absolute; top: calc(var(--safe-t) + 3.4rem); left: .6rem;
+    min-width: 13rem; max-width: min(20rem, calc(100vw - 1.2rem));
+    background: rgba(18, 24, 33, .93);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    backdrop-filter: blur(14px) saturate(1.3);
+    border: 1px solid rgba(255,255,255,.14); border-radius: 14px;
+    padding: .3rem; display: flex; flex-direction: column;
+    box-shadow: 0 12px 32px rgba(0,0,0,.55);
+  }
+  .m-item {
+    appearance: none; border: 0; background: none; color: var(--fg); font: inherit;
+    text-align: left; padding: .7rem .8rem; border-radius: 10px;
+    min-height: 44px; cursor: pointer;
+  }
+  .m-item:hover { background: rgba(255,255,255,.07); }
+  .m-item:focus-visible { background: rgba(255,255,255,.12); }
+
+  /* The panel opens over the corner the plate is next to, and a plate sticking
+     out from behind it reads as a collision rather than as a layer: measured on
+     the card frame, "Cunz Hall" went under the panel and "160 / 42 seats" did
+     not. So the plate stands down while the menu is up. */
+  body.menuing .c-plate { opacity: 0; }
+  .c-plate { transition: opacity .16s linear; }
+  @media (prefers-reduced-motion: reduce) {
+    .c-plate { transition: none; }
   }
 
   /* --- the card ---
@@ -469,22 +504,35 @@
      "dont have text that says swipe down, it should be something ppl learn".
      It is in the card's accessible name, where only a screen reader reads it,
      because a gesture nothing announces is not learnable at all by somebody who
-     cannot see the card move. */
-  body.carding #back { display: none; }
+     cannot see the card move.
 
-  /* The way. The map is already fixed behind everything, so this is a plate and
-     a hit area and nothing else: no sheet, no rounded panel, no list of the
-     rooms you just said no to. Enes: "once they click check on a room they dont
-     need to see the other rooms tbh, just the arrow pointing them to the room". */
-  #way { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
-  /* The plate is the only thing on this screen a finger can hold, so it is also
-     the only thing that takes the pointer: over the map, a handler would fight
-     every pan. touch-action so the browser never claims the downward drag. */
-  #way .c-plate { pointer-events: auto; touch-action: none; cursor: grab; }
-  #way .c-plate.snap { transition: transform .22s cubic-bezier(.22,.61,.36,1); }
-  @media (prefers-reduced-motion: reduce) {
-    #way .c-plate.snap { transition: none; }
+     Which of the two corner controls a screen gets is decided once, in
+     showPane(), rather than here as well: this rule used to hide #back on the
+     card while showPane un-hid it, and two mechanisms for one fact is how they
+     drift. */
+  /* On the photograph the menu loses its disc and grows to the size of the two
+     verdicts below it, so the three of them read as one set. A bordered pill
+     over a room reads as a control panel bolted to the picture. */
+  body.carding #menu {
+    border: 0; background: none; padding: 0;
+    min-width: 60px; min-height: 60px; width: 60px; height: 60px;
+    top: calc(var(--safe-t) + 1.1rem); left: 1.1rem;
   }
+  body.carding #menu .ico {
+    width: 40px; height: 40px; stroke-width: 2.1;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
+  }
+  body.carding .m-panel { top: calc(var(--safe-t) + 4.6rem); left: 1.1rem; }
+
+  /* The way: the map with the room lit on it, one plate naming the room, and the
+     ranking peeked underneath. Enes on the schedule, "the list of other classes
+     is irrelevant", and on the rooms a message later, "the take it and the way
+     should have the other nearby classes at the bottom back". */
+  /* The map is fixed behind everything, the ranking is in the sheet below, so
+     the way itself is one plate over the canvas between them. It lets every
+     pointer through: the map is meant to be panned, and the plate is a label
+     rather than a control. */
+  #way { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
 
   /* --- the answer --- */
   /* The sheet carries the column width itself, rather than running the full
@@ -885,7 +933,8 @@
      it sat at x=9.6 with the column starting at x=694, and lands on 694 now.
      Below 32rem the term is negative and max() drops it, so on a phone the
      arrow does not move: 9.6 at 320, 390 and 430px, before and after. */
-  #back { left: max(.6rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2)); }
+  #back, #menu { left: max(.6rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2)); }
+  .m-panel { left: max(.6rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2)); }
   #sheet {
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
@@ -966,6 +1015,7 @@
     <path d="M4 7h16M10 4h4M6 7l1 13h10l1-13M10 11v6M14 11v6"/>
   </symbol>
   <symbol id="i-tick" viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
 </svg>
 
 <canvas id="map"></canvas>
@@ -975,6 +1025,25 @@
 <button id="back" hidden aria-label="Back to the question">
   <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg>
 </button>
+<!-- The menu, on the two screens that have no back arrow. Enes: "the top left
+     should have the 3 lines thing, and when pressed it should have choices like
+     to go back or other stuff". A disclosure and not a menu ROLE: that role
+     promises arrow-key navigation between the items, and announcing a keyboard
+     model the app does not implement is worse than announcing none. Tab already
+     walks the five buttons in order. -->
+<button id="menu" type="button" hidden aria-expanded="false" aria-controls="menu-pop"
+  aria-label="More">
+  <svg class="ico" aria-hidden="true"><use href="#i-menu"/></svg>
+</button>
+<div id="menu-pop" hidden>
+  <div class="m-panel">
+    <button type="button" class="m-item" id="m-back">Back</button>
+    <button type="button" class="m-item" id="m-list">See all rooms</button>
+    <button type="button" class="m-item" id="m-pick">Pick your building</button>
+    <button type="button" class="m-item" id="m-recheck">Check again</button>
+    <button type="button" class="m-item" id="m-about">What Vacant knows</button>
+  </div>
+</div>
 <p id="say" class="sr" aria-live="polite"></p>
 
 <!-- Where the room is, and nothing else. Reached by taking a card, and the

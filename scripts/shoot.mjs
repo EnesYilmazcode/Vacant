@@ -650,7 +650,42 @@ async function run() {
     else if (!/^\d{3,}x\d{3,}$/.test(card.drawn ?? '')) problems.push(`card: the canvas is ${card.drawn}`);
     await shoot('card', `${card.title}, ${card.facts}`, target.name);
 
-    // 2b and 2c. The same card, held mid-swipe in each direction. This is the
+    // 2b. the menu. Three lines in the corner the back arrow used to have, and
+    //     behind it the choices this screen has nowhere else to put. Opened by
+    //     pressing it, closed by pressing off it, both with a pointer.
+    await page.tapSelector('#menu');
+    await page.waitFor(`!document.getElementById('menu-pop').hidden`, 'the menu to open');
+    await page.settled();
+    await sleep(600);
+    const menu = await page.evaluate(`(() => ({
+      items: [...document.querySelectorAll('#menu-pop .m-item')].map((b) => b.textContent.trim()),
+      expanded: document.getElementById('menu').getAttribute('aria-expanded'),
+      focused: (document.activeElement || {}).id,
+    }))()`);
+    console.log(`menu   ${menu.items.join(' / ')}`);
+    if (menu.items.length < 4) problems.push(`menu: ${menu.items.length} choices on it`);
+    if (!/back/i.test(menu.items[0] ?? '')) problems.push(`menu: the first choice is "${menu.items[0]}"`);
+    if (menu.expanded !== 'true') problems.push(`menu: aria-expanded is ${menu.expanded}`);
+    if (menu.focused !== 'm-back') problems.push(`menu: focus went to "${menu.focused}"`);
+    await shoot('menu', menu.items.join(', '), target.name);
+
+    // A press off the panel is "not this". The bottom of the screen is over the
+    // photograph and nothing else, so this is the backdrop and not a control.
+    await page.tap(SCREEN.width / 2, SCREEN.height - 120);
+    await page.waitFor(`document.getElementById('menu-pop').hidden`, 'the menu to close');
+    const shut = await page.evaluate(`(() => ({
+      expanded: document.getElementById('menu').getAttribute('aria-expanded'),
+      room: (document.querySelector('#card .c-b') || {}).textContent || '',
+    }))()`);
+    if (shut.expanded !== 'false') problems.push(`menu: aria-expanded stayed ${shut.expanded}`);
+    if (shut.room !== card.title) {
+      problems.push(`menu: closing it changed the card to "${shut.room}"`);
+    }
+    console.log('menu   pressed off it -> closed, card unchanged');
+    await page.settled();
+    await sleep(400);
+
+    // 2c and 2d. The same card, held mid-swipe in each direction. This is the
     //   only part of the screen no still frame can show: the stamp that says
     //   what letting go would do exists only while a finger is on the card.
     //   Held short of the 84px commit threshold, so the room is still readable
@@ -697,7 +732,9 @@ async function run() {
     }
 
     // 3. the way. Taking a card is the whole flow now: the map with the walk
-    //    line on it and one plate, and nothing else. No rows, no calendar.
+    //    line on it, one plate naming the room, and the ranking peeked
+    //    underneath with that room's row lit. No calendar: that is the part
+    //    taking a room makes irrelevant.
     //
     await page.throwCard(150, 0);
     await page.waitFor(`!document.getElementById('way').hidden`, 'the way screen');
@@ -705,31 +742,44 @@ async function run() {
     await sleep(1400);
     const way = await page.evaluate(`(() => {
       const pick = (sel) => (document.querySelector('#way ' + sel) || {}).textContent || '';
+      const lit = document.querySelector('#list .row.on');
       return {
         name: pick('.c-b').trim(),
         facts: pick('.c-facts').replace(/\\s+/g, ' ').trim(),
-        sheet: document.getElementById('sheet').hidden,
-        panes: ['card','list','room','near','pick','about'].filter((id) => !document.getElementById(id).hidden),
+        panes: ['card','room','near','pick','about'].filter((id) => !document.getElementById(id).hidden),
+        rows: document.querySelectorAll('#list .row').length,
+        lit: lit ? lit.textContent.replace(/\\s+/g, ' ').trim() : '',
+        sheet: document.getElementById('sheet').getBoundingClientRect().height,
         nomap: document.body.classList.contains('nomap'),
-        back: document.getElementById('back').hidden
-          || getComputedStyle(document.getElementById('back')).display === 'none',
+        menu: !document.getElementById('menu').hidden,
+        back: document.getElementById('back').hidden,
       };
     })()`);
     console.log(`way    ${way.name}  ${way.facts}`);
-    // Everything that is NOT on this screen is the point of it.
-    if (!way.sheet) problems.push('way: the sheet is still up behind the map');
+    console.log(`rows   ${way.rows} under it, lit: ${way.lit}`);
+    // What it shows, and the one thing it does not.
     if (way.panes.length) problems.push(`way: ${way.panes.join(', ')} is still showing`);
     if (way.nomap) problems.push('way: the map is covered, on the one screen that is a map');
     if (!way.name) problems.push('way: nothing names the room');
     if (!/min/.test(way.facts)) problems.push(`way: no walk on it: "${way.facts}"`);
-    await shoot('way', `${way.name}, ${way.facts}`, target.name);
+    if (!way.rows) problems.push('way: no other rooms under the map');
+    if (!way.lit.startsWith(way.name)) {
+      problems.push(`way: the plate says "${way.name}" and the lit row says "${way.lit}"`);
+    }
+    // Peeked, not covering: the arrow is the point of the screen.
+    if (way.sheet > 0.5 * SCREEN.height) {
+      problems.push(`way: the sheet rests at ${Math.round(way.sheet)}px, over the map`);
+    }
+    if (!way.menu) problems.push('way: no menu, and no back arrow either');
+    if (!way.back) problems.push('way: the back arrow is up beside the menu');
+    await shoot('way', `${way.name}, ${way.rows} rows under it`, target.name);
 
-    // The way has no back button and no sheet, and on an installed icon there is
-    // no browser chrome behind it, so the pull on the plate is the only thing
-    // between a reader and a screen they cannot leave. It goes back a step,
-    // which is the card that was taken, with the deck still on the same room --
-    // the undo. No frame: what is being checked is that this screen goes away.
-    await page.pullDown('#way-plate', 140);
+    // The way has no back arrow, so the two things that leave it are the menu's
+    // Back and the sheet's own grip pulled through its dismiss travel. The grip
+    // is the one checked here, because it is the one that is a gesture: it goes
+    // back a step, which is the card that was taken with the deck still on the
+    // same room. No frame: what is being checked is that this screen goes away.
+    await page.dragSheet(140);
     await page.waitFor(`!document.getElementById('card').hidden`, 'the card to come back');
     await page.settled();
     const leaving = await page.evaluate(`(() => ({
@@ -737,12 +787,12 @@ async function run() {
       carding: document.body.classList.contains('carding'),
       room: (document.querySelector('#card .c-b') || {}).textContent || '',
     }))()`);
-    if (!leaving.way) problems.push('way: pulling the plate down left the way screen up');
-    if (!leaving.carding) problems.push('way: pulling the plate down did not land on the card');
+    if (!leaving.way) problems.push('way: pulling the sheet down left the way screen up');
+    if (!leaving.carding) problems.push('way: pulling the sheet down did not land on the card');
     if (leaving.room !== way.name) {
       problems.push(`way: back from the way landed on "${leaving.room}", not "${way.name}"`);
     }
-    console.log(`way    pulled down -> the card, still ${leaving.room}`);
+    console.log(`way    grip pulled down -> the card, still ${leaving.room}`);
 
     // 4. the ranked list. It used to be a downward throw of the card; that
     //    gesture goes back to the question now, and the list is the button at
@@ -751,8 +801,8 @@ async function run() {
     //    room, and that is what this does. Nothing is staged: every screen below
     //    is reached by tapping, the same as every screen above it.
     //
-    //    From the question, because the way screen is a map with one plate on it
-    //    and has nothing to tap.
+    //    From the question, because the deck is back on its first room by then
+    //    and the walk has to start where a reader starts.
     await page.boot(url);
     await page.tapSelector('.opt[data-min="120"]');
     await page.waitFor(`document.getElementById('c-top')`, 'the first card again');

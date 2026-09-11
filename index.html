@@ -488,7 +488,6 @@
     justify-content: center; justify-content: safe center;
     gap: .85rem; padding: 1rem;
   }
-  #card.done .c-deck { position: static; }
   @media (prefers-reduced-motion: reduce) {
     .c-card.snap { transition: none; }
   }
@@ -671,7 +670,6 @@
   .r-name { grid-area: name; font-weight: 700; letter-spacing: -.01em; min-width: 0; }
   .r-walk { grid-area: walk; display: flex; align-items: center; gap: .3rem; white-space: nowrap; }
   .r-win { grid-area: win; color: var(--dim); font-size: .84rem; min-width: 0; }
-  .r-win b { color: var(--fg); font-weight: 650; }
   .r-chev { grid-area: chev; color: var(--dim); display: flex; align-items: center; justify-content: flex-end; }
   /* rem inside a media query resolves against 16px forever, so the large-text
      reflow has to be a container query in em or it never fires. */
@@ -705,7 +703,6 @@
   .b-row + .b-row { border-top: 1px solid var(--line); }
   .b-row .r-win { grid-area: sub; }
   .b-row .b-hours { grid-area: hours; color: var(--dim); font-size: .84rem; white-space: nowrap; }
-  .b-row .b-hours.unknown-h { color: var(--warn); }
 
   /* --- the building picker --- */
   .shortcuts { display: flex; flex-wrap: wrap; gap: .45rem; padding: .3rem 1.1rem .7rem; }
@@ -763,31 +760,6 @@
   #bearing .ico { transition: transform .12s linear; }
   @media (prefers-reduced-motion: reduce) {
     #bearing .ico { transition: none; }
-  }
-  /* The gap is what the reader came for, so free blocks get the weight and the
-     left margin and the classes are indented out of the way. */
-  .tl { list-style: none; margin: 0; padding: .4rem 0 0; }
-  .tl li { display: flex; gap: .8rem; padding: .38rem 1.1rem; }
-  .tl .free {
-    border-left: 3px solid var(--accent); font-weight: 650;
-    padding-left: calc(1.1rem - 3px);
-  }
-  .tl .free .len { margin-left: auto; color: var(--dim); font-weight: 500; }
-  .tl .free.now .what { text-transform: uppercase; letter-spacing: .04em; }
-  .tl .busy, .tl .edge { color: var(--dim); font-size: .85rem; padding-left: 4.6rem; }
-  .tl .seam { height: 2px; padding: 0; margin: .12rem 0 .12rem 4.6rem; background: var(--line); }
-  .tl .t { min-width: 4.2rem; }
-  /* Below .tl on purpose: a container query wins on order, not specificity. The
-     timeline's whole layout is in rem, so at 393px with root 53px the 4.2rem
-     time column alone was 222px and the 4.6rem class indent was 244px, and the
-     room pane scrolled sideways at 671 against 393. At large text the time
-     stops reserving a column, the rows wrap and the indent goes. */
-  @container list (max-width: 18em) {
-    .tl li { flex-wrap: wrap; gap: .2rem .8rem; }
-    .tl .t { min-width: 0; }
-    .tl .free .len { margin-left: 0; }
-    .tl .busy, .tl .edge { padding-left: 1.1rem; }
-    .tl .seam { margin-left: 1.1rem; }
   }
   .unknown {
     margin: .5rem 1.1rem 0; padding: .6rem .8rem; border: 1px solid var(--warn);

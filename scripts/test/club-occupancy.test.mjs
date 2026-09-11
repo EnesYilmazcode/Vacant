@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { activeSessions, freeGaps } from '../../js/engine.js';
-import { clubDisclosure, normalizeMeetings, overlayForDate } from '../lib/club-occupancy.mjs';
+import { normalizeMeetings, overlayForDate } from '../lib/club-occupancy.mjs';
 
 const source = 'https://courses.erppub.osu.edu/room-matrix';
 const index = () => ({
@@ -56,7 +56,6 @@ test('an occurrence does not repeat outside the source week', () => {
   assert.equal(out.meetings.length, 0);
   assert.deepEqual(freeGaps(out.index.rooms.TEST101.busy, 4, 540, 720,
     activeSessions(out.index.sessions, '2026-09-10')), [[600, 720]]);
-  assert.match(clubDisclosure(out).message, /No Room Matrix coverage/);
 });
 
 test('ROOM BLOCK records remain excluded until their meaning is decided', () => {
@@ -65,7 +64,6 @@ test('ROOM BLOCK records remain excluded until their meaning is decided', () => 
   assert.equal(out.meetings.length, 1);
   assert.equal(out.blockCount, 1);
   assert.equal(out.rejected.find((item) => item.eventId === '33544').reason, 'undecided-room-block');
-  assert.equal(clubDisclosure(out).blocksExcluded, 1);
 });
 
 test('a no-class day suppresses classes but keeps registered events', () => {

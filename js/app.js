@@ -1570,6 +1570,24 @@ function attachSwipe(el) {
     el.classList.add('snap');
     paint(0);
   };
+  // Pointer capture normally keeps the release on the card even when the
+  // pointer has crossed its edge. A laptop can still take that capture away --
+  // switching windows is one example -- and the capture request itself is
+  // allowed to fail. The last pointermove has already written an inline
+  // transform by then, so a release nobody hears leaves half a card on screen.
+  // These fallbacks exist only for the life of one drag, otherwise every card
+  // paint would leave another window listener holding its old element.
+  const clearFallbacks = () => {
+    window.removeEventListener('pointerup', end, true);
+    window.removeEventListener('pointercancel', end, true);
+    window.removeEventListener('blur', abandon);
+  };
+  const abandon = (e) => {
+    if (!drag || (e?.pointerId != null && e.pointerId !== drag.id)) return;
+    drag = null;
+    clearFallbacks();
+    rest();
+  };
   // The card leaves the screen in the direction it was thrown, and the verdict
   // fires when it is gone rather than on release, so the answer does not change
   // under a card still sliding over it. Under reduced motion there is no
@@ -1605,8 +1623,11 @@ function attachSwipe(el) {
     try {
       el.setPointerCapture(e.pointerId);
     } catch {
-      /* another element already owns it; the moves still arrive */
+      /* the window fallback still ends a release inside this document */
     }
+    window.addEventListener('pointerup', end, true);
+    window.addEventListener('pointercancel', end, true);
+    window.addEventListener('blur', abandon);
   });
   el.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
@@ -1620,9 +1641,16 @@ function attachSwipe(el) {
   });
   const end = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
-    const { dx, dy, t0 } = drag;
+    const { dx: movedX, dy: movedY, x0, y0, t0 } = drag;
     drag = null;
+    clearFallbacks();
     const released = e.type === 'pointerup';
+    // A fast mouse throw can go from down to up before the browser delivers a
+    // useful pointermove. The release still carries its final coordinates, so
+    // decide from those instead of treating the last sampled move as the end.
+    // A cancellation has no decision to make and keeps the last painted point.
+    const dx = released ? e.clientX - x0 : movedX;
+    const dy = released ? e.clientY - y0 : movedY;
     // Down goes back to the question. The back arrow is gone from this screen --
     // it was one more piece of chrome on a photograph, and the duration is one
     // tap to set again -- so the way out is the one gesture the card was not
@@ -1640,6 +1668,7 @@ function attachSwipe(el) {
   };
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', end);
+  el.addEventListener('lostpointercapture', abandon);
 
   el.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowLeft') rejectCard();

@@ -1470,6 +1470,40 @@ test('a press on a verdict button is not eaten by the card under it', () => {
   );
 });
 
+test('an interrupted laptop drag cannot leave the card off screen', () => {
+  // pointerup usually returns to the capturing card. Capture can fail, or the
+  // browser can take it away when a trackpad drag crosses or leaves the window;
+  // in either case the last pointermove has left an inline transform behind.
+  // Every abnormal end must put the card back, while the window fallbacks must
+  // be scoped to the active drag so repainted cards are not retained forever.
+  const swipe = bodyOf('attachSwipe');
+  assert.match(swipe, /addEventListener\('lostpointercapture', abandon\)/);
+  assert.match(swipe, /addEventListener\('blur', abandon\)/);
+  assert.match(swipe, /window\.addEventListener\('pointerup', end, true\)/);
+  assert.match(swipe, /window\.addEventListener\('pointercancel', end, true\)/);
+  assert.match(swipe, /const abandon = \(e\) => \{[\s\S]*?drag = null;[\s\S]*?clearFallbacks\(\);[\s\S]*?rest\(\);/);
+  assert.match(swipe, /const clearFallbacks = \(\) => \{[\s\S]*?removeEventListener\('pointerup', end, true\)/);
+  assert.ok(
+    swipe.indexOf('drag = null;', swipe.indexOf('const end =')) <
+      swipe.indexOf('clearFallbacks();', swipe.indexOf('const end =')),
+    'a normal release removes fallbacks before it changes screens',
+  );
+});
+
+test('a fast mouse release counts even when pointermove missed the distance', () => {
+  // Browsers may coalesce a quick down-and-up into no useful pointermove. The
+  // pointerup coordinates are still the end of the gesture; using drag.dx here
+  // would make the same physical swipe work slowly and fail when done quickly.
+  const swipe = bodyOf('attachSwipe');
+  assert.match(swipe, /const \{ dx: movedX, dy: movedY, x0, y0, t0 \} = drag;/);
+  assert.match(swipe, /const dx = released \? e\.clientX - x0 : movedX;/);
+  assert.match(swipe, /const dy = released \? e\.clientY - y0 : movedY;/);
+  assert.ok(
+    swipe.indexOf('const dx = released') < swipe.indexOf('const thrown ='),
+    'the throw decision still reads the last pointermove sample',
+  );
+});
+
 // ---- what a review of this branch found
 
 // Six defects, one shape: a new screen that does its own pane work, and a new

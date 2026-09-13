@@ -173,7 +173,7 @@ sits at the bottom, then **Add to Home Screen**. iOS 26 defaults to that Compact
 layout, which is why the app offers you both. On Android, Chrome has **Install
 app** in its menu.
 
-Installed, the whole app is 147 KB of shell and 90 KB of schedule, gzipped, and
+Installed, the whole app is 147 KB of shell and about 90 KB of schedule, gzipped, and
 none of it is fetched again to answer a question. Turn the network off, open it,
 and it still ranks rooms. That matters because the moment you want it most is the
 moment you are in a basement with one bar.
@@ -203,10 +203,12 @@ ranked rows measured from four origins across a week, not one of them ever
 reached a top ten. They were paying for themselves in prose and returning
 nothing.
 
-**Clubs book rooms.** A club meeting, a review session or a departmental event is
-invisible to every public source, so it is invisible to Vacant too. Every screen
-carries that caveat, and [#26](https://github.com/EnesYilmazcode/Vacant/issues/26)
-is the plan to go and measure how often it bites.
+**The reservation picture is incomplete.** The Registrar's public Room Matrix
+adds registered non-class events to Vacant's class schedule for the week its
+snapshot covers. Unscheduled use, `ROOM BLOCK` holds and locked room doors are
+still unknown. Outside the snapshot week, Vacant has class data only. The
+[ground-truth walk](docs/research/ground-truth-walk.md) is still needed to measure
+how often those gaps change an answer.
 
 ## How it works
 
@@ -245,7 +247,7 @@ Then open `http://localhost:8000`. It has to be served rather than opened as a
 file, because the page is ES modules and it fetches JSON.
 
 ```sh
-npm test                        # node --test, 842 tests, no network
+npm test                        # node --test, no network
 node scripts/shoot.mjs          # redraw docs/media from the real app
 ```
 
@@ -307,9 +309,6 @@ already left the API and cannot be refetched at any price.
 
 ## Not built yet
 
-- **The list is a room list where it should be a place list.** Forty rows came
-  back across thirteen buildings, and one of them took six of them.
-  [#62](https://github.com/EnesYilmazcode/Vacant/issues/62).
 - **Nobody has walked to a room the app called free and checked.** That is the
   measurement the whole thing rests on and it has not been taken.
   [#26](https://github.com/EnesYilmazcode/Vacant/issues/26) is the walk, and

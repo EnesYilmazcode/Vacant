@@ -1354,8 +1354,8 @@ function cardParts(r) {
   return { building: n ? name : '', room: n || name || r.id };
 }
 
-// One room. The count, the walk cap and the coverage paragraph stay on the
-// list: a card carrying them would be a list with one row on it.
+// One room. The count and walk cap stay on the list. A missing event snapshot
+// does need a short warning here because the card is a standalone answer.
 //
 // The strip does NOT stay on the list. It is the only thing that says the
 // answer is degraded -- shorter than asked, nothing free this second, hours
@@ -1417,7 +1417,11 @@ function paintCard() {
   // should be something ppl learn." But a gesture nothing announces is not
   // learnable at all by somebody who cannot see the card move, so it is said
   // here, where only a screen reader reads it.
+  const coverageNote = state.eventCoverage === 'complete-room-sweep'
+    ? ''
+    : 'Class schedule only today; registered events not checked.';
   const said = `${roomLabel(r)}, ${walkSay}, ${win.say}, ${seats.say}${dept.say}.` +
+    (coverageNote ? ` ${coverageNote}` : '') +
     ` Room ${state.cardIndex + 1} of ${total}. Swipe down to start over.`;
 
   // The photograph is the SCREEN. One plate near the top carries everything the
@@ -1434,7 +1438,7 @@ function paintCard() {
   // deck is the whole viewport now and anything in the flow before it would be
   // painted over by the room. They are still not optional: the strip is the
   // only thing that says the answer is degraded.
-  const admits = notes() + strip;
+  const admits = notes() + (coverageNote ? `<p class="strip">${coverageNote}</p>` : '') + strip;
   card.innerHTML =
     `<div class="c-deck">
       <article class="c-card${photo ? '' : ' plain'}" id="c-top" tabindex="0"

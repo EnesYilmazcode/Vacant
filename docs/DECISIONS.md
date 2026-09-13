@@ -3944,3 +3944,28 @@ vanished on the first tap.
 **Cost.** `js/dev.js` and the arming block in `js/app.js`. Neither is in the
 service worker's shell list and `js/dev.js` is still loaded on demand, so a
 student who never types this downloads nothing. Suite 862 -> 866 tests.
+
+## 2026-09-13  Sunday prepares the coming week, and the weekly publish checks its own data
+
+**Decided.** The Sunday Room Matrix sweep asks for the following Monday through
+Sunday. The previous default asked for the Monday six days earlier, so the
+snapshot expired the same night it was published and the next teaching week
+had class-only answers. The week calculation uses UTC, matching the scheduled
+runner; `--week` remains available for a deliberate historical sweep.
+
+The weekly job checks the snapshot dates, term, room keys and parser counts,
+then runs `node --test` before committing. A bot data push does not fire the
+separate push test workflow. Shipped-snapshot tests now recompute counts from
+records where weekly bookings vary, while keeping floors and full-sweep checks
+that detect a collapsed parse. If an event snapshot is unavailable for a date,
+the room card says that registered events were not checked.
+
+The dated boot and gzip measurements stay in source comments. Their checks now
+allow 15% movement in weekly data; the shell size still has a 1% check. A new
+asset or term size outside that range still fails, but normal reservation count
+changes no longer block Sunday publication over a stale byte literal.
+
+The 2026-09-14 sweep exposed `DISC` with the Room Matrix's nine-digit registered
+event ID. It is accepted as occupied time alongside the other event codes;
+its free-text label is still dropped at the parse boundary. A new code still
+stops publication until its occupancy meaning and output privacy are checked.

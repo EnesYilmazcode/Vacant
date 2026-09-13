@@ -20,18 +20,16 @@ It downloads the public class schedule, turns it into a table of which rooms are
 busy when, and serves that table as a static file. Students' phones never talk to
 an Ohio State server. All the load is one harvest job, run about once a week.
 
-**That job is started by hand.** There is no scheduled workflow in this
-repository, so the harvest runs when a person runs it and at no other time. A
-weekly cron is planned, Sunday 3:25am Eastern, and the off switch below tells you
-how to disable it on the day it lands. Until then the off switch is that nobody
-is pressing the on switch.
+**That job runs on a Sunday schedule** in `.github/workflows/rooms.yml`, at
+07:25 UTC (about 3:25am Eastern). The Room Matrix sweep prepares the coming
+Monday-through-Sunday week. The off switch below also names the daily term watch
+and weekly live-API check, which make smaller requests to Ohio State.
 
 ```
-                    by hand, about once a week
-   content.osu.edu ----------------------------------> a laptop
-   registrar.osu.edu                                        |
-   gissvc.osu.edu                                           | writes JSON,
-   courses.erppub.osu.edu                                   | commits it
+                    scheduled Sunday, about once a week
+   content.osu.edu ----------------------------------> GitHub Actions
+   courses.erppub.osu.edu                                   | writes JSON,
+                                                            | commits it
                                                             v
    a student's phone <------------------------------- GitHub Pages
                         every day, all term, zero
@@ -63,7 +61,7 @@ free with a class sitting in them.
 
 | | |
 | --- | --- |
-| Cadence | Run by hand, about once a week. **No scheduled workflow exists in the repository.** The planned cron is `'25 7 * * 0'`, Sunday 07:25 UTC, which is 3:25am Eastern |
+| Cadence | Scheduled weekly in `.github/workflows/rooms.yml` at `'25 7 * * 0'`, Sunday 07:25 UTC (about 3:25am Eastern) |
 | Requests per run | **545**, measured on term 1268 over 4 passes |
 | Advertised ceiling | **1,900 a week**, for everything in this repository together. `MAX_PASSES` x 8 buckets x 17 pages is 1,089 for the harvest, plus 323 for room features and 427 for room events, all cold. The `User-Agent` states that ceiling rather than the typical run |
 | Hard stop | `MAX_REQUESTS` is 4,000 and throws rather than fetches |
@@ -80,10 +78,8 @@ Vacant/0.1 (+https://github.com/EnesYilmazcode/Vacant; contact via repo issues)
 weekly classroom-schedule index, <=1900 requests/week
 ```
 
-That string is hardcoded in `scripts/lib/fetch.mjs`, and while the harvest is run
-by hand it is a promise rather than a description of a timer. Running it more than
-once a week would make the `User-Agent` a lie to your logs, so it does not get run
-more than once a week.
+That string is hardcoded in `scripts/lib/fetch.mjs`. The scheduled full harvest
+runs once a week; any manual run must be counted against the same request budget.
 
 ### 2. The Registrar's classroom pool building schedule
 
@@ -121,9 +117,10 @@ Registrar pages are cached under `data/cache/registrar/`, shared with
 are **not** committed: `.gitignore` excludes `data/cache/learningspaces/` and a
 clean checkout refetches them once.
 
-Photos and 360 tours are **linked, never copied**. Nothing under
-`rooms.app.it.osu.edu` is mirrored into this repository, so the images stay on
-Ohio State's own server and remain Ohio State's.
+The feature index retains links to Ohio State's photos and 360 tours. Separately,
+`scripts/fetch-room-photos.mjs` copies 306 classroom photos into compressed WebP
+files under `data/photos/` for Vacant's room cards; the 360 tours are linked.
+The photo files are fetched on demand rather than precached with the app shell.
 
 ### 4. The building and campus geometry
 
@@ -379,15 +376,9 @@ the app down, and it is only needed if somebody has asked for that specifically.
 
 ### Edit 1: stop the harvester
 
-**Right now there is nothing to switch off.** There is no `.github/` directory in
-the repository, so no job runs on a timer. The harvest is started by hand, which
-means it is already stopped between runs. Ask, and it stays stopped.
-
-The rest of this section is for the day the weekly workflow lands, so that the
-instructions are already written and already true when somebody needs them at
-3am.
-
-Open each file under
+Three workflows make scheduled requests to Ohio State: the weekly room harvest
+(`rooms.yml`), the weekly live-API check (`live-rot.yml`), and the daily term watch
+(`stale-watch.yml`). To stop all scheduled requests, open each of those files under
 [`.github/workflows/`](https://github.com/EnesYilmazcode/Vacant/tree/main/.github/workflows)
 in the web editor, find the `schedule:` block near the top, and put a `#` in front
 of both its lines. Leave `workflow_dispatch:` alone, so the job can still be run
@@ -400,14 +391,10 @@ on:
   workflow_dispatch:
 ```
 
-Commit straight to `main`. The next scheduled run does not happen. Nothing else in
-the repository reaches an Ohio State server, so at that point the load is zero.
-
-Whoever adds that workflow owns keeping this section true, and owns changing the
-cadence line at the top of this page from "by hand" to "on a timer" on the same
-commit. The `schedule:` block has to stay on its own two lines, near the top of
-the file, so commenting it out is a two-keystroke edit on a phone and not a YAML
-puzzle.
+Commit the three edits to `main`. No scheduled job in this repository then
+requests Ohio State. Leave `workflow_dispatch:` available for a deliberate manual
+check after the problem is resolved. Each `schedule:` block stays on its own two
+lines near the top of its file so it can be disabled from a phone.
 
 ### Edit 2: take the app down
 

@@ -16,6 +16,7 @@ import {
   analyse,
   cacheName,
   classify,
+  defaultWeek,
   isInvalid,
   looksLikeSignon,
   parseGrid,
@@ -375,37 +376,39 @@ test('the shipped file is a full sweep of the shipped index, not a subset', () =
 });
 
 test('a swept room with nothing on it keeps its key, so absent means not swept', () => {
-  assert.equal(Object.keys(shipped.rooms).length, 425);
-  assert.equal(Object.values(shipped.rooms).filter((v) => v.length).length, 208);
-  assert.equal(Object.values(shipped.rooms).filter((v) => v.length === 0).length, 217,
+  assert.equal(Object.keys(shipped.rooms).length, Object.keys(index.rooms).length);
+  assert.equal(Object.values(shipped.rooms).filter((v) => v.length === 0).length
+    + Object.values(shipped.rooms).filter((v) => v.length > 0).length, Object.keys(index.rooms).length,
     'an empty array is evidence of nothing; an absent key is no evidence');
-  assert.equal(records.length, 596);
+  assert.equal(records.length, shipped._meta.counts.events + shipped._meta.counts.blockCells);
 });
 
 test('the headline counts are the ones the sweep measured', () => {
-  // This is what catches a bad regeneration: either the numbers move together
-  // or the parse collapsed.
+  // Counts change every week. Recount the records, and retain a floor that
+  // catches a collapsed parse without pinning one week's bookings forever.
   const c = shipped._meta.counts;
-  assert.equal(c.events, 307);
-  assert.equal(c.distinctEventIds, 198);
-  assert.equal(c.roomsWithEvents, 165);
-  assert.deepEqual(c.eventTypes, {
-    MTG: 215, TOUR: 67, INFO: 10, WRKS: 6, SMNR: 1, RCPT: 1, INTV: 1, FAIR: 6,
-  });
-  assert.equal(c.blockCells, 289);
-  assert.equal(c.distinctBlockIds, 8);
-  assert.equal(c.roomsWithBlocks, 56);
+  assert.ok(c.events > 0, 'an active teaching week has registered events');
+  assert.ok(c.classCellsSeenAndDiscarded >= 4000, 'the Room Matrix parse did not collapse');
   assert.equal(c.invalidValue, 0);
   assert.equal(c.noGrid, 0);
   assert.deepEqual(shipped._meta.invalidValueRooms, []);
   assert.deepEqual(shipped._meta.noGridRooms, []);
-  assert.ok(shipped._meta.requests >= 427 && shipped._meta.requests <= 600,
-    '1 GET, 1 redirect hop and 425 POSTs, plus only bounded retries');
+  if (shipped._meta.cacheReplay) {
+    assert.equal(shipped._meta.requests, 0, 'cache replay makes no source requests');
+  } else {
+    assert.ok(shipped._meta.requests >= 427 && shipped._meta.requests <= 600,
+      '1 GET, 1 redirect hop and 425 POSTs, plus only bounded retries');
+  }
   // Recounted from the records rather than trusted from the header.
   const events = records.filter((r) => r.kind === 'event');
   const blocks = records.filter((r) => r.kind === 'block');
   assert.equal(events.length, c.events);
   assert.equal(blocks.length, c.blockCells);
+  assert.deepEqual(Object.fromEntries(Object.entries(c.eventTypes).sort()),
+    Object.fromEntries(Object.entries(events.reduce((counts, e) => {
+      counts[e.type] = (counts[e.type] ?? 0) + 1;
+      return counts;
+    }, {})).sort()));
   assert.equal(new Set(events.map((e) => e.eventId)).size, c.distinctEventIds);
   assert.equal(new Set(blocks.map((b) => b.eventId)).size, c.distinctBlockIds);
   assert.equal(Object.values(shipped.rooms).filter((v) => v.some((o) => o.kind === 'event')).length,
@@ -416,9 +419,8 @@ test('the headline counts are the ones the sweep measured', () => {
 
 test('classes are counted and discarded, and the two class counters differ', () => {
   const c = shipped._meta.counts;
-  assert.equal(c.classCellsSeenAndDiscarded, 6875);
-  assert.equal(c.classBookingsSeenAndDiscarded, 8024);
-  assert.equal(c.combinedSectionCells, 955);
+  assert.ok(c.classCellsSeenAndDiscarded >= 4000);
+  assert.ok(c.combinedSectionCells > 0);
   assert.ok(c.classBookingsSeenAndDiscarded > c.classCellsSeenAndDiscarded,
     'a combined-section cell holds more than one booking');
   assert.equal(records.some((r) => r.kind === 'class'), false, 'no class reached the file');
@@ -439,7 +441,7 @@ test('the shipped file carries no free-text label and no raw field', () => {
   assert.doesNotMatch(body, /\b\d{3}[-.]\d{3}[-.]\d{4}\b/, 'a phone number is in the file');
   assert.doesNotMatch(body, /[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+/, 'an email address is in the file');
   assert.doesNotMatch(body, /\b[a-z]+\.\d{1,4}\b/i, 'an OSU name.n identifier is in the file');
-  assert.doesNotMatch(body, /(MTG|TOUR|INFO|WRKS|SMNR|RCPT|INTV|FAIR) - /,
+  assert.doesNotMatch(body, /(MTG|TOUR|INFO|WRKS|SMNR|RCPT|INTV|FAIR|DISC) - /,
     'a raw label prefix is in the file');
 });
 
@@ -447,8 +449,7 @@ test('the shipped clock range retains the late bookings the wider query asks for
   // The page defaults to 8am-10pm. Asking for 7am-11pm is what keeps the last
   // hour represented; the parser tests above separately establish that the
   // times themselves come from each booking label rather than the grid row.
-  assert.equal(Math.min(...records.map((r) => r.start)), 420);
-  assert.equal(Math.max(...records.map((r) => r.end)), 1380);
+  assert.ok(records.some((r) => r.end >= 1320), 'late bookings survive the wider query');
   assert.match(shipped._meta.windowNote, /7:00AM-11:00PM/);
 });
 
@@ -457,7 +458,7 @@ test('every record is a weekday, a clock range and one of the approved type code
     assert.ok(Number.isInteger(r.day) && r.day >= 0 && r.day <= 6, JSON.stringify(r));
     assert.ok(r.start >= 0 && r.end <= 1440 && r.start < r.end, JSON.stringify(r));
     if (r.kind === 'event') {
-      assert.ok(['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR', 'RCPT', 'INTV', 'FAIR'].includes(r.type),
+      assert.ok(['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR', 'RCPT', 'INTV', 'FAIR', 'DISC'].includes(r.type),
         JSON.stringify(r));
       assert.match(r.eventId, /^\d{9}$/, 'a reservation id is nine digits');
     } else {
@@ -468,31 +469,41 @@ test('every record is a weekday, a clock range and one of the approved type code
   }
 });
 
-test('the week rendered is a Monday', () => {
+test('the Sunday default selects the coming week, including at a year boundary', () => {
+  assert.equal(defaultWeek(new Date('2026-09-13T07:25:00Z')), '09/14/2026');
+  assert.equal(defaultWeek(new Date('2026-09-14T07:25:00Z')), '09/14/2026');
+  assert.equal(defaultWeek(new Date('2026-12-27T07:25:00Z')), '12/28/2026');
+  assert.equal(defaultWeek(new Date('2027-01-03T07:25:00Z')), '01/04/2027');
+});
+
+test('the week rendered is a Monday through Sunday', () => {
   // The matrix renders Mon-Sun from whatever date it is handed. Any other day
   // renders seven days the caller did not ask for, and never says so.
   assert.match(shipped._meta.week, /^\d{2}\/\d{2}\/\d{4}$/);
   const [m, d, y] = shipped._meta.week.split('/');
-  assert.equal(new Date(`${y}-${m}-${d}T12:00:00`).getDay(), 1, shipped._meta.week);
-  assert.equal(shipped._analysis.weekStart, '2026-09-07');
-  assert.equal(shipped._analysis.weekEnd, '2026-09-13');
+  assert.equal(new Date(`${y}-${m}-${d}T12:00:00Z`).getUTCDay(), 1, shipped._meta.week);
+  const start = new Date(`${y}-${m}-${d}T12:00:00Z`);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+  assert.equal(shipped._analysis.weekStart, start.toISOString().slice(0, 10));
+  assert.equal(shipped._analysis.weekEnd, end.toISOString().slice(0, 10));
 });
 
-test('the gap against the shipped index is the one that was measured', () => {
+test('the gap analysis keeps its weekly totals within the harvested records', () => {
   // The reason the file exists: almost all of this occupancy lands in a window
   // Vacant currently calls entirely free.
   const a = shipped._analysis;
-  assert.deepEqual(a.activeSessions, [0, 1], 'the third session starts 2026-10-19');
-  assert.equal(a.landInFreeWindow.events, '304/307');
-  assert.equal(a.landInFreeWindow.blocks, '286/289');
-  assert.equal(a.landInFreeWindow.eventsSessionScoped, '307/307');
+  const [freeEvents, allEvents] = a.landInFreeWindow.events.split('/').map(Number);
+  const [freeBlocks, allBlocks] = a.landInFreeWindow.blocks.split('/').map(Number);
+  assert.equal(allEvents, shipped._meta.counts.events);
+  assert.equal(allBlocks, shipped._meta.counts.blockCells);
+  assert.ok(freeEvents >= 0 && freeEvents <= allEvents);
+  assert.ok(freeBlocks >= 0 && freeBlocks <= allBlocks);
   const [weeknight, saturday] = a.windows;
-  assert.equal(weeknight.freeMinutes, 588265);
-  assert.equal(weeknight.blockMinutesInWindow, 50040);
-  assert.equal(weeknight.blockPctOfFree, 8.51);
-  assert.equal(saturday.freeMinutes, 356580);
-  assert.equal(saturday.blockMinutesInWindow, 31920);
-  assert.equal(saturday.blockPctOfFree, 8.95);
+  for (const window of [weeknight, saturday]) {
+    assert.ok(window.freeMinutes > 0 && window.freeMinutes <= window.windowMinutes);
+    assert.ok(window.blockMinutesInsideFreeGaps <= window.blockMinutesInWindow);
+  }
 });
 
 test('recomputing the analysis from the shipped rooms gives the shipped numbers', () => {

@@ -2841,3 +2841,51 @@ test('the room screen says the label as fully as the row it came from', () => {
   assert.match(line, /class="sr"/, 'the room screen prints the bare word with no sentence around it');
   assert.match(line, /not a general-assignment room/, 'and the sentence is not the one the row uses');
 });
+
+test('room needs stay optional and closed on the one-question screen', () => {
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const details = html.slice(html.indexOf('<details id="needs"'), html.indexOf('</details>', html.indexOf('<details id="needs"')));
+  assert.ok(details.length > 0, 'the Room needs disclosure is gone');
+  assert.doesNotMatch(details, /<details[^>]*\sopen(?:\s|>)/, 'optional room needs open over the duration question');
+  assert.match(details, /id="need-seats"[^>]*type="number"[^>]*min="1"[^>]*max="999"/);
+  assert.match(details, /id="need-features"/, 'the published feature choices have nowhere to render');
+});
+
+test('room requirements filter before ranking and never guess missing details', () => {
+  const answer = APP.slice(APP.indexOf('function answer()'), APP.indexOf('// A name over 24 characters'));
+  assert.match(answer, /filterRoomsByPreferences\(allRooms, state\.preferences\)/);
+  assert.ok(
+    answer.indexOf('filterRoomsByPreferences') < answer.indexOf('rank(rooms, ask)'),
+    'ranking runs before the room requirements are applied',
+  );
+  assert.match(APP, /Missing room details do not count as a match/);
+  assert.match(APP, /data-act="clear-needs"/, 'a zero-result filter has no way out');
+});
+
+test('furniture choices wait for published data while minimum seats works now', () => {
+  const availability = APP.slice(APP.indexOf('function paintNeedsAvailability()'), APP.indexOf('function attachNeeds()'));
+  assert.match(availability, /state\.featureCoverage\.known === 0/);
+  assert.match(availability, /input\.disabled = !state\.ready \|\| state\.featureCoverage\.known === 0/);
+  assert.match(availability, /Minimum seats works now/);
+  // Boot used to enable every disabled descendant of #ask. That would turn the
+  // furniture controls on even when no room carries the field yet.
+  assert.doesNotMatch(APP, /querySelectorAll\('#ask \[disabled\]'\)/);
+  assert.match(APP, /querySelectorAll\('#ask \[data-min\]\[disabled\]'\)/);
+});
+
+test('changing room needs invalidates a list reached with browser Forward', () => {
+  const change = APP.slice(APP.indexOf('function changeNeeds()'), APP.indexOf('function paintNeedsAvailability()'));
+  assert.match(change, /state\.preferencesDirty = true/);
+
+  const pop = APP.slice(APP.indexOf("window.addEventListener('popstate'"), APP.indexOf('// Coming back to the foreground'));
+  assert.match(pop, /v === 'list'/);
+  assert.match(pop, /if \(state\.preferencesDirty\) answer\(\)/);
+});
+
+test('a broader room filter cannot keep the previous fallback warning', () => {
+  const answer = APP.slice(APP.indexOf('function answer()'), APP.indexOf('// A name over 24 characters'));
+  const firstPaint = answer.indexOf('paintList();');
+  assert.ok(answer.indexOf('state.rung = null') < firstPaint);
+  assert.ok(answer.indexOf('state.relaxed = false') < firstPaint);
+  assert.ok(answer.indexOf('state.preferencesDirty = false') < firstPaint);
+});

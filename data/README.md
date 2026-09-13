@@ -17,6 +17,21 @@ narrower question of what each file is and what rights attach to it.
 | `campus.json` | `https://gissvc.osu.edu/arcgis/rest/services/Data/FacilitiesStreets_RO/MapServer`, layers 11, 12, 9 and 13 | (c) 2025 The Ohio State University, Facilities Information and Technology Services | Pulled 2026-08-27 by `scripts/fetch-campus.mjs`. `where=1=1` intersected with a bounding box anchored on class-hosting buildings within 2 km of the Oval. 1,543 features, 13,254 points, 39,054 bytes gzipped |
 | `current.json` | Written by the build | n/a | Names the live term and the files that go with it, and carries the build date so the app can say how stale it is |
 
+### Optional room characteristics
+
+The room filter reads an optional `features` array on each room in
+`rooms-<term>.json`. `build-index.mjs` copies only the Registrar's numeric Room
+Characteristics codes from the already committed `room-features.json`; the
+phone does not download that detailed 893 KB source. Code `32` means movable
+tables and chairs, and `44` means whiteboards. The current Autumn 2026 source
+covers 327 of 425 indexed rooms. A new term with no matching feature harvest
+leaves the field absent. Absent means **unknown**, while an empty array means
+the Registrar listed none of those characteristics for that room.
+
+That distinction is intentional: if a student requires a whiteboard, a room
+whose details were never published must not pass the filter. Capacity continues
+to use the existing `cap` field and works independently of `features`.
+
 ## The files the app does not fetch
 
 | File | What it is | Why it is committed |

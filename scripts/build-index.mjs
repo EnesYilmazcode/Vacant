@@ -56,6 +56,25 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+// The detailed two-source file is a build input, not a boot asset. Only the
+// Registrar's compact numeric characteristics are needed for room requirements.
+// A new term without a matching feature harvest leaves the field absent, which
+// the app treats as unknown rather than falsely claiming a room lacks a feature.
+export function attachRoomFeatures(rooms, document, term) {
+  if (String(document?._meta?.term) !== String(term)) return 0;
+  let attached = 0;
+  for (const [id, room] of Object.entries(rooms)) {
+    const codes = document.rooms?.[id]?.registrar?.codes;
+    if (!Array.isArray(codes)) continue;
+    if (!codes.every((code) => Number.isInteger(code) && code >= 0 && code <= 999)) {
+      throw new Error(`invalid Registrar characteristics for ${id}`);
+    }
+    room.features = [...new Set(codes)].sort((a, b) => a - b);
+    attached++;
+  }
+  return attached;
+}
+
 // The Thompson Library steps, the middle of the Oval. Same point the
 // screenshots are taken from, so "distance from campus" means one thing in this
 // repo and not two.
@@ -823,6 +842,10 @@ async function main() {
   // tell you whether the data actually moved.
   const sorted = {};
   for (const id of Object.keys(rooms).sort()) sorted[id] = rooms[id];
+  const featurePath = join(ROOT, 'data', 'room-features.json');
+  const featureDoc = existsSync(featurePath) ? JSON.parse(readFileSync(featurePath, 'utf8')) : null;
+  const featureCount = attachRoomFeatures(sorted, featureDoc, term);
+  console.log(`  Registrar room characteristics: ${featureCount}/${Object.keys(sorted).length} indexed rooms`);
 
   const payload = {
     term,
@@ -839,7 +862,9 @@ async function main() {
       'the room as general assignment, which ranks it lower and never hides it; ' +
       'closed is keyed by date, state offices-closed means locked doors and no-classes ' +
       'means an open campus with nothing meeting; types maps facilityType to the word ' +
-      'the app may print, and a type absent from it has no published decode',
+      'the app may print, and a type absent from it has no published decode; ' +
+      'features is an optional array of Registrar Room Characteristics codes, ' +
+      'absent when no matching term data was published',
     gaPulled: gaFile._meta?.pulled ?? null,
     restrictedPulled: restrictedFile._meta?.pulled ?? null,
     // The Registrar's own teaching window, not the min and max of harvested

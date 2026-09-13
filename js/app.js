@@ -30,6 +30,15 @@ import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, qu
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
 import { mapsHref } from './install.js';
 import {
+  ROOM_FEATURES,
+  describeRoomPreferences,
+  filterRoomsByPreferences,
+  hasRoomPreferences,
+  normalizeRoomPreferences,
+  roomFeatureCoverage,
+  roomFeatureLabels,
+} from './preferences.js';
+import {
   busyDayOf,
   clock,
   clockIsPinned,
@@ -182,6 +191,10 @@ const state = {
   originIsGuess: true,
   duration: safeGet(KEY_DURATION) ?? '30',
   needed: 30,
+  preferences: normalizeRoomPreferences(),
+  preferencesDirty: false,
+  preferenceStats: { matching: 0, total: 0 },
+  featureCoverage: { known: 0, total: 0 },
   results: [],
   // How deep into the ranking the card screen is. Reset by answer(), because a
   // re-rank makes "the third one" a different room.
@@ -247,6 +260,79 @@ function safeDel(k) {
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`);
+
+function needsFromControls() {
+  return normalizeRoomPreferences({
+    minSeats: $('need-seats').value,
+    features: [...document.querySelectorAll('#need-features [data-feature]:checked')]
+      .map((input) => input.dataset.feature),
+  });
+}
+
+function paintNeedsSummary() {
+  const count = describeRoomPreferences(state.preferences).length;
+  $('needs-state').textContent = count ? `${count} selected` : 'optional';
+  $('needs-clear').hidden = !hasRoomPreferences(state.preferences);
+}
+
+function syncNeedsControls() {
+  $('need-seats').value = state.preferences.minSeats || '';
+  for (const input of document.querySelectorAll('#need-features [data-feature]')) {
+    input.checked = state.preferences.features.includes(input.dataset.feature);
+  }
+  paintNeedsSummary();
+}
+
+function changeNeeds() {
+  state.preferences = needsFromControls();
+  state.preferencesDirty = true;
+  paintNeedsSummary();
+}
+
+function clearNeeds() {
+  state.preferences = normalizeRoomPreferences();
+  state.preferencesDirty = true;
+  syncNeedsControls();
+  if (state.ready && ['card', 'list'].includes(state.screen)) answer();
+}
+
+function paintNeedsAvailability() {
+  const rooms = Object.values(state.rooms?.rooms ?? {});
+  state.featureCoverage = roomFeatureCoverage(rooms);
+  $('need-seats').disabled = !state.ready;
+  for (const input of document.querySelectorAll('#need-features [data-feature]')) {
+    input.disabled = !state.ready || state.featureCoverage.known === 0;
+  }
+
+  if (!state.ready) {
+    $('needs-note').textContent = 'Room details are loading.';
+  } else if (state.featureCoverage.known === 0) {
+    $('needs-note').textContent = 'Furniture details are not loaded yet. Minimum seats works now.';
+  } else if (state.featureCoverage.known < state.featureCoverage.total) {
+    $('needs-note').textContent = `Furniture details are published for ${state.featureCoverage.known} of ${state.featureCoverage.total} rooms. Rooms with unknown details will not match.`;
+  } else {
+    $('needs-note').textContent = 'Every checked feature is required.';
+  }
+}
+
+function attachNeeds() {
+  $('need-features').innerHTML = ROOM_FEATURES.map((feature) => `
+    <label><input type="checkbox" data-feature="${esc(feature.id)}" disabled><span>${esc(feature.label)}</span></label>`)
+    .join('');
+  $('need-seats').oninput = changeNeeds;
+  // Canonicalise a pasted exponent or a fractional seat count once editing is
+  // done, so the number in the control is the number the result screen names.
+  $('need-seats').onchange = () => {
+    changeNeeds();
+    syncNeedsControls();
+  };
+  for (const input of document.querySelectorAll('#need-features [data-feature]')) {
+    input.onchange = changeNeeds;
+  }
+  $('needs-clear').onclick = clearNeeds;
+  syncNeedsControls();
+  paintNeedsAvailability();
+}
 
 const say = (text) => {
   $('say').textContent = text;
@@ -796,7 +882,10 @@ function answer() {
   const minutes = nowMinutes(now);
   state.day = now.getDay();
   state.needed = neededMinutes(now);
-  const rooms = Object.entries(state.rooms.rooms).map(([id, r]) => ({ id, ...r }));
+  const allRooms = Object.entries(state.rooms.rooms).map(([id, r]) => ({ id, ...r }));
+  const rooms = filterRoomsByPreferences(allRooms, state.preferences);
+  state.preferencesDirty = false;
+  state.preferenceStats = { matching: rooms.length, total: allRooms.length };
   const date = isoDate(now);
   const ask = {
     origin: state.origin,
@@ -876,6 +965,11 @@ function answer() {
   // the sheet stayed at 324 over a canvas with nothing left on it, which is the
   // band this screen stopped leaving.
   if (state.screen !== 'ask') sheetHeight();
+  // paintList() runs before the new ladder result is ready. Clear the previous
+  // answer first, otherwise broadening the room requirements can leave its old
+  // fallback warning above a new exact answer.
+  state.rung = null;
+  state.relaxed = false;
   // Rows first, then the sweep that only the strip needs.
   //
   // The ladder is a SECOND full sweep of the index. Warm it is about a
@@ -1044,8 +1138,11 @@ const caveatHtml = (coverage) => `<p class="foot">${esc(coverageCaveat(coverage)
 // The empty screen above does not get this line. It is not a silent list: it
 // opens with an h2 that states the answer in words, and its last branch already
 // prints dur(state.needed) in a sentence of its own.
-const asked = () =>
-  `<p class="asked">You asked for <b>${state.duration === 'day' ? 'the rest of the day' : dur(state.needed)}</b>.</p>`;
+const asked = () => {
+  const needs = describeRoomPreferences(state.preferences);
+  const withNeeds = needs.length ? ` with <b>${esc(needs.join(', '))}</b>` : '';
+  return `<p class="asked">You asked for <b>${state.duration === 'day' ? 'the rest of the day' : dur(state.needed)}</b>${withNeeds}.</p>`;
+};
 
 // The sentence the ladder's verdict is worth, or null when the answer gave
 // nothing up. The strip and the live region both read it from here, so the two
@@ -1086,6 +1183,21 @@ function paintList() {
   const note = notes();
 
   if (!state.results.length) {
+    const filtered = hasRoomPreferences(state.preferences);
+    if (filtered && state.preferenceStats.matching === 0) {
+      list.innerHTML =
+        note +
+        asked() +
+        '<h2 class="msg" id="list-h" tabindex="-1">No rooms match those needs.</h2>' +
+        `<p class="empty">No room in the current index satisfies every selected requirement.
+          Missing room details do not count as a match.</p>
+         <p class="foot-acts"><button type="button" class="bar-btn" data-act="clear-needs">Clear room needs</button></p>` +
+        FOOT_ACTS;
+      wireFootActs(list);
+      focusHeading($('list-h'));
+      syncPaneTouch();
+      return;
+    }
     const next = state.soonest;
     // Rooms are free, they are just too far to walk to, which is a different
     // answer from "nothing is open" and one a shorter ask cannot fix. This is
@@ -1097,6 +1209,7 @@ function paintList() {
     const later = far?.waiting;
     list.innerHTML =
       note +
+      (filtered ? asked() : '') +
       `<h2 class="msg" id="list-h" tabindex="-1">${far?.count || later?.count ? 'Nothing close enough.' : 'Nothing open right now.'}</h2>` +
       (far?.count
         ? `<p class="empty">Nothing within a ${MAX_WALK} minute walk is free.
@@ -1209,7 +1322,8 @@ function paintList() {
 function wireFootActs(root) {
   for (const el of root.querySelectorAll('[data-act]')) {
     el.onclick = () => {
-      if (el.dataset.act === 'about') openAbout();
+      if (el.dataset.act === 'clear-needs') clearNeeds();
+      else if (el.dataset.act === 'about') openAbout();
       else refresh();
     };
   }
@@ -1367,6 +1481,23 @@ function paintCard() {
 
   if (!r) {
     const seen = state.results.length;
+    if (seen === 0 && hasRoomPreferences(state.preferences)) {
+      const noMatchingRoom = state.preferenceStats.matching === 0;
+      card.innerHTML = `
+        <h2 class="msg" id="card-h" tabindex="-1">${noMatchingRoom
+          ? 'No rooms match those needs.' : 'No matching room is available nearby.'}</h2>
+        <p class="c-end">${noMatchingRoom
+          ? 'No room in the current index satisfies every selected requirement. Missing room details do not count as a match.'
+          : 'Some rooms meet those needs, but none can be shown at this time and place.'}</p>
+        <button type="button" class="c-more" id="c-clear-needs">Clear room needs</button>
+        ${noMatchingRoom ? '' : '<button type="button" class="c-more" id="c-list">See the details</button>'}`;
+      card.classList.add('done');
+      $('c-clear-needs').onclick = clearNeeds;
+      if (!noMatchingRoom) $('c-list').onclick = () => openList();
+      focusHeading($('card-h'));
+      syncPaneTouch();
+      return;
+    }
     card.innerHTML = `
       <h2 class="msg" id="card-h" tabindex="-1">That is all of them.</h2>
       <p class="c-end">You went through ${seen} room${seen === 1 ? '' : 's'} within a
@@ -1420,7 +1551,10 @@ function paintCard() {
   const coverageNote = state.eventCoverage === 'complete-room-sweep'
     ? ''
     : 'Class schedule only today; registered events not checked.';
+  const matchedNeeds = describeRoomPreferences(state.preferences);
+  const needsNote = matchedNeeds.length ? `Matches: ${matchedNeeds.join(', ')}` : '';
   const said = `${roomLabel(r)}, ${walkSay}, ${win.say}, ${seats.say}${dept.say}.` +
+    (needsNote ? ` ${needsNote}.` : '') +
     (coverageNote ? ` ${coverageNote}` : '') +
     ` Room ${state.cardIndex + 1} of ${total}. Swipe down to start over.`;
 
@@ -1438,7 +1572,9 @@ function paintCard() {
   // deck is the whole viewport now and anything in the flow before it would be
   // painted over by the room. They are still not optional: the strip is the
   // only thing that says the answer is degraded.
-  const admits = notes() + (coverageNote ? `<p class="strip">${coverageNote}</p>` : '') + strip;
+  const admits = notes()
+    + (needsNote ? `<p class="strip">${esc(needsNote)}</p>` : '')
+    + (coverageNote ? `<p class="strip">${coverageNote}</p>` : '') + strip;
   card.innerHTML =
     `<div class="c-deck">
       <article class="c-card${photo ? '' : ' plain'}" id="c-top" tabindex="0"
@@ -2342,6 +2478,7 @@ function roomHtml(id) {
     walk == null ? '' : `<span class="w">${WALK_ICON}${walk} min walk</span>`,
     room.cap ? `<span>${room.cap} seats</span>` : '<span>seats unknown</span>',
     type ? `<span>${esc(type)}</span>` : '',
+    ...roomFeatureLabels(room).map((label) => `<span>${esc(label)}</span>`),
     // The same word the row carries, on the screen a student lands on after
     // tapping it. A row that is ranked down for a reason has to be able to say
     // the reason once the reader asks for the room.
@@ -3445,7 +3582,8 @@ async function boot() {
   state.scheduled = inScheduledHours({ now, current, index: rooms });
 
   state.ready = true;
-  for (const el of document.querySelectorAll('#ask [disabled]')) el.disabled = false;
+  for (const el of document.querySelectorAll('#ask [data-min][disabled]')) el.disabled = false;
+  paintNeedsAvailability();
   $('ask').classList.add('ready');
   paintDuration();
   paintGate();
@@ -3483,6 +3621,7 @@ function bootFailed() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  attachNeeds();
   for (const b of document.querySelectorAll('#ask [data-min]')) {
     b.onclick = () => choose(b.dataset.min);
   }
@@ -3502,8 +3641,14 @@ window.addEventListener('DOMContentLoaded', () => {
     const v = e.state?.v;
     if (v === 'room') showRoom(e.state.room);
     else if (v === 'way') showWay(e.state.room);
-    else if (v === 'card') showCard();
-    else if (v === 'list') showList();
+    else if (v === 'card') {
+      if (state.preferencesDirty) answer();
+      showCard();
+    }
+    else if (v === 'list') {
+      if (state.preferencesDirty) answer();
+      showList();
+    }
     else if (v === 'near') showNear();
     else if (v === 'pick') showPick();
     else if (v === 'about') showAbout();
@@ -3579,9 +3724,8 @@ window.addEventListener('DOMContentLoaded', () => {
 // Thanksgiving, 9pm on a Saturday, standing in Kottman Hall. Every one of them
 // used to need a plane ticket or a December.
 //
-// Nothing here is a mock. devApply moves the same clock the app reads and the
-// same origin the ranking measures from, and then calls the same refresh() the
-// duration buttons call. What the panel shows is what the app does.
+// The clock and origin are not mocks: devApply moves the same values the app
+// reads, then calls the same refresh() the duration buttons call.
 
 export { state as devState };
 

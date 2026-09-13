@@ -14,10 +14,38 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { invert, termName } from '../build-index.mjs';
+import { attachRoomFeatures, invert, termName } from '../build-index.mjs';
 import { TYPE_WORDS } from '../lib/room-safety.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+test('room characteristics join only a matching term and preserve unknown rooms', () => {
+  const rooms = { AA0246: { cap: 49 }, UNKNOWN: { cap: 40 } };
+  const features = JSON.parse(readFileSync(join(ROOT, 'data', 'room-features.json'), 'utf8'));
+  assert.equal(attachRoomFeatures(rooms, features, '1268'), 1);
+  assert.deepEqual(rooms.AA0246.features, [30, 39, 41, 44]);
+  assert.equal(Object.hasOwn(rooms.UNKNOWN, 'features'), false);
+  const spring = { AA0246: { cap: 49 } };
+  assert.equal(attachRoomFeatures(spring, features, '1272'), 0);
+  assert.equal(Object.hasOwn(spring.AA0246, 'features'), false);
+});
+
+test('the shipped index carries only characteristics published for its term', () => {
+  const index = JSON.parse(readFileSync(join(ROOT, 'data', 'rooms-1268.json'), 'utf8'));
+  const source = JSON.parse(readFileSync(join(ROOT, 'data', 'room-features.json'), 'utf8'));
+  assert.equal(index.term, source._meta.term);
+  let matched = 0;
+  for (const [id, room] of Object.entries(index.rooms)) {
+    const codes = source.rooms[id]?.registrar?.codes;
+    if (Array.isArray(codes)) {
+      assert.deepEqual(room.features, [...new Set(codes)].sort((a, b) => a - b), id);
+      matched++;
+    } else {
+      assert.equal(Object.hasOwn(room, 'features'), false, id);
+    }
+  }
+  assert.equal(matched, 327);
+});
 
 const SESSION = { startDate: '2026-05-11', endDate: '2026-07-30' };
 

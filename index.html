@@ -172,6 +172,10 @@
     text-shadow: 0 2px 22px rgba(0,0,0,.75);
   }
   #ask h1 span { color: var(--accent); }
+  #ask-q {
+    width: 100%; max-width: 24rem; display: flex; flex-direction: column;
+    align-items: stretch; gap: .75rem;
+  }
   /* width:100% is here to make the buttons equal width, nothing more. An
      earlier comment claimed it fixed a max-content overflow that clipped
      "2 hours" at 390px. It did not: measured, the old row was 312px inside a
@@ -202,6 +206,48 @@
      buildings" 208x96, both as 999px pill radii, so they came out as two giant
      ovals covering the lower two thirds of the screen. */
   .opts .opt { flex: 1 1 6rem; }
+  .room-needs {
+    width: 100%; border: 1px solid var(--line); border-radius: 14px;
+    background: rgba(20,24,30,.88); color: var(--fg);
+  }
+  .room-needs summary {
+    min-height: 44px; padding: .55rem .8rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    font-size: .88rem; font-weight: 650;
+  }
+  .room-needs summary::after { content: '+'; color: var(--dim); font-size: 1.15rem; }
+  .room-needs[open] summary::after { content: '\2212'; }
+  .room-needs summary::marker, .room-needs summary::-webkit-details-marker { display: none; }
+  #needs-state { color: var(--dim); font-size: .78rem; font-weight: 500; margin-left: auto; }
+  .needs-panel {
+    border-top: 1px solid var(--line); padding: .7rem .8rem .8rem;
+    display: flex; flex-direction: column; gap: .65rem;
+  }
+  .seat-need { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  #need-seats {
+    appearance: textfield; width: 7rem; min-height: 44px; box-sizing: border-box;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+    color: var(--fg); font: inherit; padding: .45rem .6rem;
+  }
+  #need-seats::-webkit-inner-spin-button { opacity: 1; }
+  .needs-panel fieldset { border: 0; margin: 0; padding: 0; }
+  .needs-panel legend { color: var(--dim); font-size: .78rem; padding: 0 0 .25rem; }
+  .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .2rem .65rem; }
+  .feature-grid label {
+    display: flex; align-items: center; gap: .5rem; min-height: 44px;
+    font-size: .82rem; line-height: 1.25;
+  }
+  .feature-grid input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); }
+  .feature-grid input:disabled + span { color: var(--dim); }
+  .needs-note { color: var(--dim); font-size: .76rem; line-height: 1.35; margin: 0; }
+  #needs-clear {
+    align-self: flex-start; appearance: none; border: 0; background: none;
+    color: var(--fg); font: inherit; font-size: .8rem; min-height: 44px; padding: 0;
+    text-decoration: underline; cursor: pointer;
+  }
+  @media (max-width: 22rem) {
+    .feature-grid { grid-template-columns: 1fr; }
+  }
   /* A standalone .opt is a button, not a column. flex:none stops it growing and
      max-width stops it running the full width on a tablet.
      The radius is half the 52px min-height rather than 999px, which is the same
@@ -1086,6 +1132,21 @@
       <button class="opt" data-min="120" aria-pressed="false" disabled>2 hours</button>
       <button class="opt" data-min="day" aria-pressed="false" disabled>rest of day</button>
     </div>
+    <details id="needs" class="room-needs">
+      <summary>Room needs <span id="needs-state">optional</span></summary>
+      <div class="needs-panel">
+        <label class="seat-need" for="need-seats">Minimum seats
+          <input id="need-seats" type="number" min="1" max="999" inputmode="numeric"
+            placeholder="Any" disabled>
+        </label>
+        <fieldset>
+          <legend>Must have</legend>
+          <div id="need-features" class="feature-grid"></div>
+        </fieldset>
+        <p id="needs-note" class="needs-note">Room details are loading.</p>
+        <button id="needs-clear" type="button" hidden>Clear room needs</button>
+      </div>
+    </details>
   </div>
   <p class="loading">finding campus&hellip;</p>
   <!-- The term line ("Autumn 2026") stood here. It is a fact about the DATA,

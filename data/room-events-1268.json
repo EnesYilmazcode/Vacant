@@ -4,18 +4,18 @@
   "week": "09/07/2026",
   "weekStart": "2026-09-07",
   "weekEnd": "2026-09-13",
-  "generated": "2026-09-07",
+  "generated": "2026-09-13",
   "source": "https://courses.erppub.osu.edu/psc/ps/EMPLOYEE/PUB/c/OSR_CUSTOM_MENU.OSR_ROOM_MATRIX.GBL",
-  "requests": 428,
-  "wallClockSeconds": 516.4,
+  "requests": 427,
+  "wallClockSeconds": 623.5,
   "counts": {
    "roomsRequested": 425,
    "roomsParsed": 425,
-   "events": 307,
-   "distinctEventIds": 198,
-   "roomsWithEvents": 165,
+   "events": 320,
+   "distinctEventIds": 207,
+   "roomsWithEvents": 171,
    "eventTypes": {
-    "MTG": 215,
+    "MTG": 228,
     "TOUR": 67,
     "INFO": 10,
     "WRKS": 6,
@@ -27,8 +27,8 @@
    "blockCells": 289,
    "distinctBlockIds": 8,
    "roomsWithBlocks": 56,
-   "classCellsSeenAndDiscarded": 6875,
-   "classBookingsSeenAndDiscarded": 8024,
+   "classCellsSeenAndDiscarded": 6880,
+   "classBookingsSeenAndDiscarded": 8029,
    "combinedSectionCells": 955,
    "invalidValue": 0,
    "noGrid": 0
@@ -50,9 +50,9 @@
    1
   ],
   "landInFreeWindow": {
-   "events": "304/307",
+   "events": "316/320",
    "blocks": "286/289",
-   "eventsSessionScoped": "307/307",
+   "eventsSessionScoped": "319/320",
    "blocksSessionScoped": "286/289"
   },
   "windows": [
@@ -68,15 +68,15 @@
     "from": 1020,
     "to": 1320,
     "windowMinutes": 637500,
-    "freeMinutes": 588265,
+    "freeMinutes": 588205,
     "blockMinutesInWindow": 50040,
-    "eventMinutesInWindow": 8715,
+    "eventMinutesInWindow": 9075,
     "blockMinutesInsideFreeGaps": 49500,
-    "eventMinutesInsideFreeGaps": 8540,
+    "eventMinutesInsideFreeGaps": 8885,
     "blockPctOfFree": 8.51,
-    "eventPctOfFree": 1.48,
-    "blockPctOfFreeStrict": 8.41,
-    "eventPctOfFreeStrict": 1.45
+    "eventPctOfFree": 1.54,
+    "blockPctOfFreeStrict": 8.42,
+    "eventPctOfFreeStrict": 1.51
    },
    {
     "name": "Saturday 8am-10pm",
@@ -88,13 +88,13 @@
     "windowMinutes": 357000,
     "freeMinutes": 356580,
     "blockMinutesInWindow": 31920,
-    "eventMinutesInWindow": 6450,
+    "eventMinutesInWindow": 6570,
     "blockMinutesInsideFreeGaps": 31920,
-    "eventMinutesInsideFreeGaps": 6450,
+    "eventMinutesInsideFreeGaps": 6570,
     "blockPctOfFree": 8.95,
-    "eventPctOfFree": 1.81,
+    "eventPctOfFree": 1.84,
     "blockPctOfFreeStrict": 8.95,
-    "eventPctOfFreeStrict": 1.81
+    "eventPctOfFreeStrict": 1.84
    }
   ],
   "definitions": "landInFreeWindow counts an occurrence as landing in free time when NO busy row in rooms-<term>.json overlaps it on that weekday, using every session. The *SessionScoped pair repeats that against only the sessions meeting this week. blockPctOfFree divides all block minutes inside the window by the free room-minutes in it; *Strict counts only block minutes that fall inside a free gap."
@@ -280,6 +280,14 @@
     "end": 660,
     "type": "TOUR",
     "eventId": "000652231"
+   },
+   {
+    "kind": "event",
+    "day": 5,
+    "start": 690,
+    "end": 750,
+    "type": "MTG",
+    "eventId": "000657318"
    }
   ],
   "BE0136": [],
@@ -586,6 +594,14 @@
     "end": 660,
     "type": "MTG",
     "eventId": "000653169"
+   },
+   {
+    "kind": "event",
+    "day": 6,
+    "start": 840,
+    "end": 960,
+    "type": "MTG",
+    "eventId": "000657422"
    }
   ],
   "CL0120": [],
@@ -2941,6 +2957,14 @@
   ],
   "EL2002": [
    {
+    "kind": "event",
+    "day": 2,
+    "start": 780,
+    "end": 840,
+    "type": "MTG",
+    "eventId": "000657289"
+   },
+   {
     "kind": "block",
     "day": 2,
     "start": 1050,
@@ -3143,6 +3167,14 @@
     "end": 815,
     "type": "MTG",
     "eventId": "000653526"
+   },
+   {
+    "kind": "event",
+    "day": 3,
+    "start": 840,
+    "end": 900,
+    "type": "MTG",
+    "eventId": "000657312"
    },
    {
     "kind": "event",
@@ -3556,6 +3588,14 @@
     "end": 1025,
     "type": "MTG",
     "eventId": "000648248"
+   },
+   {
+    "kind": "event",
+    "day": 5,
+    "start": 690,
+    "end": 750,
+    "type": "MTG",
+    "eventId": "000657279"
    }
   ],
   "HI0446": [],
@@ -3820,7 +3860,16 @@
   ],
   "JR0375": [],
   "JR0387": [],
-  "KH0102": [],
+  "KH0102": [
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 1050,
+    "end": 1170,
+    "type": "MTG",
+    "eventId": "000657317"
+   }
+  ],
   "KH0103": [
    {
     "kind": "event",
@@ -3831,7 +3880,16 @@
     "eventId": "000652993"
    }
   ],
-  "KH0104": [],
+  "KH0104": [
+   {
+    "kind": "event",
+    "day": 2,
+    "start": 1050,
+    "end": 1170,
+    "type": "MTG",
+    "eventId": "000657317"
+   }
+  ],
   "KH0112": [],
   "KH0114": [],
   "KH0116": [],
@@ -4459,7 +4517,40 @@
    }
   ],
   "MP2019": [],
-  "OR0110": [],
+  "OR0110": [
+   {
+    "kind": "event",
+    "day": 0,
+    "start": 60,
+    "end": 480,
+    "type": "MTG",
+    "eventId": "000657458"
+   },
+   {
+    "kind": "event",
+    "day": 4,
+    "start": 60,
+    "end": 480,
+    "type": "MTG",
+    "eventId": "000657458"
+   },
+   {
+    "kind": "event",
+    "day": 5,
+    "start": 60,
+    "end": 480,
+    "type": "MTG",
+    "eventId": "000657458"
+   },
+   {
+    "kind": "event",
+    "day": 6,
+    "start": 60,
+    "end": 480,
+    "type": "MTG",
+    "eventId": "000657458"
+   }
+  ],
   "PA0010": [
    {
     "kind": "event",
@@ -4665,7 +4756,16 @@
     "eventId": "000656938"
    }
   ],
-  "PO0250": [],
+  "PO0250": [
+   {
+    "kind": "event",
+    "day": 4,
+    "start": 1080,
+    "end": 1140,
+    "type": "MTG",
+    "eventId": "000657291"
+   }
+  ],
   "PO0260": [],
   "PO0280": [
    {
@@ -4979,14 +5079,6 @@
   "SB0210": [
    {
     "kind": "event",
-    "day": 2,
-    "start": 1155,
-    "end": 1215,
-    "type": "MTG",
-    "eventId": "000651030"
-   },
-   {
-    "kind": "event",
     "day": 3,
     "start": 1140,
     "end": 1200,
@@ -5077,6 +5169,14 @@
   "SB0305": [
    {
     "kind": "event",
+    "day": 2,
+    "start": 1155,
+    "end": 1215,
+    "type": "MTG",
+    "eventId": "000651030"
+   },
+   {
+    "kind": "event",
     "day": 3,
     "start": 1140,
     "end": 1200,
@@ -5113,6 +5213,14 @@
    },
    {
     "kind": "event",
+    "day": 3,
+    "start": 1140,
+    "end": 1260,
+    "type": "MTG",
+    "eventId": "000657342"
+   },
+   {
+    "kind": "event",
     "day": 4,
     "start": 480,
     "end": 540,
@@ -5128,14 +5236,6 @@
     "end": 1175,
     "type": "MTG",
     "eventId": "000651859"
-   },
-   {
-    "kind": "event",
-    "day": 3,
-    "start": 1140,
-    "end": 1200,
-    "type": "MTG",
-    "eventId": "000651052"
    },
    {
     "kind": "event",
@@ -5410,7 +5510,16 @@
   "SON0054": [],
   "SON0056": [],
   "SU0131A": [],
-  "SU0220": [],
+  "SU0220": [
+   {
+    "kind": "event",
+    "day": 4,
+    "start": 900,
+    "end": 990,
+    "type": "MTG",
+    "eventId": "000657348"
+   }
+  ],
   "SU0225": [],
   "SU0251": [],
   "SU0349A": [],

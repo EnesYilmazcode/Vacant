@@ -25,6 +25,7 @@ import {
   openingPhrase,
   rankBuildings,
   resolveState,
+  roomSearchOn,
   roomsPerBuilding,
   scheduleDarkOn,
   scheduleShareOn,
@@ -33,6 +34,7 @@ import {
   windowPhrase,
 } from '../../js/state.js';
 import { roomClaim } from '../../js/claim.js';
+import { filterRoomsByPreferences } from '../../js/preferences.js';
 import { blocksOn, classesOn, dayClaim } from '../../js/day.js';
 import {
   BACK_PX,
@@ -219,6 +221,24 @@ test('the unscheduled trigger flips when latestEnd moves', () => {
 test('a weekend evening is never in scheduled hours', () => {
   assert.equal(inScheduledHours({ now: at('2026-09-05', 20, 0), current: CUR, index: CAL }), false);
   assert.equal(inScheduledHours({ now: at('2026-09-03', 14, 2), current: CUR, index: CAL }), true);
+});
+
+test('weekend room search opens in daytime without bypassing refusals', () => {
+  for (const date of ['2026-09-19', '2026-09-20']) {
+    for (const [hour, expected] of [[6, false], [7, true], [12, true], [22, true], [23, false]]) {
+      const now = at(date, hour);
+      const ranked = resolveState({ now, current: CUR, index: CAL }).ranked;
+      assert.equal(roomSearchOn({ now, current: CUR, index: CAL, ranked }), expected, `${date} ${hour}:00`);
+    }
+    assert.match(resolveState({ now: at(date), current: CUR, index: CAL }).note, /Weekend search:.*building hours/);
+  }
+  const closed = at('2026-09-06');
+  const closedIndex = { ...CAL, closed: { ...CAL.closed, '2026-09-06': { state: 'offices-closed', name: 'Campus closure' } } };
+  assert.equal(resolveState({ now: closed, current: CUR, index: closedIndex }).ranked, false);
+  assert.equal(roomSearchOn({ now: closed, current: CUR, index: closedIndex }), false);
+  const exams = at('2026-12-12');
+  assert.equal(resolveState({ now: exams, current: CUR, index: CAL }).ranked, false);
+  assert.equal(roomSearchOn({ now: exams, current: CUR, index: CAL }), false);
 });
 
 test('a shut campus is not scheduled hours, but a no-classes day still is', () => {
@@ -1688,6 +1708,25 @@ const HERE = { lat: 39.99944, lon: -83.01502 }; // the Thompson Library steps
 const opening = (day, nowMin) =>
   nextOpening({ buildings: SLICE, counts: COUNTS, hoursFor: DOORS, day, nowMin });
 
+test('weekend room needs return suitable rooms only where building hours allow them', () => {
+  const all = Object.entries(INDEX.rooms).map(([id, room]) => ({ id, ...room }));
+  const matching = filterRoomsByPreferences(all, { minSeats: 20, features: ['whiteboards'] });
+  assert.ok(matching.length > 0);
+  for (const [date, day] of [['2026-09-19', 6], ['2026-09-20', 0]]) {
+    assert.ok(matching.some((room) => DOORS(room.b, day) === null), 'the filter includes some closed buildings');
+    const rows = rank(matching, {
+      origin: HERE, now: 12 * 60, day, needed: 60, buildings: SLICE,
+      hoursFor: DOORS, sessions: INDEX.sessions, date,
+    });
+    assert.ok(rows.length > 0, `${date} has no usable matching room`);
+    for (const row of rows) {
+      const room = INDEX.rooms[row.id];
+      assert.ok(room.cap >= 20 && room.features.includes(44), row.id);
+      assert.notEqual(DOORS(room.b, day), null, `${row.id} is in a published-closed building`);
+    }
+  }
+});
+
 // A date walked forward by whole days, at a wall-clock minute.
 const on = (d, plus, min = 0) =>
   new Date(d.getFullYear(), d.getMonth(), d.getDate() + plus, Math.floor(min / 60), min % 60);
@@ -1714,32 +1753,33 @@ const gateAt = (now) => {
   });
 };
 
-// Whether the app answers at all is a fact about the DATE: refusalFor reads the
-// minute only to check it is a wall clock, and inScheduledHours is that same day
-// filter plus one comparison against the day's own window. So each date is asked
-// once and the answer reused across its minutes, which is what makes a 118 day
-// walk affordable at all.
+// Whether the app answers at all is a fact about the DATE. Each date is asked
+// once; weekend searches use the engine's 7am-11pm window while ordinary days
+// use the measured class window.
 const dayCache = new Map();
 const dayFacts = (d) => {
   const iso = isoDate(d);
   if (!dayCache.has(iso)) {
+    const weekend = d.getDay() === 0 || d.getDay() === 6;
+    const start = weekend ? 420 : BUSY.earliestStart;
+    const end = weekend ? 1380 : BUSY.latestEnd;
+    const ranked = resolveState({ now: on(d, 0, 12 * 60), current: CURRENT, index: INDEX }).ranked;
     dayCache.set(iso, {
-      ranked: resolveState({ now: on(d, 0, 12 * 60), current: CURRENT, index: INDEX }).ranked,
-      covers: inScheduledHours({ now: on(d, 0, BUSY.earliestStart), current: CURRENT, index: INDEX }),
+      ranked, start, end,
+      covers: roomSearchOn({ now: on(d, 0, start), current: CURRENT, index: INDEX, ranked, busyDay: BUSY }),
     });
   }
   return dayCache.get(iso);
 };
 const isGateMinute = (d, m) => {
   const day = dayFacts(d);
-  return day.ranked && !(day.covers && m >= BUSY.earliestStart && m < BUSY.latestEnd);
+  return day.ranked && !(day.covers && m >= day.start && m < day.end);
 };
 
 // For every gate minute in the range: read the sentence the way a person would,
-// turn that into a date, and ask resolveState and inScheduledHours whether the
-// app will really rank on it. Neither of those reads busyDay.weekdays on its
-// own, which is the whole point; the old sweep asserted against the same mask
-// that wrote the sentence.
+// turn that into a date and minute, and check whether the app will really rank
+// then. The sentence is checked against the search boundary, not the weekday
+// mask used to write it.
 function walkGate(from, to, step) {
   const wrong = [];
   const silent = [];
@@ -1762,14 +1802,22 @@ function walkGate(from, to, step) {
       const before = DAYS.filter((x) => body.slice(0, cut).includes(x));
       const own = DAYS.find((x) => clause.includes(x));
       const name = own ?? (/ today at /.test(clause) ? null : (before[before.length - 1] ?? null));
+      const time = clause.match(/at (\d{1,2}):(\d{2})(am|pm)/);
+      if (!time) {
+        wrong.push(`${isoDate(now)} ${clock(m)}: no search time in ${body}`);
+        continue;
+      }
+      const atMin = (Number(time[1]) % 12 + (time[3] === 'pm' ? 12 : 0)) * 60 + Number(time[2]);
       let target = null;
       for (let ahead = 0; ahead < 7 && !target; ahead++) {
-        if (ahead === 0 && m >= BUSY.earliestStart) continue;
-        const c = on(now, ahead, BUSY.earliestStart);
+        if (ahead === 0 && m >= atMin) continue;
+        const c = on(now, ahead, atMin);
         if (name === null ? ahead === 0 : DAYS[c.getDay()] === name) target = c;
       }
       const day = target && dayFacts(target);
-      if (!day?.ranked || !day.covers) wrong.push(`${isoDate(now)} ${clock(m)}: ${body}`);
+      if (!day?.ranked || !day.covers || atMin < day.start || atMin >= day.end) {
+        wrong.push(`${isoDate(now)} ${clock(m)}: ${body}`);
+      }
     }
   }
   return { visited, wrong, silent };
@@ -1871,29 +1919,26 @@ test('the day the gate promises rooms back is a day the app will actually rank o
   // built out of block counts with no calendar in it, so reading it alone named
   // Labor Day, Veterans Day, Thanksgiving and the day after the term ended:
   // 3,780 of the 94,665 gate minutes of Autumn 2026 at one minute resolution,
-  // 3.99%. Quarter hours here, because unscheduledGate walks the calendar itself
-  // and every minute of all 118 days costs 65 seconds; the week that carried
-  // 3,105 of those wrong minutes is walked minute by minute below.
+  // 3.99% before the weekend search. Quarter hours here because the gate walks
+  // the calendar; the Labor Day weekend is walked minute by minute below.
   const walked = walkGate(new Date(2026, 7, 25), new Date(2026, 11, 20), 15);
-  assert.equal(walked.visited, 6311);
+  assert.equal(walked.visited, 4391);
   assert.deepEqual(walked.wrong, []);
   // The clause is dropped, not guessed, when there is no day left to name: the
   // term's last class meets on 2026-12-09 and the index holds nothing after it.
   assert.deepEqual([...new Set(walked.silent)], ['2026-12-09']);
 });
 
-test('every minute of the Labor Day weekend, the gate names a day it can rank on', () => {
-  // Where 3,105 of the old sentence's 3,780 wrong minutes were, all of them
-  // pointing at the Monday: Friday from 20:15, then the Saturday and Sunday
-  // whole. Walked one minute at a time.
+test('every gated minute of the Labor Day weekend names a day it can rank on', () => {
+  // Friday night now promises Saturday morning; Saturday night promises Sunday
+  // morning; Sunday night skips the closed Labor Day and promises Tuesday.
   const walked = walkGate(new Date(2026, 8, 4), new Date(2026, 8, 6), 1);
-  assert.equal(walked.visited, 3585);
+  assert.equal(walked.visited, 1665);
   assert.deepEqual(walked.wrong, []);
   assert.deepEqual(walked.silent, []);
-  // All three skip the Monday.
-  for (const day of [4, 5, 6]) {
-    assert.match(gateAt(new Date(2026, 8, day, 23, 0)).body, /rooms again on Tuesday at 8:00am\.$/, `Sep ${day}`);
-  }
+  assert.match(gateAt(new Date(2026, 8, 4, 23, 0)).body, /On Saturday .*rooms again at 7:00am\.$/);
+  assert.match(gateAt(new Date(2026, 8, 5, 23, 0)).body, /On Sunday .*rooms again at 7:00am\.$/);
+  assert.match(gateAt(new Date(2026, 8, 6, 23, 0)).body, /rooms again on Tuesday at 8:00am\.$/);
   assert.equal(
     resolveState({ now: new Date(2026, 8, 7, 8, 0), current: CURRENT, index: INDEX }).heading,
     'Labor Day, campus is closed',
@@ -1902,9 +1947,8 @@ test('every minute of the Labor Day weekend, the gate names a day it can rank on
 
 test('the gate names no door while a door is open', () => {
   // The buildings screen guards this sentence on groups.open.length and the gate
-  // did not, so it named the first door on 3,885 of the 6,405 gate minutes of a
-  // week with campus open behind it, including 7:30am on a Tuesday with all 46
-  // unlocked, under a button leading straight to a list of them.
+  // did not, so it named a future door while buildings were already open.
+  // Weekend daytime is now a search window and no longer belongs in this walk.
   const week = new Date(2026, 8, 13); // Sunday 2026-09-13, an ordinary week
   let gateMinutes = 0;
   let openMinutes = 0;
@@ -1926,8 +1970,8 @@ test('the gate names no door while a door is open', () => {
       assert.doesNotMatch(body, /opens? at /, `${DAYS[now.getDay()]} ${clock(m)} with ${open} open: ${body}`);
     }
   }
-  assert.equal(gateMinutes, 6405);
-  assert.equal(openMinutes, 3885);
+  assert.equal(gateMinutes, 4485);
+  assert.equal(openMinutes, 1965);
   assert.equal(named, 2520, 'the door clause still fires on the minutes campus really is shut');
 });
 
@@ -1962,7 +2006,7 @@ test('the gate says what the clock is doing without repeating its own button', (
   for (const [now, want] of [
     [new Date(2026, 8, 14, 23, 40), /^Classes are done for the day\./],
     [new Date(2026, 8, 15, 2, 0), /^Classes have not started yet\./],
-    [new Date(2026, 8, 12, 3, 0), /^No classes are scheduled today\./],
+    [new Date(2026, 8, 12, 3, 0), /^Few classes are scheduled today\./],
   ]) {
     const said = gateAt(now);
     assert.match(said.body, want);
@@ -1976,13 +2020,13 @@ test('the gate says what the clock is doing without repeating its own button', (
   }
 });
 
-test('a Saturday night names Monday for rooms and Saturday morning for the door', () => {
+test('a Saturday predawn gate names the weekend room search and the first door', () => {
   const said = gateAt(new Date(2026, 8, 12, 3, 0));
   assert.equal(said.heading, 'Saturday, 3:00am');
   assert.equal(
     said.body,
-    'No classes are scheduled today. Hitchcock Hall and 2 more open at 7:00am. ' +
-      'Vacant ranks rooms again on Monday at 8:00am.',
+    'Few classes are scheduled today. Hitchcock Hall and 2 more open at 7:00am ' +
+      'and Vacant ranks rooms again at 7:00am.',
   );
   // 11:40pm on a Monday, the minute the whole screen was written for. The
   // Journalism Building publishes hours to midnight on weeknights, so one door

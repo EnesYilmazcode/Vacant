@@ -3989,3 +3989,19 @@ The join requires the feature file's term to match the index term. When a new
 term arrives before its characteristics do, those requirements stay unavailable
 instead of reusing last term's furniture claims. No extra network requests are
 needed for a weekly index rebuild.
+
+## 2026-09-13  Weekend daytime still offers room search
+
+**Decided.** The same duration and optional Room needs search is available on
+Saturday and Sunday from 7am to 11pm, even though the weekly class mask marks
+those days as unscheduled. An ordinary weekend is still inside the term and the
+ranked verdict must allow it; exams, published campus closures, broken indexes
+and dates outside the term continue to refuse. The ranking still applies
+published building hours and registered event coverage, so a missing weekend
+class does not turn a locked or booked room into a recommendation.
+
+The question and result screens say that most weekend rooms have no listed
+class but access and other use still matter. Outside the weekend search window,
+the gate now names the next actual search window, which can be Saturday or
+Sunday morning instead of Monday. The existing nearest-buildings view remains
+available outside search hours.

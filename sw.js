@@ -8,7 +8,7 @@
 // installed icon to last month's app.js forever.
 //
 // Measured on 2026-09-13 over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 154,842 bytes, data 93,566.
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 155,377 bytes, data 93,566.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these seventeen files, which is most of a percent of
@@ -71,7 +71,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-b8db4cf';
+const SHELL_CACHE = 'vacant-shell-25db7a3';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also

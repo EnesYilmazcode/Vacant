@@ -48,7 +48,7 @@ import {
   createWatch,
   followAction,
   followFix,
-  inScheduledHours,
+  roomSearchOn,
   inTermOn,
   isoDate,
   nextOpening,
@@ -228,6 +228,8 @@ const state = {
   settled: false,
   ready: false,
   rankable: false,
+  // Historical name for when the room search is offered; weekend daytime now
+  // counts even though few classes meet then.
   scheduled: true,
   situation: null,
   groups: null,
@@ -3177,7 +3179,7 @@ function refresh() {
   state.eventCoverage = overlaid.coverage;
   state.situation = resolveState({ now, current: state.current, index: state.rooms });
   state.rankable = state.situation.ranked;
-  state.scheduled = inScheduledHours({ now, current: state.current, index: state.rooms });
+  state.scheduled = roomSearchOn({ now, current: state.current, index: state.rooms, ranked: state.rankable });
   paintGate();
   if (!state.rankable) {
     if (state.screen !== 'near' && state.screen !== 'about') showAsk();
@@ -3216,6 +3218,9 @@ function paintGate() {
   $('stale').hidden = stale.level === 'silent' || stale.level === 'gated';
   $('stale').textContent = stale.text;
   $('stale').classList.toggle('banner', stale.level === 'banner');
+  const weekendSearch = (now.getDay() === 0 || now.getDay() === 6) && s?.ranked && state.scheduled;
+  $('weekend-note').hidden = !weekendSearch;
+  $('weekend-note').textContent = weekendSearch ? s.note ?? '' : '';
 
   // Cleared before the branch, so a gate hidden by a ranked minute cannot keep
   // the orange either. index.html says what the colour means.
@@ -3579,7 +3584,7 @@ async function boot() {
 
   state.situation = resolveState({ now, current, index: state.rooms });
   state.rankable = state.situation.ranked;
-  state.scheduled = inScheduledHours({ now, current, index: rooms });
+  state.scheduled = roomSearchOn({ now, current, index: rooms, ranked: state.rankable });
 
   state.ready = true;
   for (const el of document.querySelectorAll('#ask [data-min][disabled]')) el.disabled = false;

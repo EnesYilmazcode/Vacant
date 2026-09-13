@@ -19,6 +19,12 @@ movable tables. Every selected feature must be known for a room to match; rooms
 with unpublished details are left out of a feature-filtered answer. The
 unfiltered one-tap question stays the default.
 
+On weekends, the same room search and Room needs controls are available from
+7am to 11pm even though few classes meet. Vacant still excludes buildings the
+Registrar publishes as closed and checks registered events when that week's
+snapshot is available. An empty class timetable does not mean every door is
+open; the app says when event coverage is missing.
+
 ## Yours for, not free until
 
 Every other tool answers "is this room free right now". That is the wrong
@@ -179,7 +185,7 @@ sits at the bottom, then **Add to Home Screen**. iOS 26 defaults to that Compact
 layout, which is why the app offers you both. On Android, Chrome has **Install
 app** in its menu.
 
-Installed, the whole app is 151 KB of shell and about 90 KB of schedule, gzipped, and
+Installed, the whole app is 152 KB of shell and about 90 KB of schedule, gzipped, and
 none of it is fetched again to answer a question. Turn the network off, open it,
 and it still ranks rooms. That matters because the moment you want it most is the
 moment you are in a basement with one bar.

@@ -2060,11 +2060,12 @@ test('shape holds the committed index to a walk you would actually make', () => 
   assert.equal(usable[0].walk, 71, 'the unbounded ranking still leads with a 71 minute walk');
   const far = shape(usable);
   assert.equal(far.rows.length, 0);
-  // The weekly room index now yields 278 eligible rows: 162 free now and 116
-  // opening within 90 minutes. All are past the bound. This count changes when
-  // the Registrar's weekly snapshot changes; the walk rule and named room do not.
-  assert.equal(far.beyond.count + far.beyond.waiting.count, 278, 'every usable row is past the bound');
-  assert.equal(far.beyond.count, 162, 'and only these are free right now');
+  // The weekly room counts move. What matters is that the fold accounts for
+  // every eligible room without showing one beyond the walking limit.
+  assert.equal(far.beyond.count + far.beyond.waiting.count, usable.length,
+    'every usable row is past the bound');
+  assert.equal(far.beyond.count, usable.filter((r) => r.wait === 0).length,
+    'only rooms free right now are named free');
   assert.equal(far.beyond.nearest.walk, 71);
   // The screenshot named Pomerene Hall. 8 rooms tie at exactly 71 minutes,
   // across Pomerene Hall and Jennings Hall, and `nearest` keeps the first one
@@ -2079,7 +2080,7 @@ test('shape holds the committed index to a walk you would actually make', () => 
     if (r.wait === 0) continue;
     assert.notEqual(r.id, far.beyond.nearest.id, 'the named room is not free');
   }
-  assert.equal(far.beyond.waiting.count, 116);
+  assert.equal(far.beyond.waiting.count, usable.filter((r) => r.wait > 0).length);
 });
 
 test('a rest-of-day ask is named, not priced, in the strip too', () => {

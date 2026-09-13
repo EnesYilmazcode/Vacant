@@ -6,10 +6,11 @@
 //         node scripts/fetch-room-events.mjs --week 09/28/2026
 //         node scripts/fetch-room-events.mjs --rooms EC0322,CZ0160,AP0269
 //         node scripts/fetch-room-events.mjs --dry-run
+//         node scripts/fetch-room-events.mjs --week 09/28/2026 --from-cache
 //
 // Vacant's own harvest knows about CLASSES. It does not know about the two other
 // things that put a person in a room: registered events (MTG, TOUR, INFO, WRKS,
-// SMNR, RCPT, INTV, FAIR) and Registrar room blocks. Measured on the week of
+// SMNR, RCPT, INTV, FAIR, DISC) and Registrar room blocks. Measured on the week of
 // 08/31/2026, 323 of
 // 327 events and 343 of 347 block cells land in a window Vacant currently calls
 // entirely free, and blocks alone cover 10.7% of every weeknight 5-10pm free
@@ -28,7 +29,7 @@
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { gzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -68,7 +69,8 @@ const MAX_NO_GRID = 5;
 // it may be a new kind of hold whose occupancy meaning has not been settled.
 // RCPT, INTV and FAIR first appeared in the 09/07/2026 sweep and are ordinary
 // registered reservations (reception, interview and fair), so they are busy.
-const EVENT_TYPES = new Set(['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR', 'RCPT', 'INTV', 'FAIR']);
+// DISC appeared in the 09/14/2026 sweep with the same nine-digit event ids.
+const EVENT_TYPES = new Set(['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR', 'RCPT', 'INTV', 'FAIR', 'DISC']);
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const COMBINED_BG = 'rgb(222,184,135)';
@@ -567,17 +569,22 @@ function arg(name, fallback = null) {
   return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
-// The matrix wants the MONDAY of the week. Any other date renders a different
-// seven days than the caller thinks it asked for.
-function defaultWeek() {
-  const d = new Date();
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+// The matrix wants a Monday. The Sunday harvest prepares the week that starts
+// tomorrow; asking for the current week's Monday expires the overlay that night.
+// UTC matches the Actions runner and keeps the choice independent of a laptop's
+// timezone. --week still permits an explicit historical or future sweep.
+export function defaultWeek(now = new Date()) {
+  const d = new Date(now);
+  const day = d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() + (day === 0 ? 1 : 1 - day));
   const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`;
+  return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}/${d.getUTCFullYear()}`;
 }
 
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
+  const fromCache = process.argv.includes('--from-cache');
+  if (fromCache && !arg('week')) die('--from-cache requires an explicit --week.');
   const week = arg('week', defaultWeek());
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(week)) die(`--week wants MM/DD/YYYY, got "${week}"`);
   const monday = new Date(`${week.slice(6)}-${week.slice(0, 2)}-${week.slice(3, 5)}T12:00:00`);
@@ -603,7 +610,7 @@ async function main() {
 
   console.log(`term ${index.term}  week ${week}  ${rooms.length} rooms${partial ? ' (subset)' : ''}`);
   const started = Date.now();
-  let hidden = await openSession();
+  let hidden = fromCache ? null : await openSession();
 
   const out = {};
   const invalid = [];
@@ -616,23 +623,29 @@ async function main() {
   for (let i = 0; i < rooms.length; i++) {
     const fid = rooms[i];
     let html = null;
-    for (let attempt = 0; attempt <= RETRIES; attempt++) {
-      try {
-        html = await fetchRoom(hidden, fid, week);
-        if (looksLikeSignon(html)) throw new Error('session dropped to the signon page');
-        break;
-      } catch (err) {
-        if (attempt === RETRIES) die(`${fid}: ${err.message}`);
-        console.warn(`  warn  ${fid}: ${err.message}, retrying`);
-        await sleep(1000 * 2 ** attempt);
-        // A dropped session poisons every later POST, so reopen rather than
-        // replay a stale ICStateNum at a server that has forgotten us.
-        if (attempt >= 1) hidden = await openSession();
+    if (fromCache) {
+      const cachePath = join(cacheDir, `${cacheName(fid)}.html.gz`);
+      if (!existsSync(cachePath)) die(`missing cached Room Matrix page for ${fid}.`);
+      html = gunzipSync(await readFile(cachePath)).toString('utf8');
+    } else {
+      for (let attempt = 0; attempt <= RETRIES; attempt++) {
+        try {
+          html = await fetchRoom(hidden, fid, week);
+          if (looksLikeSignon(html)) throw new Error('session dropped to the signon page');
+          break;
+        } catch (err) {
+          if (attempt === RETRIES) die(`${fid}: ${err.message}`);
+          console.warn(`  warn  ${fid}: ${err.message}, retrying`);
+          await sleep(1000 * 2 ** attempt);
+          // A dropped session poisons every later POST, so reopen rather than
+          // replay a stale ICStateNum at a server that has forgotten us.
+          if (attempt >= 1) hidden = await openSession();
+        }
       }
     }
     // The next POST needs THIS response's hidden set: ICStateNum advances per
     // response and PeopleSoft rejects a replayed one.
-    hidden = parseHidden(html);
+    if (!fromCache) hidden = parseHidden(html);
 
     if (isInvalid(html)) {
       invalid.push(fid);
@@ -643,7 +656,7 @@ async function main() {
             `over the ${MAX_INVALID} bound.`,
         );
       }
-      if (!dryRun) {
+      if (!dryRun && !fromCache) {
         await writeAtomic(join(cacheDir, `${cacheName(fid)}.invalid.html.gz`), gzipSync(html));
       }
       continue;
@@ -668,14 +681,14 @@ async function main() {
     out[fid] = parsed.occ;
 
     // Gzipped: 425 responses is ~26 MB of HTML and this box runs at 97% full.
-    if (!dryRun) await writeAtomic(join(cacheDir, `${cacheName(fid)}.html.gz`), gzipSync(html));
+    if (!dryRun && !fromCache) await writeAtomic(join(cacheDir, `${cacheName(fid)}.html.gz`), gzipSync(html));
 
     if ((i + 1) % 50 === 0 || i + 1 === rooms.length) {
       console.log(
         `  ${i + 1}/${rooms.length}  ${((Date.now() - started) / 1000).toFixed(0)}s  ${requests} requests`,
       );
     }
-    if (i + 1 < rooms.length) await sleep(DELAY_MS);
+    if (!fromCache && i + 1 < rooms.length) await sleep(DELAY_MS);
   }
 
   const wallClock = Number(((Date.now() - started) / 1000).toFixed(1));
@@ -753,6 +766,7 @@ async function main() {
       generated: localDate(),
       source: MATRIX_URL,
       requests,
+      cacheReplay: fromCache,
       wallClockSeconds: wallClock,
       counts,
       partial,
@@ -764,15 +778,15 @@ async function main() {
         'had no non-class occupancy. Class cells are counted in counts and dropped; ' +
         'Vacant harvests those already.',
       labels:
-        'The Registrar names each booking in free text and 23 of the 189 distinct labels on ' +
-        'this week name a person. That text is discarded at the parse boundary and is not in ' +
-        'this file. Only `type` survives: MTG, TOUR, INFO, WRKS, SMNR, RCPT, INTV or FAIR ' +
+        'The Registrar names each booking in free text; a measured 2026-08-31 week had ' +
+        '23 person-naming labels among 189 distinct labels. That text is discarded at the parse boundary and is not in ' +
+        'this file. Only `type` survives: MTG, TOUR, INFO, WRKS, SMNR, RCPT, INTV, FAIR or DISC ' +
         'for an event, null for ' +
         'a block.',
       windowNote:
         'The grid was queried 7:00AM-11:00PM. Times are read from the booking own text, not from ' +
-        'the grid rows, so a booking that starts before 7am keeps its real start (KN0250 is 6:30AM ' +
-        'here). What the window decides is which bookings the page renders at all: one lying ' +
+        'the grid rows, so a booking that starts before 7am keeps its real start (KN0250 was 6:30AM ' +
+        'in the 2026-08-31 sweep). What the window decides is which bookings the page renders at all: one lying ' +
         'entirely outside it is not shown and so is not in this file. The page defaults to ' +
         '8:00AM-10:00PM, which would have hidden the evening bookings this file exists for.',
       eventIdNote:

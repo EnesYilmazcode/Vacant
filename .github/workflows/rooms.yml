@@ -142,11 +142,20 @@ jobs:
       - name: Fetch registered non-class occupancy
         run: node scripts/fetch-room-events.mjs
 
-      # !cancelled() is success or failure, so a term that cleared its guards
-      # still lands when a later step goes red. Nothing half-written can be
-      # picked up here: both scripts write to a temp file and rename.
+      # The Sunday run must prepare Monday-Sunday ahead, not re-sweep the week
+      # that ends tonight. A current.json with an expired event file is still a
+      # successful download, so check its dates and room coverage before push.
+      - name: Check next week's event coverage
+        run: node scripts/check-event-coverage.mjs
+
+      # Bot pushes do not trigger the push test workflow. The weekly data is
+      # part of what the suite reads, so the checks belong in this job too.
+      - name: Test the refreshed data
+        run: node --test
+
+      # A failed coverage check or test must not publish a newer class index
+      # beside an old Room Matrix snapshot.
       - name: Commit if anything changed
-        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           # git add is fatal on a pathspec matching nothing, which this hits the

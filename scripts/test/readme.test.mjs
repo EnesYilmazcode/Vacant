@@ -142,14 +142,17 @@ test('the photographed room screen agrees with its own list row', () => {
 // The README said 70 KB of shell and 63 KB of schedule for long enough that the
 // real figures had grown past them by 72 KB and 27 KB. sw.js carries the byte
 // counts in its header and scripts/test/sw.test.mjs holds THOSE to the files it
-// caches, so the only link missing was this one.
-test('the README ships the sizes sw.js measured', () => {
+// caches. The shell stays tight, while the schedule is a rounded weekly figure.
+test('the README shell size is exact and its schedule size stays representative', () => {
   const sw = readFileSync(join(ROOT, 'sw.js'), 'utf8');
   const said = sw.match(/Shell ([0-9,]+) bytes, data ([0-9,]+)/);
   assert.ok(said, 'no measured shell and data figures in the sw.js header');
   const kb = (n) => Math.round(Number(n.replace(/,/g, '')) / 1024);
-  const phrase = `${kb(said[1])} KB of shell and ${kb(said[2])} KB of schedule`;
-  assert.ok(readme.includes(phrase), `the README does not say "${phrase}"`);
+  assert.ok(readme.includes(`${kb(said[1])} KB of shell`));
+  const schedule = Number((readme.match(/about (\d+) KB of schedule/) ?? [])[1]);
+  assert.ok(schedule > 0, 'the README needs a rounded schedule size');
+  assert.ok(Math.abs(schedule - kb(said[2])) / kb(said[2]) < 0.15,
+    `the README says about ${schedule} KB, dated measurement says ${kb(said[2])} KB`);
 });
 
 test('the README counts are the counts in the shipped index', () => {

@@ -323,21 +323,21 @@ function gzipped(file) {
 test('the gzip figures in the header are the sizes of the files it caches', () => {
   // This is the comment that corrected an earlier pair of guessed numbers, and
   // it then went stale by 758 bytes across three edits to the shell. GNU gzip
-  // and node's zlib disagree by about a tenth of a percent at the same level, so
-  // the check is one percent wide: tight enough to catch a figure that stopped
-  // describing the files, loose enough to survive the two tools.
+  // and node's zlib disagree by about a tenth of a percent at the same level.
+  // Shell changes are deliberate, so its check stays one percent wide. Weekly
+  // event and room counts move, so the dated data figure has a 15% range.
   // `sw` has the comments stripped, so the claim is read from the raw file.
   const claimed = source.match(/Shell ([0-9,]+) bytes,[^0-9]*([0-9,]+)/);
   assert.ok(claimed, 'no measured shell and data figures in the sw.js header');
-  const near = (label, said, real) => {
+  const near = (label, said, real, tolerance) => {
     const off = Math.abs(said - real) / real;
-    assert.ok(off < 0.01, `${label} says ${said} and the files are ${real}, ${(off * 100).toFixed(1)}% out`);
+    assert.ok(off < tolerance, `${label} says ${said} and the files are ${real}, ${(off * 100).toFixed(1)}% out`);
   };
 
   const shell = shellAssets()
     .filter((asset) => asset !== SCOPE)
     .reduce((total, asset) => total + gzipped(asset.slice(SCOPE.length)), 0);
-  near('shell', Number(claimed[1].replace(/,/g, '')), shell);
+  near('shell', Number(claimed[1].replace(/,/g, '')), shell, 0.01);
 
   const current = JSON.parse(readFileSync(join(ROOT, 'data', 'current.json'), 'utf8'));
   const at = sw.indexOf('const WARM_ALWAYS = [');
@@ -351,5 +351,5 @@ test('the gzip figures in the header are the sizes of the files it caches', () =
     (total, file) => total + gzipped(file),
     0,
   );
-  near('data', Number(claimed[2].replace(/,/g, '')), data);
+  near('data', Number(claimed[2].replace(/,/g, '')), data, 0.15);
 });

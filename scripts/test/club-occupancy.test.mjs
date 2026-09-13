@@ -40,7 +40,7 @@ test('Room Matrix weekdays become dates within the snapshot week', () => {
 });
 
 test('all observed registered-event codes become occupancy', () => {
-  const types = ['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR', 'RCPT', 'INTV', 'FAIR'];
+  const types = ['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR', 'RCPT', 'INTV', 'FAIR', 'DISC'];
   const records = types.map((type, i) => event({
     type,
     eventId: String(657000 + i).padStart(9, '0'),

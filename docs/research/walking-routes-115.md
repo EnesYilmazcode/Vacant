@@ -28,7 +28,7 @@ results shows why route geometry and walking pace must be chosen separately.
 
 Google's consumer map told a milder and partly contradictory story: its rounded
 times were only 0.22 minutes longer than Vacant on average, with 1.22 minutes mean
-absolute error and 13 of 90 pairwise inversions. This is not a validation of
+absolute error and 13 inversions among 75 strictly ordered pairs. This is not a validation of
 Vacant. The near-zero average hides six-origin results ranging from 1.33 minutes
 shorter around Ohio Stadium to 2.33 minutes longer around Prior Hall. The website
 also rounds durations and appears to snap some coordinates to named places or

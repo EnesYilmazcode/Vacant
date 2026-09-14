@@ -1200,31 +1200,18 @@ function paintList() {
       syncPaneTouch();
       return;
     }
-    const next = state.soonest;
     // Rooms are free, they are just too far to walk to, which is a different
     // answer from "nothing is open" and one a shorter ask cannot fix. This is
     // the one screen that spends the word free on a count, so free here is
     // wait === 0 and the rooms that open later get their own sentence: at
     // 2026-09-15 09:00 from 40.0175, -83.013 it called Schoenbaum Hall the
     // nearest free room 115 minutes before the room opened.
-    const far = state.bounds?.beyond;
-    const later = far?.waiting;
+    const empty = emptyAnswer();
     list.innerHTML =
       note +
       (filtered ? asked() : '') +
-      `<h2 class="msg" id="list-h" tabindex="-1">${far?.count || later?.count ? 'Nothing close enough.' : 'Nothing open right now.'}</h2>` +
-      (far?.count
-        ? `<p class="empty">Nothing within a ${MAX_WALK} minute walk is free.
-           <b>${far.count} room${far.count === 1 ? '' : 's'}</b> ${far.count === 1 ? 'is' : 'are'} free further out, the nearest a
-           <b>${far.nearest.walk} minute walk</b> to ${esc(shortName(far.nearest.name))}.</p>`
-        : later?.count
-          ? `<p class="empty">Nothing within a ${MAX_WALK} minute walk is free.
-             <b>${later.count} room${later.count === 1 ? '' : 's'}</b> further out open${later.count === 1 ? 's' : ''} later, the nearest a
-             <b>${later.nearest.walk} minute walk</b> to ${esc(shortName(later.nearest.name))}, from <b>${clock(later.nearest.availableAt)}</b>.</p>`
-          : next
-            ? `<p class="empty">Every classroom building near you is closed.
-               The first one open is <b>${esc(next.name ?? next.id)}</b> at <b>${clock(next.availableAt)}</b>.</p>`
-            : `<p class="empty">No room is free for ${dur(state.needed)} today. Try a shorter time.</p>`) +
+      `<h2 class="msg" id="list-h" tabindex="-1">${empty.heading}</h2>` +
+      `<p class="empty">${empty.body}</p>` +
       FOOT_ACTS;
     wireFootActs(list);
     focusHeading($('list-h'));
@@ -1319,6 +1306,42 @@ function paintList() {
   wireFootActs(list);
   markRows();
   syncPaneTouch();
+}
+
+// One empty answer for the list and the card. Repeating these branches made the
+// list tell the truth while a late-weekend card called zero rows an exhausted
+// deck and offered to show all zero of them.
+function emptyAnswer() {
+  const next = state.soonest;
+  const far = state.bounds?.beyond;
+  const later = far?.waiting;
+  if (far?.count) {
+    return {
+      heading: 'Nothing close enough.',
+      body: `Nothing within a ${MAX_WALK} minute walk is free.
+        <b>${far.count} room${far.count === 1 ? '' : 's'}</b> ${far.count === 1 ? 'is' : 'are'} free further out, the nearest a
+        <b>${far.nearest.walk} minute walk</b> to ${esc(shortName(far.nearest.name))}.`,
+    };
+  }
+  if (later?.count) {
+    return {
+      heading: 'Nothing close enough.',
+      body: `Nothing within a ${MAX_WALK} minute walk is free.
+        <b>${later.count} room${later.count === 1 ? '' : 's'}</b> further out open${later.count === 1 ? 's' : ''} later, the nearest a
+        <b>${later.nearest.walk} minute walk</b> to ${esc(shortName(later.nearest.name))}, from <b>${clock(later.nearest.availableAt)}</b>.`,
+    };
+  }
+  if (next) {
+    return {
+      heading: 'Nothing open right now.',
+      body: `Every classroom building near you is closed.
+        The first one open is <b>${esc(next.name ?? next.id)}</b> at <b>${clock(next.availableAt)}</b>.`,
+    };
+  }
+  return {
+    heading: 'Nothing open right now.',
+    body: `No room is free for ${dur(state.needed)} today. Try a shorter time.`,
+  };
 }
 
 function wireFootActs(root) {
@@ -1496,6 +1519,18 @@ function paintCard() {
       card.classList.add('done');
       $('c-clear-needs').onclick = clearNeeds;
       if (!noMatchingRoom) $('c-list').onclick = () => openList();
+      focusHeading($('card-h'));
+      syncPaneTouch();
+      return;
+    }
+    if (seen === 0) {
+      const empty = emptyAnswer();
+      card.innerHTML = `
+        <h2 class="msg" id="card-h" tabindex="-1">${empty.heading}</h2>
+        <p class="c-end">${empty.body}</p>
+        <button type="button" class="c-more" id="c-list">See the details</button>`;
+      card.classList.add('done');
+      $('c-list').onclick = () => openList();
       focusHeading($('card-h'));
       syncPaneTouch();
       return;

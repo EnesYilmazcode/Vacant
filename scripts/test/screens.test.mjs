@@ -1608,6 +1608,15 @@ test('the deck is ranked before the screen that shows it', () => {
   );
 });
 
+test('a zero-room answer is not rendered as an exhausted card deck', () => {
+  const paint = bodyOf('paintCard');
+  const empty = paint.indexOf('if (seen === 0)');
+  const exhausted = paint.indexOf('That is all of them.');
+  assert.ok(empty >= 0 && empty < exhausted, 'the zero-answer branch must run before the exhausted-deck copy');
+  assert.match(paint.slice(empty, exhausted), /emptyAnswer\(\)/);
+  assert.match(bodyOf('emptyAnswer'), /No room is free for.*Try a shorter time/s);
+});
+
 test('a full photo cache does not throw away a photograph that arrived', () => {
   // 306 photographs at 39 KB is 11.7 MB of a quota nothing here caps, and a
   // QuotaExceededError inside the try discarded a response the phone was
@@ -2293,9 +2302,7 @@ test('the off-campus gate is a walk, and the file says which buildings sit outsi
 // rooms are free further out, the nearest a 25 minute walk to Schoenbaum Hall",
 // and Schoenbaum Hall did not open until 10:55am. 51 of the 148 were not free.
 test('nothing the empty screen calls free is a room that has not opened yet', () => {
-  const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
-  const empty = src.slice(src.indexOf('if (!state.results.length) {'), src.indexOf('const coarse ='));
-  assert.ok(empty.length > 0, 'the empty branch of paintList moved');
+  const empty = bodyOf('emptyAnswer');
 
   // The count and the room in the sentence with "free" in it both come off
   // beyond, which shape() now holds to wait === 0.
@@ -2306,7 +2313,7 @@ test('nothing the empty screen calls free is a room that has not opened yet', ()
   assert.match(empty, /clock\(later\.nearest\.availableAt\)/);
   // The heading follows both, or a screen with only waiting rooms behind it
   // reads "Nothing open right now" over rooms that are open, just not yet.
-  assert.match(empty, /far\?\.count \|\| later\?\.count \? 'Nothing close enough\.'/);
+  assert.equal((empty.match(/heading: 'Nothing close enough\.'/g) ?? []).length, 2);
 
   // The live region stops announcing a count over a screen that has none. It
   // used to say "297 rooms free, 0 shown" under "Nothing close enough."
@@ -2315,7 +2322,7 @@ test('nothing the empty screen calls free is a room that has not opened yet', ()
   // "print and speech count free by one rule". What is left here is the half
   // this test is about: that the sentence is the free count and not state.total,
   // and that a screen with no rows does not get one at all.
-  const spoken = src.slice(src.indexOf('  const free = state.tally'), src.indexOf('// A name over 24 characters'));
+  const spoken = APP.slice(APP.indexOf('  const free = state.tally'), APP.indexOf('// A name over 24 characters'));
   assert.match(spoken, /const free = state\.tally\.free;/, 'the spoken count is not the free count');
   assert.match(spoken, /state\.results\.length\s*\?/, 'a screen with no rows still announces a count');
 });

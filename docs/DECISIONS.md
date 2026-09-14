@@ -3969,3 +3969,39 @@ The 2026-09-14 sweep exposed `DISC` with the Room Matrix's nine-digit registered
 event ID. It is accepted as occupied time alongside the other event codes;
 its free-text label is still dropped at the parse boundary. A new code still
 stops publication until its occupancy meaning and output privacy are checked.
+
+## 2026-09-13  Optional room needs use the published Registrar characteristics
+
+**Decided.** The duration question can be narrowed by minimum seats and eight
+plain-language furniture or room characteristics. All checked needs must match.
+The filter runs before proximity ranking and before the fallback ladder, so the
+ladder can relax time and distance without silently dropping a room need.
+
+The existing `room-features.json` has Registrar codes for 327 of the 425 indexed
+Autumn 2026 rooms. The index build joins those compact codes into each room;
+the full two-source characteristics file is not downloaded by the phone. A room
+without published characteristics does not satisfy a checked characteristic,
+and a room without a known capacity does not satisfy minimum seats. The
+question explains the partial coverage and offers a direct way to clear the
+requirements when nothing matches.
+
+The join requires the feature file's term to match the index term. When a new
+term arrives before its characteristics do, those requirements stay unavailable
+instead of reusing last term's furniture claims. No extra network requests are
+needed for a weekly index rebuild.
+
+## 2026-09-13  Weekend daytime still offers room search
+
+**Decided.** The same duration and optional Room needs search is available on
+Saturday and Sunday from 7am to 11pm, even though the weekly class mask marks
+those days as unscheduled. An ordinary weekend is still inside the term and the
+ranked verdict must allow it; exams, published campus closures, broken indexes
+and dates outside the term continue to refuse. The ranking still applies
+published building hours and registered event coverage, so a missing weekend
+class does not turn a locked or booked room into a recommendation.
+
+The question and result screens say that most weekend rooms have no listed
+class but access and other use still matter. Outside the weekend search window,
+the gate now names the next actual search window, which can be Saturday or
+Sunday morning instead of Monday. The existing nearest-buildings view remains
+available outside search hours.

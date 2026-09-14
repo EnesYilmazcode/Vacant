@@ -10,8 +10,20 @@ it. Bin it and it hands you the next one. Take it and it shows you the way.
 
 | | |
 | :--: | :--: |
-| <img src="docs/media/ask.webp" alt="The opening screen: the word Vacant over a dark, blurred campus map, and four buttons reading 30 min, 1 hour, 2 hours and rest of day, with 2 hours selected" width="270"> | <img src="docs/media/card.webp" alt="One card, filling the screen: a photograph of Cunz Hall 160, an empty classroom with rows of tables and yellow chairs, a clock and a door at the far end. A narrow frosted plate floats over the ceiling reading Cunz Hall 160, with no class, 4 min and 42 seats on the line under it. A bin and a tick sit on the bottom corners. Nothing else is on the screen." width="270"> |
+| <img src="docs/media/ask.webp" alt="The opening screen: Vacant over a dark campus map, buttons for 30 min, 1 hour, 2 hours and rest of day, and a collapsed optional Room needs control" width="270"> | <img src="docs/media/card.webp" alt="A card showing Dulles Hall 012 over a photograph of blue classroom chairs and chalkboards. The plate reads free till 1:50pm, 4 min and 25 seats; a bin and tick sit near the bottom." width="270"> |
 | One question. | One answer. |
+
+The opening screen has an optional **Room needs** disclosure. Set a minimum seat
+count or require Registrar-published furniture details such as whiteboards and
+movable tables. Every selected feature must be known for a room to match; rooms
+with unpublished details are left out of a feature-filtered answer. The
+unfiltered one-tap question stays the default.
+
+On weekends, the same room search and Room needs controls are available from
+7am to 11pm even though few classes meet. Vacant still excludes buildings the
+Registrar publishes as closed and checks registered events when that week's
+snapshot is available. An empty class timetable does not mean every door is
+open; the app says when event coverage is missing.
 
 ## Yours for, not free until
 
@@ -44,7 +56,7 @@ you commit to it.
 
 | | |
 | :--: | :--: |
-| <img src="docs/media/swipe-next.webp" alt="The same card dragged left and held. The photograph of Cunz Hall 160 has slid off the left edge and tilted, and a grey NEXT badge has appeared on the corner still on screen." width="270"> | <img src="docs/media/swipe-go.webp" alt="The same card dragged right and held. The photograph has slid right and tilted the other way, and a red GO badge has appeared on the corner still on screen, over the plate reading Cunz Hall 160." width="270"> |
+| <img src="docs/media/swipe-next.webp" alt="The Dulles Hall 012 card dragged left and held. The photograph has slid off the left edge and tilted, and a grey NEXT badge has appeared on the corner still on screen." width="270"> | <img src="docs/media/swipe-go.webp" alt="The Dulles Hall 012 card dragged right and held. The photograph has slid right and tilted the other way, and a red GO badge has appeared on the corner still on screen." width="270"> |
 | Left: the next room, nearest first. | Right: this one, and the way there. |
 
 The buttons under the card do the same two things, and so do the left and right
@@ -71,7 +83,7 @@ holds the choices a screen with one room on it has nowhere else to put.
 
 | |
 | :--: |
-| <img src="docs/media/menu.webp" alt="The same photograph of Cunz Hall 160, darkened, with a dark rounded panel open under three lines at the top left. It reads Back, See all rooms, Pick your building, Check again, What Vacant knows." width="300"> |
+| <img src="docs/media/menu.webp" alt="The photograph of Dulles Hall 012, darkened, with a dark rounded panel open under three lines at the top left. It reads Back, See all rooms, Pick your building, Check again, What Vacant knows." width="300"> |
 | Back first, because that is the one a screen without an arrow is missing. |
 
 It is a disclosure and not a `role="menu"`: that role promises the arrow keys
@@ -88,7 +100,7 @@ the plate to it, which is the cheapest change of mind in the app.
 
 | |
 | :--: |
-| <img src="docs/media/way.webp" alt="The campus map at night filling the top of the screen, with Cunz Hall's footprint outlined in red, a dashed line running from the blue dot to it and an arrowhead pointing into the building. A frosted plate near the top reads Cunz Hall 160, with no class, 4 min and 42 seats under it. Below the map, the ranked list with Cunz Hall 160 lit in red at the top of it, then Dulles Hall 012, PAES A111 and Journalism Building 106." width="300"> |
+| <img src="docs/media/way.webp" alt="The campus map at night filling the top of the screen, with Dulles Hall's footprint outlined in red, a dashed line running from the blue dot to it and an arrowhead pointing into the building. A frosted plate near the top reads Dulles Hall 012, free till 1:50pm, 4 min and 25 seats. Below the map, the ranked list begins with Dulles Hall 012, PAES A111 and Journalism Building 106." width="300"> |
 | The answer, the way to it, and the runners-up. |
 
 This screen has no back arrow either. The menu's **Back** leaves it, and so does
@@ -103,12 +115,12 @@ would have shown you, one per building, nearest first.
 
 | |
 | :--: |
-| <img src="docs/media/list.webp" alt="The ranked list, filling the screen with no map behind it. One room per building, under a line reading &quot;You asked for 2h00.&quot; Cunz Hall 160, 4 min walk, no class rest of today, 42 seats. Dulles Hall 012, 4 min, no class rest of today, 25 seats. Seven more below them." width="300"> |
+| <img src="docs/media/list.webp" alt="The ranked list, filling the screen with no map behind it. Under a line reading &quot;You asked for 2h00.&quot; Dulles Hall 012 is 4 min away and free till 1:50pm with 25 seats. PAES A111 and Journalism Building 106 follow, with more rooms below." width="300"> |
 | Behind the end of the deck, for when you would rather scan. |
 
 | | |
 | :--: | :--: |
-| <img src="docs/media/room.webp" alt="The same list after one tap, dropped to make room for the map. Cunz Hall 160's building footprint is outlined in red, a dashed line runs from the blue dot to it with an arrowhead pointing into the building, and its row is lit in the list below." width="270"> | <img src="docs/media/timeline.webp" alt="The room screen for Cunz Hall 160: no class in here for the rest of today, yours for 8h26 once you get there, 4 min walk, 42 seats, classroom, then Wednesday drawn as a calendar from 6 AM with two red blocks, KNSISM 3208 from 8:00am to 8:55am and KNSISM 3550 from 9:10am to 10:05am, and everything else empty" width="270"> |
+| <img src="docs/media/room.webp" alt="The same list after one tap, dropped to make room for the map. Dulles Hall 012's building footprint is outlined in red, a dashed line runs from the blue dot to it with an arrowhead pointing into the building, and its row is lit in the list below." width="270"> | <img src="docs/media/timeline.webp" alt="The room screen for Dulles Hall 012: free till 1:50pm, yours for 3h26 once you get there, 4 min walk, 25 seats, movable tablet-arm chairs and chalkboards. Wednesday is drawn as a calendar with one red In use block from 2:00pm to 4:00pm." width="270"> |
 | Take a room and the map comes up pointing at it. | Tap it again for its whole day, doors included. |
 
 ## The picture is the room
@@ -173,7 +185,7 @@ sits at the bottom, then **Add to Home Screen**. iOS 26 defaults to that Compact
 layout, which is why the app offers you both. On Android, Chrome has **Install
 app** in its menu.
 
-Installed, the whole app is 147 KB of shell and about 90 KB of schedule, gzipped, and
+Installed, the whole app is 152 KB of shell and about 90 KB of schedule, gzipped, and
 none of it is fetched again to answer a question. Turn the network off, open it,
 and it still ranks rooms. That matters because the moment you want it most is the
 moment you are in a basement with one bar.

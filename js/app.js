@@ -30,6 +30,15 @@ import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, qu
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
 import { mapsHref } from './install.js';
 import {
+  ROOM_FEATURES,
+  describeRoomPreferences,
+  filterRoomsByPreferences,
+  hasRoomPreferences,
+  normalizeRoomPreferences,
+  roomFeatureCoverage,
+  roomFeatureLabels,
+} from './preferences.js';
+import {
   busyDayOf,
   clock,
   clockIsPinned,
@@ -39,7 +48,7 @@ import {
   createWatch,
   followAction,
   followFix,
-  inScheduledHours,
+  roomSearchOn,
   inTermOn,
   isoDate,
   nextOpening,
@@ -182,6 +191,10 @@ const state = {
   originIsGuess: true,
   duration: safeGet(KEY_DURATION) ?? '30',
   needed: 30,
+  preferences: normalizeRoomPreferences(),
+  preferencesDirty: false,
+  preferenceStats: { matching: 0, total: 0 },
+  featureCoverage: { known: 0, total: 0 },
   results: [],
   // How deep into the ranking the card screen is. Reset by answer(), because a
   // re-rank makes "the third one" a different room.
@@ -215,6 +228,8 @@ const state = {
   settled: false,
   ready: false,
   rankable: false,
+  // Historical name for when the room search is offered; weekend daytime now
+  // counts even though few classes meet then.
   scheduled: true,
   situation: null,
   groups: null,
@@ -247,6 +262,79 @@ function safeDel(k) {
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`);
+
+function needsFromControls() {
+  return normalizeRoomPreferences({
+    minSeats: $('need-seats').value,
+    features: [...document.querySelectorAll('#need-features [data-feature]:checked')]
+      .map((input) => input.dataset.feature),
+  });
+}
+
+function paintNeedsSummary() {
+  const count = describeRoomPreferences(state.preferences).length;
+  $('needs-state').textContent = count ? `${count} selected` : 'optional';
+  $('needs-clear').hidden = !hasRoomPreferences(state.preferences);
+}
+
+function syncNeedsControls() {
+  $('need-seats').value = state.preferences.minSeats || '';
+  for (const input of document.querySelectorAll('#need-features [data-feature]')) {
+    input.checked = state.preferences.features.includes(input.dataset.feature);
+  }
+  paintNeedsSummary();
+}
+
+function changeNeeds() {
+  state.preferences = needsFromControls();
+  state.preferencesDirty = true;
+  paintNeedsSummary();
+}
+
+function clearNeeds() {
+  state.preferences = normalizeRoomPreferences();
+  state.preferencesDirty = true;
+  syncNeedsControls();
+  if (state.ready && ['card', 'list'].includes(state.screen)) answer();
+}
+
+function paintNeedsAvailability() {
+  const rooms = Object.values(state.rooms?.rooms ?? {});
+  state.featureCoverage = roomFeatureCoverage(rooms);
+  $('need-seats').disabled = !state.ready;
+  for (const input of document.querySelectorAll('#need-features [data-feature]')) {
+    input.disabled = !state.ready || state.featureCoverage.known === 0;
+  }
+
+  if (!state.ready) {
+    $('needs-note').textContent = 'Room details are loading.';
+  } else if (state.featureCoverage.known === 0) {
+    $('needs-note').textContent = 'Furniture details are not loaded yet. Minimum seats works now.';
+  } else if (state.featureCoverage.known < state.featureCoverage.total) {
+    $('needs-note').textContent = `Furniture details are published for ${state.featureCoverage.known} of ${state.featureCoverage.total} rooms. Rooms with unknown details will not match.`;
+  } else {
+    $('needs-note').textContent = 'Every checked feature is required.';
+  }
+}
+
+function attachNeeds() {
+  $('need-features').innerHTML = ROOM_FEATURES.map((feature) => `
+    <label><input type="checkbox" data-feature="${esc(feature.id)}" disabled><span>${esc(feature.label)}</span></label>`)
+    .join('');
+  $('need-seats').oninput = changeNeeds;
+  // Canonicalise a pasted exponent or a fractional seat count once editing is
+  // done, so the number in the control is the number the result screen names.
+  $('need-seats').onchange = () => {
+    changeNeeds();
+    syncNeedsControls();
+  };
+  for (const input of document.querySelectorAll('#need-features [data-feature]')) {
+    input.onchange = changeNeeds;
+  }
+  $('needs-clear').onclick = clearNeeds;
+  syncNeedsControls();
+  paintNeedsAvailability();
+}
 
 const say = (text) => {
   $('say').textContent = text;
@@ -796,7 +884,10 @@ function answer() {
   const minutes = nowMinutes(now);
   state.day = now.getDay();
   state.needed = neededMinutes(now);
-  const rooms = Object.entries(state.rooms.rooms).map(([id, r]) => ({ id, ...r }));
+  const allRooms = Object.entries(state.rooms.rooms).map(([id, r]) => ({ id, ...r }));
+  const rooms = filterRoomsByPreferences(allRooms, state.preferences);
+  state.preferencesDirty = false;
+  state.preferenceStats = { matching: rooms.length, total: allRooms.length };
   const date = isoDate(now);
   const ask = {
     origin: state.origin,
@@ -876,6 +967,11 @@ function answer() {
   // the sheet stayed at 324 over a canvas with nothing left on it, which is the
   // band this screen stopped leaving.
   if (state.screen !== 'ask') sheetHeight();
+  // paintList() runs before the new ladder result is ready. Clear the previous
+  // answer first, otherwise broadening the room requirements can leave its old
+  // fallback warning above a new exact answer.
+  state.rung = null;
+  state.relaxed = false;
   // Rows first, then the sweep that only the strip needs.
   //
   // The ladder is a SECOND full sweep of the index. Warm it is about a
@@ -1044,8 +1140,11 @@ const caveatHtml = (coverage) => `<p class="foot">${esc(coverageCaveat(coverage)
 // The empty screen above does not get this line. It is not a silent list: it
 // opens with an h2 that states the answer in words, and its last branch already
 // prints dur(state.needed) in a sentence of its own.
-const asked = () =>
-  `<p class="asked">You asked for <b>${state.duration === 'day' ? 'the rest of the day' : dur(state.needed)}</b>.</p>`;
+const asked = () => {
+  const needs = describeRoomPreferences(state.preferences);
+  const withNeeds = needs.length ? ` with <b>${esc(needs.join(', '))}</b>` : '';
+  return `<p class="asked">You asked for <b>${state.duration === 'day' ? 'the rest of the day' : dur(state.needed)}</b>${withNeeds}.</p>`;
+};
 
 // The sentence the ladder's verdict is worth, or null when the answer gave
 // nothing up. The strip and the live region both read it from here, so the two
@@ -1086,30 +1185,33 @@ function paintList() {
   const note = notes();
 
   if (!state.results.length) {
-    const next = state.soonest;
+    const filtered = hasRoomPreferences(state.preferences);
+    if (filtered && state.preferenceStats.matching === 0) {
+      list.innerHTML =
+        note +
+        asked() +
+        '<h2 class="msg" id="list-h" tabindex="-1">No rooms match those needs.</h2>' +
+        `<p class="empty">No room in the current index satisfies every selected requirement.
+          Missing room details do not count as a match.</p>
+         <p class="foot-acts"><button type="button" class="bar-btn" data-act="clear-needs">Clear room needs</button></p>` +
+        FOOT_ACTS;
+      wireFootActs(list);
+      focusHeading($('list-h'));
+      syncPaneTouch();
+      return;
+    }
     // Rooms are free, they are just too far to walk to, which is a different
     // answer from "nothing is open" and one a shorter ask cannot fix. This is
     // the one screen that spends the word free on a count, so free here is
     // wait === 0 and the rooms that open later get their own sentence: at
     // 2026-09-15 09:00 from 40.0175, -83.013 it called Schoenbaum Hall the
     // nearest free room 115 minutes before the room opened.
-    const far = state.bounds?.beyond;
-    const later = far?.waiting;
+    const empty = emptyAnswer();
     list.innerHTML =
       note +
-      `<h2 class="msg" id="list-h" tabindex="-1">${far?.count || later?.count ? 'Nothing close enough.' : 'Nothing open right now.'}</h2>` +
-      (far?.count
-        ? `<p class="empty">Nothing within a ${MAX_WALK} minute walk is free.
-           <b>${far.count} room${far.count === 1 ? '' : 's'}</b> ${far.count === 1 ? 'is' : 'are'} free further out, the nearest a
-           <b>${far.nearest.walk} minute walk</b> to ${esc(shortName(far.nearest.name))}.</p>`
-        : later?.count
-          ? `<p class="empty">Nothing within a ${MAX_WALK} minute walk is free.
-             <b>${later.count} room${later.count === 1 ? '' : 's'}</b> further out open${later.count === 1 ? 's' : ''} later, the nearest a
-             <b>${later.nearest.walk} minute walk</b> to ${esc(shortName(later.nearest.name))}, from <b>${clock(later.nearest.availableAt)}</b>.</p>`
-          : next
-            ? `<p class="empty">Every classroom building near you is closed.
-               The first one open is <b>${esc(next.name ?? next.id)}</b> at <b>${clock(next.availableAt)}</b>.</p>`
-            : `<p class="empty">No room is free for ${dur(state.needed)} today. Try a shorter time.</p>`) +
+      (filtered ? asked() : '') +
+      `<h2 class="msg" id="list-h" tabindex="-1">${empty.heading}</h2>` +
+      `<p class="empty">${empty.body}</p>` +
       FOOT_ACTS;
     wireFootActs(list);
     focusHeading($('list-h'));
@@ -1206,10 +1308,47 @@ function paintList() {
   syncPaneTouch();
 }
 
+// One empty answer for the list and the card. Repeating these branches made the
+// list tell the truth while a late-weekend card called zero rows an exhausted
+// deck and offered to show all zero of them.
+function emptyAnswer() {
+  const next = state.soonest;
+  const far = state.bounds?.beyond;
+  const later = far?.waiting;
+  if (far?.count) {
+    return {
+      heading: 'Nothing close enough.',
+      body: `Nothing within a ${MAX_WALK} minute walk is free.
+        <b>${far.count} room${far.count === 1 ? '' : 's'}</b> ${far.count === 1 ? 'is' : 'are'} free further out, the nearest a
+        <b>${far.nearest.walk} minute walk</b> to ${esc(shortName(far.nearest.name))}.`,
+    };
+  }
+  if (later?.count) {
+    return {
+      heading: 'Nothing close enough.',
+      body: `Nothing within a ${MAX_WALK} minute walk is free.
+        <b>${later.count} room${later.count === 1 ? '' : 's'}</b> further out open${later.count === 1 ? 's' : ''} later, the nearest a
+        <b>${later.nearest.walk} minute walk</b> to ${esc(shortName(later.nearest.name))}, from <b>${clock(later.nearest.availableAt)}</b>.`,
+    };
+  }
+  if (next) {
+    return {
+      heading: 'Nothing open right now.',
+      body: `Every classroom building near you is closed.
+        The first one open is <b>${esc(next.name ?? next.id)}</b> at <b>${clock(next.availableAt)}</b>.`,
+    };
+  }
+  return {
+    heading: 'Nothing open right now.',
+    body: `No room is free for ${dur(state.needed)} today. Try a shorter time.`,
+  };
+}
+
 function wireFootActs(root) {
   for (const el of root.querySelectorAll('[data-act]')) {
     el.onclick = () => {
-      if (el.dataset.act === 'about') openAbout();
+      if (el.dataset.act === 'clear-needs') clearNeeds();
+      else if (el.dataset.act === 'about') openAbout();
       else refresh();
     };
   }
@@ -1367,6 +1506,35 @@ function paintCard() {
 
   if (!r) {
     const seen = state.results.length;
+    if (seen === 0 && hasRoomPreferences(state.preferences)) {
+      const noMatchingRoom = state.preferenceStats.matching === 0;
+      card.innerHTML = `
+        <h2 class="msg" id="card-h" tabindex="-1">${noMatchingRoom
+          ? 'No rooms match those needs.' : 'No matching room is available nearby.'}</h2>
+        <p class="c-end">${noMatchingRoom
+          ? 'No room in the current index satisfies every selected requirement. Missing room details do not count as a match.'
+          : 'Some rooms meet those needs, but none can be shown at this time and place.'}</p>
+        <button type="button" class="c-more" id="c-clear-needs">Clear room needs</button>
+        ${noMatchingRoom ? '' : '<button type="button" class="c-more" id="c-list">See the details</button>'}`;
+      card.classList.add('done');
+      $('c-clear-needs').onclick = clearNeeds;
+      if (!noMatchingRoom) $('c-list').onclick = () => openList();
+      focusHeading($('card-h'));
+      syncPaneTouch();
+      return;
+    }
+    if (seen === 0) {
+      const empty = emptyAnswer();
+      card.innerHTML = `
+        <h2 class="msg" id="card-h" tabindex="-1">${empty.heading}</h2>
+        <p class="c-end">${empty.body}</p>
+        <button type="button" class="c-more" id="c-list">See the details</button>`;
+      card.classList.add('done');
+      $('c-list').onclick = () => openList();
+      focusHeading($('card-h'));
+      syncPaneTouch();
+      return;
+    }
     card.innerHTML = `
       <h2 class="msg" id="card-h" tabindex="-1">That is all of them.</h2>
       <p class="c-end">You went through ${seen} room${seen === 1 ? '' : 's'} within a
@@ -1420,7 +1588,10 @@ function paintCard() {
   const coverageNote = state.eventCoverage === 'complete-room-sweep'
     ? ''
     : 'Class schedule only today; registered events not checked.';
+  const matchedNeeds = describeRoomPreferences(state.preferences);
+  const needsNote = matchedNeeds.length ? `Matches: ${matchedNeeds.join(', ')}` : '';
   const said = `${roomLabel(r)}, ${walkSay}, ${win.say}, ${seats.say}${dept.say}.` +
+    (needsNote ? ` ${needsNote}.` : '') +
     (coverageNote ? ` ${coverageNote}` : '') +
     ` Room ${state.cardIndex + 1} of ${total}. Swipe down to start over.`;
 
@@ -1438,7 +1609,9 @@ function paintCard() {
   // deck is the whole viewport now and anything in the flow before it would be
   // painted over by the room. They are still not optional: the strip is the
   // only thing that says the answer is degraded.
-  const admits = notes() + (coverageNote ? `<p class="strip">${coverageNote}</p>` : '') + strip;
+  const admits = notes()
+    + (needsNote ? `<p class="strip">${esc(needsNote)}</p>` : '')
+    + (coverageNote ? `<p class="strip">${coverageNote}</p>` : '') + strip;
   card.innerHTML =
     `<div class="c-deck">
       <article class="c-card${photo ? '' : ' plain'}" id="c-top" tabindex="0"
@@ -2342,6 +2515,7 @@ function roomHtml(id) {
     walk == null ? '' : `<span class="w">${WALK_ICON}${walk} min walk</span>`,
     room.cap ? `<span>${room.cap} seats</span>` : '<span>seats unknown</span>',
     type ? `<span>${esc(type)}</span>` : '',
+    ...roomFeatureLabels(room).map((label) => `<span>${esc(label)}</span>`),
     // The same word the row carries, on the screen a student lands on after
     // tapping it. A row that is ranked down for a reason has to be able to say
     // the reason once the reader asks for the room.
@@ -3040,7 +3214,7 @@ function refresh() {
   state.eventCoverage = overlaid.coverage;
   state.situation = resolveState({ now, current: state.current, index: state.rooms });
   state.rankable = state.situation.ranked;
-  state.scheduled = inScheduledHours({ now, current: state.current, index: state.rooms });
+  state.scheduled = roomSearchOn({ now, current: state.current, index: state.rooms, ranked: state.rankable });
   paintGate();
   if (!state.rankable) {
     if (state.screen !== 'near' && state.screen !== 'about') showAsk();
@@ -3079,6 +3253,9 @@ function paintGate() {
   $('stale').hidden = stale.level === 'silent' || stale.level === 'gated';
   $('stale').textContent = stale.text;
   $('stale').classList.toggle('banner', stale.level === 'banner');
+  const weekendSearch = (now.getDay() === 0 || now.getDay() === 6) && s?.ranked && state.scheduled;
+  $('weekend-note').hidden = !weekendSearch;
+  $('weekend-note').textContent = weekendSearch ? s.note ?? '' : '';
 
   // Cleared before the branch, so a gate hidden by a ranked minute cannot keep
   // the orange either. index.html says what the colour means.
@@ -3442,10 +3619,11 @@ async function boot() {
 
   state.situation = resolveState({ now, current, index: state.rooms });
   state.rankable = state.situation.ranked;
-  state.scheduled = inScheduledHours({ now, current, index: rooms });
+  state.scheduled = roomSearchOn({ now, current, index: rooms, ranked: state.rankable });
 
   state.ready = true;
-  for (const el of document.querySelectorAll('#ask [disabled]')) el.disabled = false;
+  for (const el of document.querySelectorAll('#ask [data-min][disabled]')) el.disabled = false;
+  paintNeedsAvailability();
   $('ask').classList.add('ready');
   paintDuration();
   paintGate();
@@ -3483,6 +3661,7 @@ function bootFailed() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  attachNeeds();
   for (const b of document.querySelectorAll('#ask [data-min]')) {
     b.onclick = () => choose(b.dataset.min);
   }
@@ -3502,8 +3681,14 @@ window.addEventListener('DOMContentLoaded', () => {
     const v = e.state?.v;
     if (v === 'room') showRoom(e.state.room);
     else if (v === 'way') showWay(e.state.room);
-    else if (v === 'card') showCard();
-    else if (v === 'list') showList();
+    else if (v === 'card') {
+      if (state.preferencesDirty) answer();
+      showCard();
+    }
+    else if (v === 'list') {
+      if (state.preferencesDirty) answer();
+      showList();
+    }
     else if (v === 'near') showNear();
     else if (v === 'pick') showPick();
     else if (v === 'about') showAbout();
@@ -3579,9 +3764,8 @@ window.addEventListener('DOMContentLoaded', () => {
 // Thanksgiving, 9pm on a Saturday, standing in Kottman Hall. Every one of them
 // used to need a plane ticket or a December.
 //
-// Nothing here is a mock. devApply moves the same clock the app reads and the
-// same origin the ranking measures from, and then calls the same refresh() the
-// duration buttons call. What the panel shows is what the app does.
+// The clock and origin are not mocks: devApply moves the same values the app
+// reads, then calls the same refresh() the duration buttons call.
 
 export { state as devState };
 

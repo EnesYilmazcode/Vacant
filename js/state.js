@@ -19,7 +19,7 @@
 //
 // Runs in the browser and under node, and imports nothing that touches the DOM.
 
-import { MAX_WALK, PACKUP, activeSessions, calendarOn, distanceMetres, refusalFor, walkMinutes } from './engine.js';
+import { DAY_END, DAY_START, MAX_WALK, PACKUP, activeSessions, calendarOn, distanceMetres, refusalFor, walkMinutes } from './engine.js';
 
 // ------------------------------------------------------------------- clock
 
@@ -252,6 +252,14 @@ export function resolveState({ now, current, index }) {
       note: 'Session 1 is finishing this week. Its finals run in the seven week rooms without appearing on the schedule, while the full term classes meet as normal, so today the answers below are weaker than usual in both directions.',
       classesSuspended: false,
       action: null,
+    };
+  }
+
+  if (now.getDay() === 0 || now.getDay() === 6) {
+    return {
+      kind: 'RANKED', ranked: true, heading: null, body: null,
+      note: 'Weekend search: Most rooms have no listed class, but building hours and other use still matter. A free result does not guarantee an unlocked door.',
+      classesSuspended: false, action: null,
     };
   }
 
@@ -508,6 +516,28 @@ export function inScheduledHours({ now, current, index }) {
   return minute >= busyDay.earliestStart && minute < busyDay.latestEnd;
 }
 
+// The live search can still be useful on Saturday and Sunday when the class
+// schedule is sparse. Keep the ordinary weekday boundary, but offer weekend
+// searches during the engine's 7am-11pm sweep window. The ranked verdict still
+// wins: exams, a closed campus, an out-of-term date and a broken index cannot
+// be turned into available rooms by this exception. Published-closed buildings
+// and registered events are handled by the same ranking path as on weekdays.
+function roomSearchWindow({ now, current, index, busyDay, ranked }) {
+  if (!busyDay) return null;
+  if (!(ranked ?? resolveState({ now, current, index }).ranked)) return null;
+  const day = now.getDay();
+  if (day === 0 || day === 6) return { start: DAY_START, end: DAY_END };
+  if (!scheduleCoversDate({ now, current, index, busyDay })) return null;
+  return { start: busyDay.earliestStart, end: busyDay.latestEnd };
+}
+
+export function roomSearchOn({ now, current, index, ranked, busyDay = busyDayOf(current, index) }) {
+  const window = roomSearchWindow({ now, current, index, busyDay, ranked });
+  if (!window) return false;
+  const minute = now.getHours() * 60 + now.getMinutes();
+  return minute >= window.start && minute < window.end;
+}
+
 // Buildings whose published hours are non-null on all seven days. Read out of
 // the hours table rather than typed into the app, so a term rollover that
 // closes one of them on Sundays drops it from this list with no code change.
@@ -647,25 +677,23 @@ export function openingPhrase(opening, day) {
   return `${lead}${who} ${opening.ties > 1 ? 'open' : 'opens'} at ${clock(opening.opensAt)}`;
 }
 
-// The next minute the class schedule covers, a different question from the next
-// open door: on a Saturday the first door is 7:00am that morning and the first
-// ranked room is 8:00am on Monday, 49 hours apart.
+// The next minute room search is offered, which may be a weekend morning even
+// when no regular class day is coming until Monday.
 //
-// It steps DATES. busyDay.weekdays is a weekly mask with no calendar in it, and
-// reading it alone promised the ranked list back on days the app refuses on:
-// 3,780 of the 94,665 gate minutes of Autumn 2026, 3.99%, on Labor Day, Veterans
-// Day, Thanksgiving or the day after the term ended.
+// It steps DATES rather than trusting the weekly class mask. The next morning
+// may be a weekend search, and the first weekday after it may be a holiday or
+// outside the term; neither can be inferred from the day of the week alone.
 //
-// Seven days and no further, so the weekday it names can only mean one date, and
+// Seven days and no further, so the day it names can only mean one date, and
 // nothing found means the sentence drops the clause rather than guessing.
-function nextScheduled({ now, current, index, busyDay }) {
+function nextRoomSearch({ now, current, index, busyDay }) {
   if (!busyDay) return null;
   const nowMin = now.getHours() * 60 + now.getMinutes();
   for (let ahead = 0; ahead < 7; ahead++) {
-    if (ahead === 0 && nowMin >= busyDay.earliestStart) continue;
     const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + ahead, 12, 0);
-    if (!scheduleCoversDate({ now: date, current, index, busyDay })) continue;
-    return { day: date.getDay(), at: busyDay.earliestStart, ahead };
+    const window = roomSearchWindow({ now: date, current, index, busyDay });
+    if (!window || (ahead === 0 && nowMin >= window.start)) continue;
+    return { day: date.getDay(), at: window.start, ahead };
   }
   return null;
 }
@@ -692,7 +720,7 @@ export function unscheduledGate({ now, current, index, busyDay, opening, openNow
     off?.state === 'no-classes'
       ? `${off.name ? `${off.name}. ` : ''}No classes are meeting today.`
       : !busyDay?.weekdays?.[day]
-        ? 'No classes are scheduled today.'
+        ? 'Few classes are scheduled today.'
         : nowMin < busyDay.earliestStart
           ? 'Classes have not started yet.'
           : 'Classes are done for the day.';
@@ -703,7 +731,7 @@ export function unscheduledGate({ now, current, index, busyDay, opening, openNow
   // including 7:30am on a Tuesday with all 46 unlocked.
   const door = openNow > 0 ? null : openingPhrase(opening, day);
   const doorAhead = door ? (opening.day - day + 7) % 7 : null;
-  const back = nextScheduled({ now, current, index, busyDay });
+  const back = nextRoomSearch({ now, current, index, busyDay });
   if (!back) return { heading, body: door ? `${campus} ${door}.` : campus };
   // One day word, not two. When the door and the ranked list land on the same
   // date the clause has already named it, so the two join into one sentence.

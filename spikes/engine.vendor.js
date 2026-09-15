@@ -34,16 +34,36 @@ export const DETOUR = 1.3;
 // keeps that identity has changed nothing. Splitting them needs a measured path
 // length as well as a time, from a phone track or a route drawn on a map.
 //
-// And the measurement is biased before the stopwatch starts. distanceMetres
-// stops at the building's published point and the room's own door is somewhere
-// else inside the footprint, so measured time runs above predicted for reasons
-// that are not pace. MEASURED over the 46 shipped buildings by decoding
-// data/campus.json against that point, which scripts/test/walk-bias.test.mjs
-// recomputes: the far corner of a building sits a median 44 m from it, 62 m at
-// the 90th percentile, and 85 m at PAES, which at these constants is 44, 62 and
-// 85 SECONDS of walking the engine never priced. Subtract that before moving
-// either number. The 38 s and 1 min 45 s in #26 are both low, and the stadium
-// the second one names is dropped by the safety filter and never quoted at all.
+// And the measurement is biased before the stopwatch starts, in two places
+// that have to be kept apart.
+//
+// The OUTDOOR half of that bias is gone as of 2026-09-15. The walk used to end
+// at the building's published point, which is a polygon centroid, so it ended
+// inside a wall; approachMetres now ends it at the nearest door OSU publishes.
+// 44 of the 46 shipped buildings have doors. The two that do not, Biological
+// Sciences and the Theatre Building, still measure to the centroid, so a walk
+// fitted against either of them carries the old bias and a fit should drop them.
+// The subset also carries four buildings that host no class at all, because the
+// picker's shortcut bar stands on them; they have doors and no rooms.
+//
+// The INDOOR half is untouched and is what is left to price: the door is not
+// the room. MEASURED over the 46 shipped buildings by decoding data/campus.json
+// against the published point, which scripts/test/walk-bias.test.mjs recomputes:
+// the far corner of a building sits a median 44 m from it, 62 m at the 90th
+// percentile, and 85 m at PAES, which at these constants is 44, 62 and 85
+// SECONDS. That figure is now an upper bound on a corridor rather than a claim
+// about the approach, because the approach stops at the right place. Subtract
+// it before moving either number. The 38 s and 1 min 45 s in #26 are both low,
+// and the stadium the second one names is dropped by the safety filter and
+// never quoted at all.
+//
+// A fit also has to know the endpoint moved. MEASURED over six public origins
+// and the 46 buildings: the nearest door is 23.3 m closer than the centroid on
+// average, 262 of 276 origin-building pairs are shorter, and 108 of them lose a
+// whole walk minute. A
+// stopwatch time compared against a prediction made before that date is being
+// compared against a different quantity. docs/research/entrances.md has the
+// full replay.
 
 // Minutes reserved at the end so you are not packing up while the next class
 // files in. POLICY, and it is doing real work: OSU's passing period is 15
@@ -228,6 +248,53 @@ export function distanceMetres(a, b) {
   const x = rad(b.lon - a.lon) * Math.cos(rad((a.lat + b.lat) / 2));
   const y = rad(b.lat - a.lat);
   return Math.sqrt(x * x + y * y) * R;
+}
+
+// How far to the nearest door, which is the distance a walk actually covers.
+//
+// distanceMetres stops at the building's published point, and that point is a
+// polygon CENTROID: data/buildings.draft.json has said so in a note since the
+// layer was first pulled. Nobody walks to the middle of a building. `d` is the
+// doors OSU publishes, whole metres east and north of that point, and the
+// nearest of them is where the walk ends.
+//
+// The offsets add straight onto the origin-to-building vector because they are
+// in the same equirectangular plane this function already works in. The only
+// approximation is that the cos term is evaluated at the building rather than
+// at the door, which over the 72 m of the furthest real door is under a
+// millimetre; scripts/test/entrances.test.mjs holds this against a per-door
+// distanceMetres call over every shipped door.
+//
+// A building with no `d` falls back to the published point, which is what every
+// building did before the doors existed. 48 of the 50 buildings in the Autumn
+// 2026 subset have doors, including 44 of the 46 that host a class. The two
+// without are Biological Sciences, absent from the entrance layer entirely, and
+// the Theatre, Film and Media Arts Building, whose four doors are all "Under
+// Construction".
+//
+// This does NOT fix the detour bias. #115 measured OSU's own pedestrian network
+// running 1.49x the straight line at the median, and correcting the endpoint
+// moves the answer the other way: MEASURED over six public origins and the 46
+// buildings, the nearest door is 23.3 m closer than the centroid on average, and
+// 108 of 276 origin-building pairs lose a whole walk minute. What it removes is
+// the endpoint error, which is real and separate: 111 of 6,210 building pairs
+// come out in a different ORDER once the walk ends at a door, and the first
+// building on the card changes in 2.9% of 238 replayed searches.
+export function approachMetres(origin, building) {
+  const x = rad(building.lon - origin.lon) * Math.cos(rad((origin.lat + building.lat) / 2)) * R;
+  const y = rad(building.lat - origin.lat) * R;
+
+  const doors = building.d;
+  if (!doors?.length) return Math.sqrt(x * x + y * y);
+
+  let best = Infinity;
+  for (let i = 0; i < doors.length; i += 2) {
+    const dx = x + doors[i];
+    const dy = y + doors[i + 1];
+    const metres = Math.sqrt(dx * dx + dy * dy);
+    if (metres < best) best = metres;
+  }
+  return best;
 }
 
 export const walkMinutes = (metres) => Math.ceil((metres * DETOUR) / WALK_MPM);
@@ -770,7 +837,7 @@ function sweep(rooms, opts) {
     // times out of ten.
     let cached = walkCache.get(room.b);
     if (cached === undefined) {
-      const metres = distanceMetres(origin, building);
+      const metres = approachMetres(origin, building);
       // A geolocation fix that never resolved reaches here as NaN. Without this
       // every room comes back with NaN minutes in arbitrary order.
       cached = Number.isFinite(metres) ? { metres, walk: walkMinutes(metres) } : null;

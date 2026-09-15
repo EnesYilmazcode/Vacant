@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 
-import { buildIndex, smallIndex } from '../fetch-buildings.mjs';
+import { ORIGIN_CODES, buildIndex, smallIndex } from '../fetch-buildings.mjs';
 import { padCode } from '../fetch-campus.mjs';
 import { OVAL, haversineMetres, kmFromOval } from '../lib/geo.mjs';
 
@@ -201,10 +201,59 @@ test('the committed launch subset covers every building the room index names', (
   assert.ok(codes.length > 30, 'the check would be vacuous with too few codes');
 
   for (const [code, b] of Object.entries(small)) {
-    assert.deepEqual(Object.keys(b), ['name', 'lat', 'lon'], `${code} carries more than it needs`);
+    // `d` is optional and last: a building with no surveyed door does not carry
+    // the key at all, because js/engine.js reads its absence as "measure to the
+    // published point" and an empty array would be a third thing to handle.
+    const expected = b.d === undefined ? ['name', 'lat', 'lon'] : ['name', 'lat', 'lon', 'd'];
+    assert.deepEqual(Object.keys(b), expected, `${code} carries more than it needs`);
     assert.equal(b.lat, full[code].lat, `${code} disagrees with the full index`);
     assert.equal(b.lon, full[code].lon, `${code} disagrees with the full index`);
+    if (b.d === undefined) continue;
+    assert.ok(b.d.length > 0 && b.d.length % 2 === 0, `${code} has a ragged door list`);
+    for (const offset of b.d) {
+      assert.ok(Number.isInteger(offset), `${code} has a non-integer door offset`);
+      // The furthest real door is 72 m out, at PAES. Anything past a couple of
+      // hundred metres is a join that went wrong, and the fetch script refuses
+      // to write one; this is the same bound checked on what actually shipped.
+      assert.ok(Math.abs(offset) <= 200, `${code} has a door ${offset} m away`);
+    }
   }
+
+  // The check that would have caught the stale file. It had 96 keys against a
+  // 46-code room index and passed every guard in the repository for 19 days,
+  // because every assertion asked whether the subset was MISSING anything and
+  // none asked whether it carried something nothing references.
+  const expected = [...new Set([...codes, ...ORIGIN_CODES])].sort();
+  assert.deepEqual(
+    Object.keys(small).sort(),
+    expected,
+    'the launch subset is not exactly the room index plus the picker shortcuts',
+  );
+
+  const withDoors = Object.values(small).filter((b) => b.d);
+  // 44 of 46 as of 2026-09-15: Biological Sciences is absent from OSU's
+  // entrance layer and the Theatre Building's four doors are all marked under
+  // construction. A pull that resolved far fewer has broken the join rather
+  // than found a campus of windowless buildings.
+  assert.ok(
+    withDoors.length >= codes.length - 6,
+    `only ${withDoors.length} of ${codes.length} buildings carry doors`,
+  );
+});
+
+test('the launch subset carries doors when entrances are supplied', () => {
+  const entrances = {
+    // 10 m north and 20 m east of the building point, near enough.
+    '003': [{ lat: 40.00009, lon: -83.00977 }],
+  };
+  const { small } = smallIndex(FULL, new Set(['003', '279']), entrances);
+  assert.deepEqual(Object.keys(small['003']), ['name', 'lat', 'lon', 'd']);
+  assert.equal(small['003'].d.length, 2);
+  const [dx, dy] = small['003'].d;
+  assert.ok(Math.abs(dx - 20) <= 1, `east offset is ${dx}, expected about 20`);
+  assert.ok(Math.abs(dy - 10) <= 1, `north offset is ${dy}, expected about 10`);
+  // A building the entrance file says nothing about keeps the old three fields.
+  assert.deepEqual(Object.keys(small['279']), ['name', 'lat', 'lon']);
 });
 
 // --- building codes on the map, issue #50 ---
@@ -258,4 +307,45 @@ test('the committed map keys its footprints by building code', () => {
     assert.ok(onMap.has(r.b), `${id} is in building ${r.b}, inside the map, with no footprint`);
   }
   assert.ok(keyed.length >= 80, `only ${keyed.length} class-hosting buildings resolve to a polygon`);
+});
+
+test('the picker shortcut codes in the build script are the ones js/app.js renders', () => {
+  // Nothing else connects these two lists. js/app.js hardcodes six buildings as
+  // one-tap origins on the picker, four of which host no classes, and
+  // fetch-buildings.mjs has to put them in the launch subset or those buttons
+  // do not render and cannot be stood on. A code added to one list and not the
+  // other is a dead button, and it fails silently on a screen most people
+  // never open.
+  const app = readFileSync(new URL('../../js/app.js', import.meta.url), 'utf8');
+  const line = app.match(/^const SHORTCUTS = \[([^\]]*)\];$/m);
+  assert.ok(line, 'SHORTCUTS moved or changed shape in js/app.js');
+  const shortcuts = [...line[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual(shortcuts, ORIGIN_CODES);
+});
+
+test('a shortcut that hosts no class is still in the launch subset', () => {
+  // The regression this guards, concretely. Keyed off the room index alone the
+  // bar is Dreese and Hitchcock; the Ohio Union, Thompson Library, the RPAC and
+  // the Eighteenth Avenue Library all vanish, and they are four of the six.
+  const cur = new URL('../../data/current.json', import.meta.url);
+  if (!existsSync(cur)) return;
+  const term = JSON.parse(readFileSync(cur, 'utf8')).term;
+  const smallPath = new URL(`../../data/buildings-${term}.json`, import.meta.url);
+  const roomsPath = new URL(`../../data/rooms-${term}.json`, import.meta.url);
+  if (!existsSync(smallPath) || !existsSync(roomsPath)) return;
+
+  const small = JSON.parse(readFileSync(smallPath, 'utf8')).buildings;
+  const rooms = JSON.parse(readFileSync(roomsPath, 'utf8')).rooms;
+  const hosts = new Set(Object.values(rooms).map((r) => r.b));
+
+  const originOnly = ORIGIN_CODES.filter((c) => !hosts.has(c));
+  assert.ok(originOnly.length >= 3, 'the shortcuts are all class-hosting now, so this test proves nothing');
+  for (const code of ORIGIN_CODES) {
+    const b = small[code];
+    assert.ok(b, `${code} is a picker shortcut with no row in the launch subset`);
+    // A name to print on the button and a coordinate to stand on. Either one
+    // missing and pickBuilding() returns without setting an origin.
+    assert.ok(b.name, `${code} has no name to render on the button`);
+    assert.ok(Number.isFinite(b.lat) && Number.isFinite(b.lon), `${code} has no coordinate to stand on`);
+  }
 });

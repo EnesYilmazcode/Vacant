@@ -4005,3 +4005,66 @@ class but access and other use still matter. Outside the weekend search window,
 the gate now names the next actual search window, which can be Saturday or
 Sunday morning instead of Monday. The existing nearest-buildings view remains
 available outside search hours.
+
+## 2026-09-15  A walk ends at a door, not at the middle of a building
+
+**Decided.** `js/engine.js` gains `approachMetres()`, and every screen that
+quotes a walk measures to the nearest entrance Ohio State publishes for the
+building rather than to the building's own point. That point is a polygon
+centroid, which `data/buildings.draft.json` has said in a note since the layer
+was first pulled, so until now every walk in the app ended inside a wall.
+
+The doors come from `Data/ReferenceData_RO/MapServer/10`, the same read-only GIS
+family the building table already comes from, under the same FITS attribution.
+`scripts/fetch-entrances.mjs` writes `data/entrances.json`; the offsets are
+folded into `data/buildings-<term>.json` as whole metres east and north, which
+costs 815 bytes gzipped and avoids a second request on boot. 44 of the 46
+class-hosting buildings have a standing door. Biological Sciences is absent from
+the layer and the Theatre Building's four doors are all under construction, so
+both keep the centroid; a missing `d` is read as the old behaviour rather than
+as a special case.
+
+**Measured**, reproducible with `docs/research/entrances-sample.mjs`: over six
+public origins and the 46 buildings, the nearest door is 23.3 m closer than the
+centroid on average, 262 of 276 pairs are shorter, 108 lose a whole walk minute,
+and 111 of 6,210 building pairs come out in a different order. Replaying the
+shipped ranking over 238 searches against the real Autumn 2026 schedule, the
+first building changes 2.9% of the time and the first room 4.6%.
+
+**Decided against** filtering the layer on its `Description` field. The values
+read like a taxonomy — `Building`, `Sidewalk`, `Stairs`, `Parking Lot` — and
+keeping only the entrance-shaped ones would have dropped 78 of the 217 doors on
+shipped buildings. Measured against the outlines in `data/campus.json`, a
+`Sidewalk` point sits a median 0.5 m from the wall and a `Building` point 0.7 m.
+They are all doors; `Description` says what the door faces.
+
+**This does not fix the detour bias, and it moves the aggregate the wrong way.**
+[#115](https://github.com/EnesYilmazcode/Vacant/issues/115) measured OSU's own
+pedestrian network at 1.49x the straight line at the median, running 3.84
+minutes above Vacant; this change makes Vacant's walks shorter. The two are
+errors in different terms of the same estimate. The endpoint was wrong and is
+now right; the path is still a straight line times `DETOUR` and is still wrong.
+What it buys is that `DETOUR` is no longer quietly absorbing part of the
+endpoint error, so a fit against a real walked route now has one error to
+explain instead of two summed into a fudge factor. Anyone fitting `DETOUR` or
+`WALK_MPM` from a stopwatch has to know the endpoint moved on this date, and
+should drop the two centroid buildings from the fit.
+
+The layer's `Accessible`, `Automated`, `Ramp` and `Button` flags are kept in
+`data/entrances.json` and read by nothing. 84 of the 217 shipped doors are
+marked accessible. They are three-state: `null` means nobody surveyed that door,
+and it must never be rendered as "no". Routing to accessible doors only is now a
+query rather than a data collection problem, and is not built.
+
+**Two pre-existing faults were in the path of this change and are fixed here.**
+`scripts/fetch-buildings.mjs` could not write `data/buildings-<term>.json` at
+all: its `MIN_CLASS_BUILDINGS` floor was 90, measured when term 1268 held 871
+rooms in 96 buildings, and the room safety filter has since cut the index to 425
+rooms in 46, so a perfect run died reporting `only 46 of 46 class-hosting codes
+resolved`. The floor is now 40. Because of that, the committed subset was still
+the one built on 2026-08-27 and carried 50 buildings the room index no longer
+references; rebuilding it moved the tie-break count in
+`scripts/test/screens.test.mjs` from 2,984 to 3,012, and emptied the off-campus
+note in `js/app.js`, which claimed seven of 96 buildings sit outside the 2.2 km
+gate. None of the 46 does, so that claim now reads off the full 612-building
+index, where 268 do. Full write-up in `docs/research/entrances.md`.

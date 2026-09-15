@@ -24,7 +24,7 @@ import { overlayForDate } from '../scripts/lib/club-occupancy.mjs';
 import { blocksOn, classesOn, dayClaim } from './day.js';
 // `query` arrives as `ladder` because js/app.js already holds a `state.query`,
 // which is the buildings search box and has nothing to do with the engine.
-import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, query as ladder, rank, shape, tally, walkMinutes } from './engine.js';
+import { MAX_WALK, activeSessions, approachMetres, calendarOn, distanceMetres, mark, measure, query as ladder, rank, shape, tally, walkMinutes } from './engine.js';
 // The deadline every request on the path to a first answer shares. It lives in
 // js/firstrun.js because that is the module holding the rule it comes from.
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
@@ -104,10 +104,20 @@ const KEY_PICK = 'vacant.lastPick';
 // The comparison is a flat lat/lon conversion, not the engine's equirectangular
 // distanceMetres: 0.2% here, 4.42 km against 4.43 at the issue #60 origin.
 //
-// It must never be read as "you are not on campus". Seven of the 96 buildings
-// in data/buildings-1268.json sit outside it, all seven are OSU property, and
-// the farthest is Aerospace Research Center at 10.01 km. That is why the note
-// it prints is about the walk.
+// It must never be read as "you are not on campus". 268 of the 612 buildings in
+// data/buildings.json sit outside it, every one of them OSU property, and the
+// farthest is Main St, 153 W at 19.32 km. That is why the note it prints is
+// about the walk.
+//
+// That claim used to be made against data/buildings-1268.json, where seven of
+// 96 buildings sat outside the gate. It cannot be any more, and the reason is
+// worth keeping: the term slice is now 46 buildings, all of them within 1.407
+// km of the Oval, because the room safety filter cut the index to the rooms
+// Vacant will actually offer. The 96 in that sentence was a slice built on
+// 2026-08-27 and left behind by its own room index. Nothing about the gate
+// changed; what changed is that the slice stopped being a sample of OSU
+// property and became a list of classroom buildings, so the full index is the
+// only honest place to read this off now.
 const OFF_CAMPUS_KM = 2.2;
 
 // The fallback origin, and the sentence both screens that reach for it print:
@@ -2483,7 +2493,7 @@ function roomHtml(id) {
   const metres = Number.isFinite(r?.metres)
     ? r.metres
     : state.origin && b && Number.isFinite(b.lat) && Number.isFinite(b.lon)
-      ? Math.round(distanceMetres(state.origin, b))
+      ? Math.round(approachMetres(state.origin, b))
       : null;
 
   // The day the screen is drawing, which is the day it has to describe.
@@ -2944,7 +2954,7 @@ function repaintRoom() {
   if (orientationOff) orientationOff();
   const b = state.buildings?.[room.b];
   if (!b || !Number.isFinite(b.lat) || !Number.isFinite(b.lon) || !state.origin) return;
-  const metres = Math.round(distanceMetres(state.origin, b));
+  const metres = Math.round(approachMetres(state.origin, b));
   const walk = walkMinutes(metres);
   // Nothing a reader can see has changed. A repaint costs them their place in
   // the day grid, and it is not worth spending on a number that came back the

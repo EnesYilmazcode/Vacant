@@ -33,7 +33,12 @@ question, because the room is not where you are standing.
 Vacant answers **how long the room is yours once you get there**. It takes the gap
 in the room's schedule, subtracts the walk, and leaves ten minutes at the end so
 you are not packing up while the next class files in. Walk time is straight line
-distance times 1.3 for the fact that campus paths bend, at 78 metres a minute.
+distance times 1.3 for the fact that campus paths bend, at 78 metres a minute,
+measured to the nearest door Ohio State publishes for the building rather than to
+the middle of it. That last part is newer than the rest and is worth one line of
+its own: the building table gives a polygon centroid, so until
+[the doors landed](docs/research/entrances.md) every walk in the app ended inside
+a wall, a median 23 m short of where a walk ends.
 
 Read the third row of the list further down. PAES A111 says **free till 4:00pm**.
 The next class in that room starts at 4:10pm, you are four minutes away, and

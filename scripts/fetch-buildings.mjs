@@ -54,14 +54,58 @@ const OUT_PATH = join(ROOT, 'data', 'buildings.json');
 // when that screen opens instead of before the first answer.
 const SMALL_FIELDS = ['name', 'lat', 'lon'];
 
+// Plus `d`, the building's doors, when data/entrances.json has any: whole
+// metres east and north of `lat`/`lon`, flattened, nearest first.
+//
+// Offsets and not coordinates, because the point of this file is that it is
+// small. A door as a lat/lon pair is two 17-character numbers; as a pair of
+// metre offsets it is two numbers under three digits, every one of them inside
+// the 72 m the furthest real door sits from its building's own point. MEASURED
+// on the Autumn 2026 subset, same 50 buildings either way: 237 doors cost 815
+// bytes gzipped as offsets, 1,616 to 2,431, and 5,139 as coordinate pairs.
+//
+// The file still SHRANK, 2,563 bytes to 2,431, because the committed one was
+// built on 2026-08-27 against a 96-building index and had been carrying 46
+// buildings nothing in the app referenced. That is the stale floor below doing
+// its damage, not a discount on the doors.
+//
+// Whole metres is a 0.7 m worst-case rounding error, which at WALK_MPM is half
+// a second, against doors the GIS layer places to about 10 cm. The engine's
+// own comment is that a metre is a second; a metre here is not worth a byte.
+const doorOffsets = (building, doors) => (doors ?? []).flatMap((door) => {
+  const midLat = rad((building.lat + door.lat) / 2);
+  return [
+    Math.round(rad(door.lon - building.lon) * Math.cos(midLat) * EARTH_METRES),
+    Math.round(rad(door.lat - building.lat) * EARTH_METRES),
+  ];
+});
+
+// The same equirectangular plane js/engine.js measures in, so that adding an
+// offset to an origin-to-building vector is the same answer as measuring
+// origin to door directly. scripts/test/entrances.test.mjs holds the two
+// against each other over every shipped door.
+const EARTH_METRES = 6371008.8;
+const rad = (deg) => (deg * Math.PI) / 180;
+
 // The small file is derived from a term, so it is named for one the way
 // data/rooms-1268.json is. data/current.json says which term is live.
 const smallPath = (term) => join(ROOT, 'data', `buildings-${term}.json`);
 
 // A term whose room index resolves fewer buildings than this did not load, and
-// shipping the small file anyway would delete pins from the map. Measured: 96
-// of 96 codes in term 1268 are present in the full index.
-const MIN_CLASS_BUILDINGS = 90;
+// shipping the small file anyway would delete pins from the map.
+//
+// 90 until 2026-09-15, and by then it had been unreachable for some time: the
+// figure was measured when term 1268 carried 871 rooms in 96 buildings, and the
+// room safety filter has since cut the index to 425 rooms in 46. The floor sat
+// ABOVE the real number, so `only 46 of 46 class-hosting codes resolved` was
+// fatal and this script could not write data/buildings-<term>.json at all. The
+// committed subset is older than the index it is keyed against for that reason.
+//
+// A floor that outruns its own dataset is worse than no floor, because it fails
+// on a perfect run and the failure names the healthy number. 40 sits under the
+// measured 46 with room for a term that schedules a few buildings fewer, and
+// far above the zero a collapsed pull produces.
+const MIN_CLASS_BUILDINGS = 40;
 
 // The cap exists to keep satellite campuses out of a walking app. It is a
 // CHOSEN bound, not a natural boundary, and the research calling 10 km "stable
@@ -87,6 +131,26 @@ const MIN_CLASS_BUILDINGS = 90;
 // This is the DATA filter. How far a student will actually walk is a separate
 // user-facing setting on top, and never baked into the shipped dataset.
 const MAX_KM = 20;
+
+// The picker's shortcut bar, which is NOT a subset of the room index and is the
+// reason this list exists at all.
+//
+// js/app.js hardcodes six buildings as one-tap origins on the "Where are you?"
+// screen, and four of them host no classes: the Ohio Union, Thompson Library,
+// the RPAC and the Eighteenth Avenue Library are places a student STANDS, not
+// places with a classroom to send them to. paintPick() renders each button from
+// `state.buildings[code].name` and pickBuilding() reads `lat`/`lon` off the same
+// row, so a shortcut whose code is missing from this file is not a degraded
+// button, it is no button.
+//
+// They shipped only because data/buildings-1268.json was stale and still held
+// the 96 codes an older room index referenced. The first correct rebuild of that
+// file removed four of the six shortcuts, which is how this was found. Keyed off
+// the room index alone, the bar is Dreese and Hitchcock.
+//
+// scripts/test/buildings.test.mjs reads SHORTCUTS out of js/app.js and fails if
+// the two lists drift, because nothing else connects them.
+export const ORIGIN_CODES = ['161', '050', '246', '005', '279', '274'];
 
 // A first run has to have a floor, and after that the committed file is the
 // floor. Measured: 612 buildings inside 20 km.
@@ -199,9 +263,15 @@ export function buildIndex(features) {
 }
 
 // The launch subset: every code the term's room index points at, three fields
-// each. A code with no record in the full index is reported rather than
-// dropped, because it means a room in the grid has nothing to put on the map.
-export function smallIndex(buildings, roomCodes) {
+// each, plus its doors. A code with no record in the full index is reported
+// rather than dropped, because it means a room in the grid has nothing to put
+// on the map.
+//
+// A building with no doors gets no `d` at all rather than an empty array. The
+// engine reads a missing `d` as "measure to the published point", which is what
+// every building did before entrances existed, so the fallback is the old
+// behaviour and not a special case.
+export function smallIndex(buildings, roomCodes, entrances = {}) {
   const small = {};
   const missing = [];
   for (const code of [...roomCodes].sort()) {
@@ -211,6 +281,8 @@ export function smallIndex(buildings, roomCodes) {
       continue;
     }
     small[code] = Object.fromEntries(SMALL_FIELDS.map((f) => [f, b[f]]));
+    const d = doorOffsets(b, entrances[code]);
+    if (d.length) small[code].d = d;
   }
   return { small, missing };
 }
@@ -316,20 +388,50 @@ async function writeSmall(buildings, meta) {
 
   const rooms = JSON.parse(readFileSync(roomsPath, 'utf8')).rooms;
   const roomCodes = new Set(Object.values(rooms).map((r) => r.b));
-  const { small, missing } = smallIndex(buildings, roomCodes);
+  // The union, not the room index. See ORIGIN_CODES: the picker's shortcuts are
+  // origins rather than destinations and most of them hold no classroom.
+  const wanted = new Set([...roomCodes, ...ORIGIN_CODES]);
+
+  // Optional on purpose. A checkout that has never run fetch-entrances.mjs
+  // still builds a correct term subset, one that measures to the published
+  // point the way every build did before the doors existed.
+  const entrancesPath = join(ROOT, 'data', 'entrances.json');
+  const entrances = existsSync(entrancesPath)
+    ? JSON.parse(readFileSync(entrancesPath, 'utf8')).entrances ?? {}
+    : {};
+  if (!existsSync(entrancesPath)) {
+    console.warn('  no data/entrances.json, so every walk measures to the building centroid. Run scripts/fetch-entrances.mjs.');
+  }
+
+  const { small, missing } = smallIndex(buildings, wanted, entrances);
 
   if (missing.length) {
     console.warn(
-      `  ${missing.length} code(s) in the room index have no building record: ${missing.join(', ')}`,
+      `  ${missing.length} code(s) the app names have no building record: ${missing.join(', ')}`,
     );
   }
-  const kept = Object.keys(small).length;
-  if (kept < MIN_CLASS_BUILDINGS) {
+
+  // A shortcut with no row is a button that does not render, so it is fatal
+  // rather than a warning. There are six of them and they are hardcoded.
+  const lostShortcuts = ORIGIN_CODES.filter((code) => !small[code]);
+  if (lostShortcuts.length) {
     die(
-      `only ${kept} of ${roomCodes.size} class-hosting codes resolved, ` +
+      `the picker's shortcut bar would lose ${lostShortcuts.join(', ')}: ` +
+        'no row in the full index, so js/app.js can neither name nor stand on them.',
+    );
+  }
+
+  // Counted over the room index alone. The shortcuts are four buildings of
+  // padding on this number and would let a collapsed harvest sit closer to the
+  // floor than it really is.
+  const classKept = [...roomCodes].filter((code) => small[code]).length;
+  if (classKept < MIN_CLASS_BUILDINGS) {
+    die(
+      `only ${classKept} of ${roomCodes.size} class-hosting codes resolved, ` +
         `under the ${MIN_CLASS_BUILDINGS} floor.`,
     );
   }
+  const kept = Object.keys(small).length;
 
   // Compact, like the room index it is keyed against. This one is on the
   // critical path, so it is read by a machine and never by a person.
@@ -338,12 +440,15 @@ async function writeSmall(buildings, meta) {
     term,
     source: meta.source,
     attribution: meta.attribution,
-    note: 'the buildings the term room index references, name/lat/lon only. data/buildings.json has every building and every field.',
+    note: 'the buildings the term room index references plus the picker shortcut codes in js/app.js SHORTCUTS, name/lat/lon plus d, the doors as whole-metre east/north offsets from lat/lon, nearest first. A building with no d has no surveyed door and is measured to lat/lon. data/buildings.json has every building and every field, data/entrances.json has every door and every field.',
     count: kept,
     buildings: small,
   })}\n`;
   await writeFile(smallPath(term), text);
+  const withDoors = Object.values(small).filter((b) => b.d).length;
+  const doors = Object.values(small).reduce((n, b) => n + (b.d?.length ?? 0) / 2, 0);
   console.log(`wrote data/buildings-${term}.json  ${kept} buildings, ${gz(text)} bytes gzipped`);
+  console.log(`  ${doors} doors on ${withDoors} of them; the other ${kept - withDoors} measure to the published point`);
 }
 
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith('fetch-buildings.mjs');

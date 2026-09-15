@@ -19,7 +19,7 @@
 //
 // Runs in the browser and under node, and imports nothing that touches the DOM.
 
-import { DAY_END, DAY_START, MAX_WALK, PACKUP, activeSessions, calendarOn, distanceMetres, refusalFor, walkMinutes } from './engine.js';
+import { DAY_END, DAY_START, MAX_WALK, PACKUP, activeSessions, approachMetres, calendarOn, refusalFor, walkMinutes } from './engine.js';
 
 // ------------------------------------------------------------------- clock
 
@@ -568,7 +568,7 @@ export function rankBuildings({ origin, buildings, counts, hoursFor, day, nowMin
   for (const [code, count] of Object.entries(counts ?? {})) {
     const b = buildings?.[code];
     if (!b || !Number.isFinite(b.lat) || !Number.isFinite(b.lon)) continue;
-    const metres = distanceMetres(origin, b);
+    const metres = approachMetres(origin, b);
     if (!Number.isFinite(metres)) continue;
     const hours = hoursFor ? hoursFor(code, day) : undefined;
     // Five states, not two. 43 of the 47 buildings in the Registrar pool

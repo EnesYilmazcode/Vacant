@@ -127,11 +127,26 @@ The photo files are fetched on demand rather than precached with the app shell.
 ```
 https://gissvc.osu.edu/arcgis/rest/services/Data/FacilitiesStreets_RO/MapServer/11/query
 https://gissvc.osu.edu/arcgis/rest/services/Data/FacilitiesStreets_RO/MapServer  (layers 11, 12, 9, 13)
+https://gissvc.osu.edu/arcgis/rest/services/Data/ReferenceData_RO/MapServer/10/query
 ```
 
 One request for the building table. A handful more for the map geometry, which is
-paged. Neither is on the weekly schedule: building coordinates change once a
+paged. Two for the entrance layer, which is 2,181 points against a 2,000 page
+size. None of them is on the weekly schedule: building coordinates change once a
 decade, so these run by hand when something moves.
+
+The entrance layer is what the app measures walks to. The building table
+publishes one point per building and that point is a polygon centroid, so a walk
+that ends at it ends inside a wall; `data/entrances.json` carries the doors, and
+`data/buildings-<term>.json` carries them again as whole-metre offsets so the
+boot payload does not pay for a second file. 44 of the 46 buildings the Autumn
+2026 index references have at least one standing door. The two that do not,
+Biological Sciences and the Theatre Building, are measured to the centroid, and
+the app says nothing different about them because there is nothing honest to say.
+
+The layer also carries `Accessible`, `Automated`, `Ramp` and `Button` per door,
+which `data/entrances.json` keeps and nothing yet reads. They are three-state:
+`null` means nobody surveyed that door, not that the answer is no.
 
 Credit, per the FITS grant on the OSU GIS Hub:
 
@@ -269,7 +284,7 @@ Node 22 or newer. No dependencies to install: `package.json` has none.
 ```sh
 git clone https://github.com/EnesYilmazcode/Vacant.git
 cd Vacant
-node --test                              # 208 tests, zero network requests
+node --test                              # 908 tests, zero network requests
 ```
 
 Then, in this order. Each script prints its own request count and refuses to
@@ -279,6 +294,12 @@ write a file that fails its guards.
 # 1. Building coordinates. One request. Writes buildings.json (612 buildings
 #    within 20 km of the Oval) from GIS layer 11.
 node scripts/fetch-buildings.mjs
+
+# 1b. Building entrances. Two requests. Writes entrances.json: 1,326 doors on
+#     302 buildings, joined to step 1 on the building code. Run it AFTER step 1,
+#     because a door needs a building to belong to, and re-run step 1 afterwards
+#     so the term subset picks the offsets up.
+node scripts/fetch-entrances.mjs
 
 # 2. Campus geometry for the map. Layers 11, 12, 9 and 13, paged, clipped to a
 #    box anchored on class-hosting buildings within 2 km of the Oval.

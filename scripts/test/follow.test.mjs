@@ -315,7 +315,11 @@ test('the room repaint moves the numbers and not the order', () => {
   // Both numbers on the screen are measured from the origin: the walk minutes,
   // and the "yours for" duration in the claim, which subtracts the walk from
   // the window. Rewriting one and not the other is two answers to one question.
-  assert.match(repaint, /const metres = Math\.round\(distanceMetres\(state\.origin, b\)\);/);
+  //
+  // approachMetres and not distanceMetres, which is the same requirement one
+  // layer down: the ranking measures to the building's nearest door, so a
+  // repaint measuring to its centroid would print a walk the list never used.
+  assert.match(repaint, /const metres = Math\.round\(approachMetres\(state\.origin, b\)\);/);
   assert.match(repaint, /const walk = walkMinutes\(metres\);/);
   assert.match(repaint, /state\.selected\.metres = metres;/);
   assert.match(repaint, /state\.selected\.walk = walk;/);

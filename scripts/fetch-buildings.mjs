@@ -54,14 +54,58 @@ const OUT_PATH = join(ROOT, 'data', 'buildings.json');
 // when that screen opens instead of before the first answer.
 const SMALL_FIELDS = ['name', 'lat', 'lon'];
 
+// Plus `d`, the building's doors, when data/entrances.json has any: whole
+// metres east and north of `lat`/`lon`, flattened, nearest first.
+//
+// Offsets and not coordinates, because the point of this file is that it is
+// small. A door as a lat/lon pair is two 17-character numbers; as a pair of
+// metre offsets it is two numbers under three digits, every one of them inside
+// the 72 m the furthest real door sits from its building's own point. MEASURED
+// on the Autumn 2026 subset, same 46 buildings either way: 217 doors cost 743
+// bytes gzipped as offsets, 1,482 to 2,225, and 4,699 as coordinate pairs.
+//
+// The file still SHRANK, 2,563 bytes to 2,225, because the committed one was
+// built on 2026-08-27 against a 96-building index and had been carrying 50
+// buildings the room index stopped referencing. That is the stale floor above
+// doing its damage, not a discount on the doors.
+//
+// Whole metres is a 0.7 m worst-case rounding error, which at WALK_MPM is half
+// a second, against doors the GIS layer places to about 10 cm. The engine's
+// own comment is that a metre is a second; a metre here is not worth a byte.
+const doorOffsets = (building, doors) => (doors ?? []).flatMap((door) => {
+  const midLat = rad((building.lat + door.lat) / 2);
+  return [
+    Math.round(rad(door.lon - building.lon) * Math.cos(midLat) * EARTH_METRES),
+    Math.round(rad(door.lat - building.lat) * EARTH_METRES),
+  ];
+});
+
+// The same equirectangular plane js/engine.js measures in, so that adding an
+// offset to an origin-to-building vector is the same answer as measuring
+// origin to door directly. scripts/test/entrances.test.mjs holds the two
+// against each other over every shipped door.
+const EARTH_METRES = 6371008.8;
+const rad = (deg) => (deg * Math.PI) / 180;
+
 // The small file is derived from a term, so it is named for one the way
 // data/rooms-1268.json is. data/current.json says which term is live.
 const smallPath = (term) => join(ROOT, 'data', `buildings-${term}.json`);
 
 // A term whose room index resolves fewer buildings than this did not load, and
-// shipping the small file anyway would delete pins from the map. Measured: 96
-// of 96 codes in term 1268 are present in the full index.
-const MIN_CLASS_BUILDINGS = 90;
+// shipping the small file anyway would delete pins from the map.
+//
+// 90 until 2026-09-15, and by then it had been unreachable for some time: the
+// figure was measured when term 1268 carried 871 rooms in 96 buildings, and the
+// room safety filter has since cut the index to 425 rooms in 46. The floor sat
+// ABOVE the real number, so `only 46 of 46 class-hosting codes resolved` was
+// fatal and this script could not write data/buildings-<term>.json at all. The
+// committed subset is older than the index it is keyed against for that reason.
+//
+// A floor that outruns its own dataset is worse than no floor, because it fails
+// on a perfect run and the failure names the healthy number. 40 sits under the
+// measured 46 with room for a term that schedules a few buildings fewer, and
+// far above the zero a collapsed pull produces.
+const MIN_CLASS_BUILDINGS = 40;
 
 // The cap exists to keep satellite campuses out of a walking app. It is a
 // CHOSEN bound, not a natural boundary, and the research calling 10 km "stable
@@ -199,9 +243,15 @@ export function buildIndex(features) {
 }
 
 // The launch subset: every code the term's room index points at, three fields
-// each. A code with no record in the full index is reported rather than
-// dropped, because it means a room in the grid has nothing to put on the map.
-export function smallIndex(buildings, roomCodes) {
+// each, plus its doors. A code with no record in the full index is reported
+// rather than dropped, because it means a room in the grid has nothing to put
+// on the map.
+//
+// A building with no doors gets no `d` at all rather than an empty array. The
+// engine reads a missing `d` as "measure to the published point", which is what
+// every building did before entrances existed, so the fallback is the old
+// behaviour and not a special case.
+export function smallIndex(buildings, roomCodes, entrances = {}) {
   const small = {};
   const missing = [];
   for (const code of [...roomCodes].sort()) {
@@ -211,6 +261,8 @@ export function smallIndex(buildings, roomCodes) {
       continue;
     }
     small[code] = Object.fromEntries(SMALL_FIELDS.map((f) => [f, b[f]]));
+    const d = doorOffsets(b, entrances[code]);
+    if (d.length) small[code].d = d;
   }
   return { small, missing };
 }
@@ -316,7 +368,19 @@ async function writeSmall(buildings, meta) {
 
   const rooms = JSON.parse(readFileSync(roomsPath, 'utf8')).rooms;
   const roomCodes = new Set(Object.values(rooms).map((r) => r.b));
-  const { small, missing } = smallIndex(buildings, roomCodes);
+
+  // Optional on purpose. A checkout that has never run fetch-entrances.mjs
+  // still builds a correct term subset, one that measures to the published
+  // point the way every build did before the doors existed.
+  const entrancesPath = join(ROOT, 'data', 'entrances.json');
+  const entrances = existsSync(entrancesPath)
+    ? JSON.parse(readFileSync(entrancesPath, 'utf8')).entrances ?? {}
+    : {};
+  if (!existsSync(entrancesPath)) {
+    console.warn('  no data/entrances.json, so every walk measures to the building centroid. Run scripts/fetch-entrances.mjs.');
+  }
+
+  const { small, missing } = smallIndex(buildings, roomCodes, entrances);
 
   if (missing.length) {
     console.warn(
@@ -338,12 +402,15 @@ async function writeSmall(buildings, meta) {
     term,
     source: meta.source,
     attribution: meta.attribution,
-    note: 'the buildings the term room index references, name/lat/lon only. data/buildings.json has every building and every field.',
+    note: 'the buildings the term room index references, name/lat/lon plus d, the doors as whole-metre east/north offsets from lat/lon, nearest first. A building with no d has no surveyed door and is measured to lat/lon. data/buildings.json has every building and every field, data/entrances.json has every door and every field.',
     count: kept,
     buildings: small,
   })}\n`;
   await writeFile(smallPath(term), text);
+  const withDoors = Object.values(small).filter((b) => b.d).length;
+  const doors = Object.values(small).reduce((n, b) => n + (b.d?.length ?? 0) / 2, 0);
   console.log(`wrote data/buildings-${term}.json  ${kept} buildings, ${gz(text)} bytes gzipped`);
+  console.log(`  ${doors} doors on ${withDoors} of them; the other ${kept - withDoors} measure to the published point`);
 }
 
 const invokedDirectly = process.argv[1] && process.argv[1].endsWith('fetch-buildings.mjs');

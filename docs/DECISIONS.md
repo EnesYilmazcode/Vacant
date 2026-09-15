@@ -4018,7 +4018,7 @@ The doors come from `Data/ReferenceData_RO/MapServer/10`, the same read-only GIS
 family the building table already comes from, under the same FITS attribution.
 `scripts/fetch-entrances.mjs` writes `data/entrances.json`; the offsets are
 folded into `data/buildings-<term>.json` as whole metres east and north, which
-costs 743 bytes gzipped and avoids a second request on boot. 44 of the 46
+costs 815 bytes gzipped and avoids a second request on boot. 44 of the 46
 class-hosting buildings have a standing door. Biological Sciences is absent from
 the layer and the Theatre Building's four doors are all under construction, so
 both keep the centroid; a missing `d` is read as the old behaviour rather than

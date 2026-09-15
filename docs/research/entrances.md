@@ -130,6 +130,9 @@ building did before this existed:
 - **1025 Theatre, Film and Media Arts Building** — all four of its doors are
   `Under Construction`, which is true; the building is being rebuilt.
 
+The four non-teaching buildings in the subset all have doors, so 48 of its 50
+rows carry one.
+
 A `Status` of `null` is kept rather than dropped. 20 doors on shipped buildings
 have one, they sit on the outline like every other point, and reading unknown as
 absent would delete them.
@@ -140,17 +143,20 @@ The doors ship as whole-metre east/north offsets from the building's own point,
 not as coordinate pairs. Every offset is inside the 72 m the furthest real door
 sits from its building, so each is a number under three digits.
 
-| `data/buildings-1268.json`, same 46 buildings | gzipped |
+| `data/buildings-1268.json`, same 50 buildings | gzipped |
 | --- | ---: |
-| Without doors | 1,482 B |
-| **With 217 doors as offsets** | **2,225 B** |
-| With the same doors as coordinate pairs | 4,699 B |
+| Without doors | 1,616 B |
+| **With 237 doors as offsets** | **2,431 B** |
+| With the same doors as coordinate pairs | 5,139 B |
 
-743 bytes. Whole metres is a 0.7 m worst-case rounding error, half a second at
+815 bytes. Whole metres is a 0.7 m worst-case rounding error, half a second at
 `WALK_MPM`, against doors the GIS layer places to about 10 cm.
 
-The committed file actually *shrank*, 2,563 B to 2,225 B, but that is not a
+The committed file actually *shrank*, 2,563 B to 2,431 B, but that is not a
 discount on the doors. See the note on the stale subset at the end.
+
+The subset is 50 buildings rather than 46 because four of the picker's six
+shortcut origins host no class; see the last section.
 
 ## What it changes
 
@@ -260,11 +266,30 @@ longer references. Rebuilding it drops those 50, which is why the file shrank
 even after gaining 217 doors, and it moved three measured constants that had
 been read off the stale slice:
 
-- the tie-break count in `scripts/test/screens.test.mjs`, 2,984 to 3,012, and a
+- the tie-break count in `scripts/test/screens.test.mjs`, 2,984 to 2,836, and a
   row can now move two places rather than one, because the slice has a tie run
   three buildings long where it had none;
 - the off-campus note in `js/app.js`, which claimed seven of 96 buildings sit
-  outside the 2.2 km gate. None of the 46 does. The claim is true of the full
+  outside the 2.2 km gate. None of the 50 does. The claim is true of the full
   612-building index — 268 sit outside it, the furthest being Main St, 153 W at
   19.32 km — and is now read off that, because the term slice is a list of
   classroom buildings rather than a sample of OSU property.
+
+**The picker's shortcut bar was standing on the stale rows.** `js/app.js`
+hardcodes six buildings as one-tap origins on the "Where are you?" screen, and
+four of them — the Ohio Union, Thompson Library, the RPAC and the Eighteenth
+Avenue Library — host no classes at all. They are places a student *stands*,
+not places with a classroom to send them to. `paintPick()` renders each button
+from `state.buildings[code].name` and `pickBuilding()` reads `lat`/`lon` off the
+same row, so keyed on the room index alone the bar is Dreese and Hitchcock and
+the other four are simply absent.
+
+They had been rendering only because the subset still held the 96 codes an older
+room index referenced. The first correct rebuild deleted four of the six, which
+is how this was found — the regression was latent in the design and any correct
+rebuild would have shipped it. `scripts/fetch-buildings.mjs` now keys the subset
+on the room index **plus** `ORIGIN_CODES`, refuses to write a file missing a
+shortcut, and counts the `MIN_CLASS_BUILDINGS` floor over the room index alone
+so four buildings of padding cannot hide a collapsed harvest.
+`scripts/test/buildings.test.mjs` reads `SHORTCUTS` out of `js/app.js` and fails
+if the two lists drift, because nothing else connects them.

@@ -2077,20 +2077,23 @@ test('the ranked clause says today when the door clause has named tomorrow', () 
 test('the closed group breaks a distance tie on which door opens first', () => {
   // A sort key that never moves a row is decoration, so it is measured, and the
   // figure is pinned here rather than left in a comment to rot. Over a 12x12
-  // grid on the campus box at every quarter hour of every day: 3,012 of 96,768
-  // closed lists come out in a different order, 3.11%, and no row moves more
-  // than two places. The commonest case is PAES over Hopkins Hall, 140 of them,
-  // both a 4 minute walk and both 218 m out, PAES opening 10:00am and Hopkins
-  // shut for the day.
+  // grid on the campus box at every quarter hour of every day: 2,836 of 96,768
+  // closed lists come out in a different order, 2.93%, and no row moves more
+  // than two places. The commonest case is Hagerty Hall over Arps Hall, 144 of
+  // them, both a 12 minute walk and both 678 m out, Hagerty opening 6:00pm and
+  // Arps shut for the day.
   //
-  // 2,984, 3.08% and one place until 2026-09-15. Two things moved at once and
-  // they pull in opposite directions, so neither number is readable alone: the
+  // 2,984, 3.08% and one place until 2026-09-15. Three things moved at once and
+  // they do not pull the same way, so no one number here is readable alone: the
   // walk now ends at a building's nearest door rather than at its centroid,
-  // which changes which buildings tie at all, and the term slice was rebuilt
-  // from 96 buildings to 46, which shortens every list. The campus box is drawn
-  // off that slice, so it moved too. What is worth watching is the last figure:
-  // a row can now move two places, which means the slice has a tie run three
-  // buildings long where it used to have none.
+  // which changes which buildings tie at all; the term slice was rebuilt from
+  // 96 buildings to 46, which shortens every list; and it then grew back to 50
+  // to keep the picker's shortcut bar alive. The grid is drawn off the slice's
+  // bounding box, so the last of those moved every origin as well.
+  //
+  // What is worth watching is the last figure. A row can now move two places,
+  // which means the slice has a tie run three buildings long where it used to
+  // have none.
   const lats = Object.values(SLICE).map((b) => b.lat);
   const lons = Object.values(SLICE).map((b) => b.lon);
   const box = { s: Math.min(...lats), n: Math.max(...lats), w: Math.min(...lons), e: Math.max(...lons) };
@@ -2144,7 +2147,7 @@ test('the closed group breaks a distance tie on which door opens first', () => {
     }
   }
   assert.equal(lists, 96768);
-  assert.equal(moved, 3012);
+  assert.equal(moved, 2836);
   assert.equal(furthest, 2);
 });
 

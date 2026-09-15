@@ -61,13 +61,13 @@ const SMALL_FIELDS = ['name', 'lat', 'lon'];
 // small. A door as a lat/lon pair is two 17-character numbers; as a pair of
 // metre offsets it is two numbers under three digits, every one of them inside
 // the 72 m the furthest real door sits from its building's own point. MEASURED
-// on the Autumn 2026 subset, same 46 buildings either way: 217 doors cost 743
-// bytes gzipped as offsets, 1,482 to 2,225, and 4,699 as coordinate pairs.
+// on the Autumn 2026 subset, same 50 buildings either way: 237 doors cost 815
+// bytes gzipped as offsets, 1,616 to 2,431, and 5,139 as coordinate pairs.
 //
-// The file still SHRANK, 2,563 bytes to 2,225, because the committed one was
-// built on 2026-08-27 against a 96-building index and had been carrying 50
-// buildings the room index stopped referencing. That is the stale floor above
-// doing its damage, not a discount on the doors.
+// The file still SHRANK, 2,563 bytes to 2,431, because the committed one was
+// built on 2026-08-27 against a 96-building index and had been carrying 46
+// buildings nothing in the app referenced. That is the stale floor below doing
+// its damage, not a discount on the doors.
 //
 // Whole metres is a 0.7 m worst-case rounding error, which at WALK_MPM is half
 // a second, against doors the GIS layer places to about 10 cm. The engine's
@@ -131,6 +131,26 @@ const MIN_CLASS_BUILDINGS = 40;
 // This is the DATA filter. How far a student will actually walk is a separate
 // user-facing setting on top, and never baked into the shipped dataset.
 const MAX_KM = 20;
+
+// The picker's shortcut bar, which is NOT a subset of the room index and is the
+// reason this list exists at all.
+//
+// js/app.js hardcodes six buildings as one-tap origins on the "Where are you?"
+// screen, and four of them host no classes: the Ohio Union, Thompson Library,
+// the RPAC and the Eighteenth Avenue Library are places a student STANDS, not
+// places with a classroom to send them to. paintPick() renders each button from
+// `state.buildings[code].name` and pickBuilding() reads `lat`/`lon` off the same
+// row, so a shortcut whose code is missing from this file is not a degraded
+// button, it is no button.
+//
+// They shipped only because data/buildings-1268.json was stale and still held
+// the 96 codes an older room index referenced. The first correct rebuild of that
+// file removed four of the six shortcuts, which is how this was found. Keyed off
+// the room index alone, the bar is Dreese and Hitchcock.
+//
+// scripts/test/buildings.test.mjs reads SHORTCUTS out of js/app.js and fails if
+// the two lists drift, because nothing else connects them.
+export const ORIGIN_CODES = ['161', '050', '246', '005', '279', '274'];
 
 // A first run has to have a floor, and after that the committed file is the
 // floor. Measured: 612 buildings inside 20 km.
@@ -368,6 +388,9 @@ async function writeSmall(buildings, meta) {
 
   const rooms = JSON.parse(readFileSync(roomsPath, 'utf8')).rooms;
   const roomCodes = new Set(Object.values(rooms).map((r) => r.b));
+  // The union, not the room index. See ORIGIN_CODES: the picker's shortcuts are
+  // origins rather than destinations and most of them hold no classroom.
+  const wanted = new Set([...roomCodes, ...ORIGIN_CODES]);
 
   // Optional on purpose. A checkout that has never run fetch-entrances.mjs
   // still builds a correct term subset, one that measures to the published
@@ -380,20 +403,35 @@ async function writeSmall(buildings, meta) {
     console.warn('  no data/entrances.json, so every walk measures to the building centroid. Run scripts/fetch-entrances.mjs.');
   }
 
-  const { small, missing } = smallIndex(buildings, roomCodes, entrances);
+  const { small, missing } = smallIndex(buildings, wanted, entrances);
 
   if (missing.length) {
     console.warn(
-      `  ${missing.length} code(s) in the room index have no building record: ${missing.join(', ')}`,
+      `  ${missing.length} code(s) the app names have no building record: ${missing.join(', ')}`,
     );
   }
-  const kept = Object.keys(small).length;
-  if (kept < MIN_CLASS_BUILDINGS) {
+
+  // A shortcut with no row is a button that does not render, so it is fatal
+  // rather than a warning. There are six of them and they are hardcoded.
+  const lostShortcuts = ORIGIN_CODES.filter((code) => !small[code]);
+  if (lostShortcuts.length) {
     die(
-      `only ${kept} of ${roomCodes.size} class-hosting codes resolved, ` +
+      `the picker's shortcut bar would lose ${lostShortcuts.join(', ')}: ` +
+        'no row in the full index, so js/app.js can neither name nor stand on them.',
+    );
+  }
+
+  // Counted over the room index alone. The shortcuts are four buildings of
+  // padding on this number and would let a collapsed harvest sit closer to the
+  // floor than it really is.
+  const classKept = [...roomCodes].filter((code) => small[code]).length;
+  if (classKept < MIN_CLASS_BUILDINGS) {
+    die(
+      `only ${classKept} of ${roomCodes.size} class-hosting codes resolved, ` +
         `under the ${MIN_CLASS_BUILDINGS} floor.`,
     );
   }
+  const kept = Object.keys(small).length;
 
   // Compact, like the room index it is keyed against. This one is on the
   // critical path, so it is read by a machine and never by a person.
@@ -402,7 +440,7 @@ async function writeSmall(buildings, meta) {
     term,
     source: meta.source,
     attribution: meta.attribution,
-    note: 'the buildings the term room index references, name/lat/lon plus d, the doors as whole-metre east/north offsets from lat/lon, nearest first. A building with no d has no surveyed door and is measured to lat/lon. data/buildings.json has every building and every field, data/entrances.json has every door and every field.',
+    note: 'the buildings the term room index references plus the picker shortcut codes in js/app.js SHORTCUTS, name/lat/lon plus d, the doors as whole-metre east/north offsets from lat/lon, nearest first. A building with no d has no surveyed door and is measured to lat/lon. data/buildings.json has every building and every field, data/entrances.json has every door and every field.',
     count: kept,
     buildings: small,
   })}\n`;

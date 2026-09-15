@@ -43,6 +43,8 @@ export const DETOUR = 1.3;
 // 44 of the 46 shipped buildings have doors. The two that do not, Biological
 // Sciences and the Theatre Building, still measure to the centroid, so a walk
 // fitted against either of them carries the old bias and a fit should drop them.
+// The subset also carries four buildings that host no class at all, because the
+// picker's shortcut bar stands on them; they have doors and no rooms.
 //
 // The INDOOR half is untouched and is what is left to price: the door is not
 // the room. MEASURED over the 46 shipped buildings by decoding data/campus.json
@@ -264,10 +266,11 @@ export function distanceMetres(a, b) {
 // distanceMetres call over every shipped door.
 //
 // A building with no `d` falls back to the published point, which is what every
-// building did before the doors existed. 44 of the 46 buildings in the Autumn
-// 2026 subset have doors. The other two are Biological Sciences, absent from
-// the entrance layer entirely, and the Theatre, Film and Media Arts Building,
-// whose four doors are all "Under Construction".
+// building did before the doors existed. 48 of the 50 buildings in the Autumn
+// 2026 subset have doors, including 44 of the 46 that host a class. The two
+// without are Biological Sciences, absent from the entrance layer entirely, and
+// the Theatre, Film and Media Arts Building, whose four doors are all "Under
+// Construction".
 //
 // This does NOT fix the detour bias. #115 measured OSU's own pedestrian network
 // running 1.49x the straight line at the median, and correcting the endpoint

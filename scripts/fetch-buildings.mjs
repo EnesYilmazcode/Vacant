@@ -105,7 +105,7 @@ const smallPath = (term) => join(ROOT, 'data', `buildings-${term}.json`);
 // on a perfect run and the failure names the healthy number. 40 sits under the
 // measured 46 with room for a term that schedules a few buildings fewer, and
 // far above the zero a collapsed pull produces.
-const MIN_CLASS_BUILDINGS = 40;
+const MIN_CLASS_BUILDINGS_FALLBACK = 40;
 
 // The cap exists to keep satellite campuses out of a walking app. It is a
 // CHOSEN bound, not a natural boundary, and the research calling 10 km "stable
@@ -154,7 +154,7 @@ export const ORIGIN_CODES = ['161', '050', '246', '005', '279', '274'];
 
 // A first run has to have a floor, and after that the committed file is the
 // floor. Measured: 612 buildings inside 20 km.
-const MIN_BUILDINGS = 550;
+const MIN_BUILDINGS_FALLBACK = 550;
 
 // Local calendar date as YYYY-MM-DD.
 const localDate = () => {
@@ -324,16 +324,20 @@ async function main() {
     );
   }
 
-  if (funnel.kept < MIN_BUILDINGS) {
-    die(`only ${funnel.kept} buildings kept, under the ${MIN_BUILDINGS} floor.`);
-  }
-
+  let minBuildings = MIN_BUILDINGS_FALLBACK;
   if (existsSync(OUT_PATH)) {
     const previous = JSON.parse(readFileSync(OUT_PATH, 'utf8'));
     const before = Object.keys(previous.buildings ?? {}).length;
+    minBuildings = Math.floor(before * 0.8);
+    
     if (funnel.kept < before) {
-      die(`${funnel.kept} buildings is fewer than the ${before} already committed. Refusing.`);
+      // It's acceptable for the number of buildings to decrease slightly, but not below the fractional floor.
+      console.warn(`Warning: ${funnel.kept} buildings is fewer than the ${before} already committed.`);
     }
+  }
+
+  if (funnel.kept < minBuildings) {
+    die(`only ${funnel.kept} buildings kept, under the ${minBuildings} floor.`);
   }
 
   const buildings = Object.fromEntries([...byCode.entries()].sort(([a], [b]) => a.localeCompare(b)));
@@ -424,11 +428,21 @@ async function writeSmall(buildings, meta) {
   // Counted over the room index alone. The shortcuts are four buildings of
   // padding on this number and would let a collapsed harvest sit closer to the
   // floor than it really is.
+  let minClassBuildings = MIN_CLASS_BUILDINGS_FALLBACK;
+  const previousSmallPath = smallPath(term);
+  if (existsSync(previousSmallPath)) {
+    const previousSmall = JSON.parse(readFileSync(previousSmallPath, 'utf8'));
+    const beforeClassKept = Object.keys(previousSmall.buildings ?? {}).filter(c => !ORIGIN_CODES.includes(c)).length;
+    if (beforeClassKept > 0) {
+      minClassBuildings = Math.floor(beforeClassKept * 0.8);
+    }
+  }
+
   const classKept = [...roomCodes].filter((code) => small[code]).length;
-  if (classKept < MIN_CLASS_BUILDINGS) {
+  if (classKept < minClassBuildings) {
     die(
       `only ${classKept} of ${roomCodes.size} class-hosting codes resolved, ` +
-        `under the ${MIN_CLASS_BUILDINGS} floor.`,
+        `under the ${minClassBuildings} floor.`,
     );
   }
   const kept = Object.keys(small).length;

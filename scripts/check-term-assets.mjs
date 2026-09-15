@@ -20,9 +20,10 @@
 //
 // Usage:  node scripts/check-term-assets.mjs 1268
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ORIGIN_CODES } from './fetch-buildings.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -51,8 +52,29 @@ function main() {
   }
 
   const missing = missingAssets(term, (p) => existsSync(join(ROOT, p)));
+  
   if (missing.length === 0) {
-    console.log(`term ${term}: ${indexAssets(term).buildings} is committed.`);
+    const { rooms, buildings } = indexAssets(term);
+    const roomsPath = join(ROOT, rooms);
+    const buildingsPath = join(ROOT, buildings);
+    
+    if (existsSync(roomsPath) && existsSync(buildingsPath)) {
+      const roomsData = JSON.parse(readFileSync(roomsPath, 'utf8'));
+      const buildingsData = JSON.parse(readFileSync(buildingsPath, 'utf8'));
+      
+      const roomCodes = new Set(Object.values(roomsData.rooms).map((r) => r.b));
+      const expectedKeys = [...new Set([...roomCodes, ...ORIGIN_CODES])].sort();
+      const actualKeys = Object.keys(buildingsData.buildings).sort();
+      
+      if (expectedKeys.length !== actualKeys.length || !expectedKeys.every((val, index) => val === actualKeys[index])) {
+        console.error(`Missing or stale: ${buildings} (keys do not match room index + shortcuts)`);
+        console.error(`Refusing to build term ${term}. The buildings subset is stale against the room index.`);
+        console.error('Run scripts/fetch-buildings.mjs locally to update it.');
+        process.exit(1);
+      }
+    }
+    
+    console.log(`term ${term}: ${indexAssets(term).buildings} is committed and matches room index.`);
     process.exit(0);
   }
 

@@ -201,10 +201,48 @@ test('the committed launch subset covers every building the room index names', (
   assert.ok(codes.length > 30, 'the check would be vacuous with too few codes');
 
   for (const [code, b] of Object.entries(small)) {
-    assert.deepEqual(Object.keys(b), ['name', 'lat', 'lon'], `${code} carries more than it needs`);
+    // `d` is optional and last: a building with no surveyed door does not carry
+    // the key at all, because js/engine.js reads its absence as "measure to the
+    // published point" and an empty array would be a third thing to handle.
+    const expected = b.d === undefined ? ['name', 'lat', 'lon'] : ['name', 'lat', 'lon', 'd'];
+    assert.deepEqual(Object.keys(b), expected, `${code} carries more than it needs`);
     assert.equal(b.lat, full[code].lat, `${code} disagrees with the full index`);
     assert.equal(b.lon, full[code].lon, `${code} disagrees with the full index`);
+    if (b.d === undefined) continue;
+    assert.ok(b.d.length > 0 && b.d.length % 2 === 0, `${code} has a ragged door list`);
+    for (const offset of b.d) {
+      assert.ok(Number.isInteger(offset), `${code} has a non-integer door offset`);
+      // The furthest real door is 72 m out, at PAES. Anything past a couple of
+      // hundred metres is a join that went wrong, and the fetch script refuses
+      // to write one; this is the same bound checked on what actually shipped.
+      assert.ok(Math.abs(offset) <= 200, `${code} has a door ${offset} m away`);
+    }
   }
+
+  const withDoors = Object.values(small).filter((b) => b.d);
+  // 44 of 46 as of 2026-09-15: Biological Sciences is absent from OSU's
+  // entrance layer and the Theatre Building's four doors are all marked under
+  // construction. A pull that resolved far fewer has broken the join rather
+  // than found a campus of windowless buildings.
+  assert.ok(
+    withDoors.length >= codes.length - 6,
+    `only ${withDoors.length} of ${codes.length} buildings carry doors`,
+  );
+});
+
+test('the launch subset carries doors when entrances are supplied', () => {
+  const entrances = {
+    // 10 m north and 20 m east of the building point, near enough.
+    '003': [{ lat: 40.00009, lon: -83.00977 }],
+  };
+  const { small } = smallIndex(FULL, new Set(['003', '279']), entrances);
+  assert.deepEqual(Object.keys(small['003']), ['name', 'lat', 'lon', 'd']);
+  assert.equal(small['003'].d.length, 2);
+  const [dx, dy] = small['003'].d;
+  assert.ok(Math.abs(dx - 20) <= 1, `east offset is ${dx}, expected about 20`);
+  assert.ok(Math.abs(dy - 10) <= 1, `north offset is ${dy}, expected about 10`);
+  // A building the entrance file says nothing about keeps the old three fields.
+  assert.deepEqual(Object.keys(small['279']), ['name', 'lat', 'lon']);
 });
 
 // --- building codes on the map, issue #50 ---

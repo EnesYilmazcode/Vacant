@@ -2077,11 +2077,20 @@ test('the ranked clause says today when the door clause has named tomorrow', () 
 test('the closed group breaks a distance tie on which door opens first', () => {
   // A sort key that never moves a row is decoration, so it is measured, and the
   // figure is pinned here rather than left in a comment to rot. Over a 12x12
-  // grid on the campus box at every quarter hour of every day: 2,984 of 96,768
-  // closed lists come out in a different order, 3.08%, and no row moves more
-  // than one place. The commonest case is Hayes Hall over Derby Hall, 240 of
-  // them, both a 42 minute walk and both 2,492 m out, Hayes opening 6:00am and
-  // Derby 7:00am.
+  // grid on the campus box at every quarter hour of every day: 3,012 of 96,768
+  // closed lists come out in a different order, 3.11%, and no row moves more
+  // than two places. The commonest case is PAES over Hopkins Hall, 140 of them,
+  // both a 4 minute walk and both 218 m out, PAES opening 10:00am and Hopkins
+  // shut for the day.
+  //
+  // 2,984, 3.08% and one place until 2026-09-15. Two things moved at once and
+  // they pull in opposite directions, so neither number is readable alone: the
+  // walk now ends at a building's nearest door rather than at its centroid,
+  // which changes which buildings tie at all, and the term slice was rebuilt
+  // from 96 buildings to 46, which shortens every list. The campus box is drawn
+  // off that slice, so it moved too. What is worth watching is the last figure:
+  // a row can now move two places, which means the slice has a tie run three
+  // buildings long where it used to have none.
   const lats = Object.values(SLICE).map((b) => b.lat);
   const lons = Object.values(SLICE).map((b) => b.lon);
   const box = { s: Math.min(...lats), n: Math.max(...lats), w: Math.min(...lons), e: Math.max(...lons) };
@@ -2135,8 +2144,8 @@ test('the closed group breaks a distance tie on which door opens first', () => {
     }
   }
   assert.equal(lists, 96768);
-  assert.equal(moved, 2984);
-  assert.equal(furthest, 1);
+  assert.equal(moved, 3012);
+  assert.equal(furthest, 2);
 });
 
 // ---- the screens that say it
@@ -2255,30 +2264,43 @@ test('the off-campus gate is a walk, and the file says which buildings sit outsi
   assert.ok(gate >= farthest + reach, `a ${gate} km gate is inside the ${(farthest + reach).toFixed(3)} km bound`);
 
   // The building the comment names, recomputed, so the sentence cannot rot away
-  // from the table underneath it. All seven are OSU property and all seven are
+  // from the table underneath it. Every one is OSU property and every one is
   // outside the gate, which is exactly why the note it prints is about the walk
   // and not about being off campus.
-  const beyond = Object.entries(SLICE)
+  //
+  // Read off the FULL index, not the term slice. It was the slice until
+  // 2026-09-15, when that file was rebuilt against its own room index for the
+  // first time since 2026-08-27 and went from 96 buildings to 46. None of the
+  // 46 sits outside the gate, so the slice can no longer carry this claim: it
+  // is a list of classroom buildings now, not a sample of OSU property.
+  const beyond = Object.entries(FULL)
     .map(([code, b]) => ({ code, name: b.name, lat: b.lat, lon: b.lon, km: km(b) }))
     .filter((b) => b.km > gate)
     .sort((a, b) => a.km - b.km);
-  assert.equal(beyond.length, 7, 'buildings in the term slice outside the gate');
+  assert.equal(beyond.length, 268, 'buildings in the full index outside the gate');
   assert.ok(
-    said.includes(`Seven of the ${Object.keys(SLICE).length} buildings`),
-    'the count in the comment moved away from the term slice',
+    said.includes(`268 of the ${Object.keys(FULL).length} buildings`),
+    'the count in the comment moved away from the full index',
+  );
+  // And the slice really does sit entirely inside it, which is the fact that
+  // moved this assertion off the slice in the first place.
+  assert.equal(
+    Object.values(SLICE).filter((b) => km(b) > gate).length,
+    0,
+    'a term-slice building is outside the gate again, so the comment needs redoing',
   );
   const last = beyond[beyond.length - 1];
-  assert.match(last.name, /Aerospace Research Center/, 'the farthest building outside the gate moved');
+  assert.match(last.name, /Main St, 153 W/, 'the farthest building outside the gate moved');
   assert.ok(
-    said.includes(`Aerospace Research Center at ${last.km.toFixed(2)} km`),
-    `js/app.js does not say "Aerospace Research Center at ${last.km.toFixed(2)} km"`,
+    said.includes(`Main St, 153 W at ${last.km.toFixed(2)} km`),
+    `js/app.js does not say "Main St, 153 W at ${last.km.toFixed(2)} km"`,
   );
 
   // And the note itself. "You are off campus" was a claim about geography the
-  // table above disagrees with, and so was "nothing on campus is walkable": up to
-  // three other buildings in the term slice sit inside a MAX_WALK walk of one of
-  // those seven. What is airtight is the narrower claim below, that not one of
-  // them holds a room the ranking can offer.
+  // table above disagrees with, and so was "nothing on campus is walkable": a
+  // building outside the gate can still sit inside a MAX_WALK walk of another
+  // one. What is airtight is the narrower claim below, that not one of them
+  // holds a room the ranking can offer.
   for (const b of beyond) {
     const near = Object.entries(SLICE).filter(
       ([code, o]) => code !== b.code && walkMinutes(distanceMetres(b, o)) <= MAX_WALK,

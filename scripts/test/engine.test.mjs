@@ -2051,13 +2051,18 @@ test('shape holds the committed index to a walk you would actually make', () => 
   assert.equal(new Set(near.rows.slice(0, 10).map((r) => r.building)).size, 10);
   assert.ok(near.rows.every((r) => r.walk <= MAX_WALK));
 
-  // Issue #60, the screenshot. Downtown at 14:10 rank() hands back a 71 minute
+  // Issue #60, the screenshot. Downtown at 14:10 rank() hands back a 70 minute
   // walk on row one, and the bound is what stops it. The room named on that row
   // is Jennings Hall 50 since the seat tiebreak flipped to fit-first; see the
   // note below the assertions, which is where the two rooms are pulled apart.
+  //
+  // 71 until 2026-09-15, when the walk stopped ending at the building's
+  // centroid and started ending at its nearest published door. From four and a
+  // half kilometres away the door that faces downtown is about a minute nearer
+  // than the middle of the building, which is the whole of the change here.
   const downtown = rank(rooms, { ...opts, origin: { lat: 39.9612, lon: -82.9988 }, now: at(14, 10) });
   const usable = downtown.filter((r) => r.wait <= 90);
-  assert.equal(usable[0].walk, 71, 'the unbounded ranking still leads with a 71 minute walk');
+  assert.equal(usable[0].walk, 70, 'the unbounded ranking still leads with a 70 minute walk');
   const far = shape(usable);
   assert.equal(far.rows.length, 0);
   // The weekly room counts move. What matters is that the fold accounts for
@@ -2066,13 +2071,21 @@ test('shape holds the committed index to a walk you would actually make', () => 
     'every usable row is past the bound');
   assert.equal(far.beyond.count, usable.filter((r) => r.wait === 0).length,
     'only rooms free right now are named free');
-  assert.equal(far.beyond.nearest.walk, 71);
-  // The screenshot named Pomerene Hall. 8 rooms tie at exactly 71 minutes,
-  // across Pomerene Hall and Jennings Hall, and `nearest` keeps the first one
-  // the ranking hands it, so the seat tiebreak decides which of the two gets
-  // named: Jennings Hall 50 has 35 seats and Pomerene Hall 150 has 62. The
-  // walk, which is the number the sentence is about, is the same either way.
+  assert.equal(far.beyond.nearest.walk, 70);
+  // The screenshot named Pomerene Hall, and until 2026-09-15 this was a note
+  // about a tiebreak: 8 rooms tied at exactly 71 minutes across Pomerene Hall
+  // and Jennings Hall, `nearest` kept whichever the ranking handed it first,
+  // and the seat tiebreak picked Jennings Hall 50 at 35 seats over Pomerene
+  // Hall 150 at 62.
+  //
+  // The tie is gone. Measuring to the nearest door instead of the centroid
+  // moved Jennings to 70 minutes and left Pomerene at 71, so 4 Jennings rooms
+  // now stand alone on row one and distance decides what a seat count used to.
+  // That is the endpoint correction doing exactly what it is for, on the one
+  // origin in this suite far enough away to show it.
   assert.match(far.beyond.nearest.name, /Jennings/);
+  assert.equal(usable.filter((r) => r.walk === 70).length, 4, 'only Jennings sits at 70');
+  assert.ok(usable.every((r) => r.walk !== 70 || /Jennings/.test(r.name)));
   assert.ok(usable.some((r) => r.walk === 71 && /Pomerene/.test(r.name)));
   // The count the screen prints is only rooms that are free, on the real index
   // and not just on a fixture.

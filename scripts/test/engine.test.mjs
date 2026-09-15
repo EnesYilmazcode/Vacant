@@ -885,21 +885,33 @@ test('the engine never touches a Date, so it cannot be wrong about a timezone', 
 
 // --- ranking ---
 
-test('a longer window buys a longer walk, but only up to the cap', () => {
+test('for fixed-duration requests, walk is primary and surplus is a tie-break; for rest of day, surplus can buy a longer walk', () => {
   const near = { walk: 3, usable: 60 };
   const far = { walk: 4, usable: 120 };
-  assert.ok(scoreOf(far, 60) < scoreOf(near, 60), 'an extra hour is worth a minute of walking');
-
-  // Six minutes further needs a full hour of surplus to win, and no more than
-  // an hour ever counts.
-  const distant = { walk: 10, usable: 600 };
-  assert.ok(scoreOf(near, 60) < scoreOf(distant, 60), 'surplus past the cap does not drag you across campus');
+  
+  // fixed duration
+  assert.ok(scoreOf(near, 60) < scoreOf(far, 60), 'nearer walk wins even if further room has a longer window');
+  
+  const sameWalkLessSurplus = { walk: 3, usable: 60 };
+  const sameWalkMoreSurplus = { walk: 3, usable: 120 };
+  assert.ok(scoreOf(sameWalkMoreSurplus, 60) < scoreOf(sameWalkLessSurplus, 60), 'surplus acts as a tie-break for equal walk times');
+  
   assert.equal(
     scoreOf({ walk: 5, usable: 60 + SURPLUS_CAP }, 60),
     scoreOf({ walk: 5, usable: 60 + SURPLUS_CAP + 300 }, 60),
     'the cap is a cap',
   );
-  assert.equal(scoreOf({ walk: 4, usable: 60 }, 60), 4 - SURPLUS_WEIGHT * 0);
+  assert.equal(scoreOf({ walk: 4, usable: 60 }, 60), 4 - 0.001 * 0);
+
+  // rest of day (need = 0)
+  const short_window = { walk: 3, usable: 0 };
+  const long_window = { walk: 4, usable: 60 };
+  assert.ok(scoreOf(long_window, 0) < scoreOf(short_window, 0), 'an extra hour is worth a minute of walking for rest-of-day');
+  
+  // Six minutes further needs a full hour of surplus to win, and no more than
+  // an hour ever counts.
+  const distant = { walk: 10, usable: 600 };
+  assert.ok(scoreOf(near, 0) < scoreOf(distant, 0), 'surplus past the cap does not drag you across campus');
 });
 
 test('an unknown-hours room scores on distance alone, because it has no window to trade', () => {

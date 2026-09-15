@@ -190,7 +190,7 @@ sits at the bottom, then **Add to Home Screen**. iOS 26 defaults to that Compact
 layout, which is why the app offers you both. On Android, Chrome has **Install
 app** in its menu.
 
-Installed, the whole app is 152 KB of shell and about 90 KB of schedule, gzipped, and
+Installed, the whole app is 153 KB of shell and about 90 KB of schedule, gzipped, and
 none of it is fetched again to answer a question. Turn the network off, open it,
 and it still ranks rooms. That matters because the moment you want it most is the
 moment you are in a basement with one bar.

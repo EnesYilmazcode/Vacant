@@ -78,16 +78,28 @@ repository can or should do them for you.
    the project while `vacant` is the only project on it. Scope it to the project
    explicitly the day you add a second.
 
-6. **Put the key in `index.html`.** The meta tag is committed empty:
+6. **Put the key in `index.html`, and commit it.**
 
    ```html
    <meta name="google-maps-key" content="">
    ```
 
-   Fill in the `content` at deploy. An empty value builds no provider, which
-   renders no **Step by step** button at all, which is the app exactly as it
-   behaved before this feature existed. That is the intended state of this
-   repository, and a pull request that fills it in should be questioned.
+   The first draft of this page said to fill that in "at deploy" and to question
+   any pull request that committed it. That advice cannot be followed here and is
+   withdrawn. There is no deploy step to fill anything in at: Pages serves this
+   repository, so the file a reader's browser downloads is the file in `main`. An
+   uncommitted key works on nobody's phone.
+
+   So the key is committed and it is public, and that is the arrangement rather
+   than an accident. Google's own documentation treats a browser key as public
+   information; the referrer restriction in step 3 is the whole of its security,
+   which is why that step comes before this one and why removing it would be the
+   one change here that actually costs money.
+
+   An empty value builds no provider, which renders no **Step by step** button at
+   all -- the app exactly as it behaved before this feature existed. That is the
+   correct state for a fork, and the reason the failure of a missing key is a
+   missing button rather than a broken screen.
 
 ## What the reader is told
 

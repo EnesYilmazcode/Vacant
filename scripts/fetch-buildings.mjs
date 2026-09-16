@@ -428,18 +428,6 @@ async function writeSmall(buildings, meta) {
   // Counted over the room index alone. The shortcuts are four buildings of
   // padding on this number and would let a collapsed harvest sit closer to the
   // floor than it really is.
-  const classKept = [...roomCodes].filter((code) => small[code]).length;
-  if (classKept < MIN_CLASS_BUILDINGS) {
-    die(
-      `only ${classKept} of ${roomCodes.size} class-hosting codes resolved, ` +
-        `under the ${MIN_CLASS_BUILDINGS} floor.`,
-    );
-  }
-  const kept = Object.keys(small).length;
-
-  // Counted over the room index alone. The shortcuts are four buildings of
-  // padding on this number and would let a collapsed harvest sit closer to the
-  // floor than it really is.
   let minClassBuildings = MIN_CLASS_BUILDINGS_FALLBACK;
   const previousSmallPath = smallPath(term);
   if (existsSync(previousSmallPath)) {

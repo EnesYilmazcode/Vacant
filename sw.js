@@ -7,8 +7,8 @@
 // One cache would either re-download the room index on every deploy or pin an
 // installed icon to last month's app.js forever.
 //
-// Measured on 2026-09-15 over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 162,405 bytes, data 115,160.
+// Measured on 2026-09-16 over the committed blobs, which is the copy Pages serves:
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 167,460 bytes, data 115,160.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these seventeen files, which is most of a percent of
@@ -146,6 +146,21 @@ const PHOTO = /\/data\/photos\/[^/]+\.webp$/;
 // to press, which is worse than a blank one: a blank screen is at least legibly
 // broken.
 //
+// The shell grew 5,055 for the words of a walk. 3,037 is js/directions.js, and
+// the remaining 2,018 is the button, the list it fills and the one paragraph in
+// index.html that holds the key, empty.
+//
+// Nothing was added to the DATA for it, which is the point: the steps are
+// fetched from Google on a tap, for the one building a reader has already
+// chosen, and are never cached. The walk the app quotes is still measured over
+// the graph that is cached, so a phone with no signal loses the words and keeps
+// every number.
+//
+// js/directions.js is precached even though it cannot work offline. It has to
+// be: js/app.js imports it at the top, and install resolving without it would
+// leave an app that fails to evaluate on a missing import -- the exact failure
+// the paragraph above this one records.
+//
 // js/dev.js is deliberately absent. js/app.js reaches it through import() only
 // when ?dev=1 asks for it, so a student who never asks never downloads it.
 const SHELL_ASSETS = [
@@ -155,6 +170,7 @@ const SHELL_ASSETS = [
   SCOPE + 'js/campus.js',
   SCOPE + 'js/claim.js',
   SCOPE + 'js/day.js',
+  SCOPE + 'js/directions.js',
   SCOPE + 'js/engine.js',
   SCOPE + 'scripts/lib/club-occupancy.mjs',
   SCOPE + 'js/map.js',

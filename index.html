@@ -6,6 +6,11 @@
 <title>Vacant &middot; Ohio State</title>
 <meta name="description" content="Find an empty classroom near you at Ohio State, free for as long as you need it.">
 <meta name="color-scheme" content="dark">
+<!-- Empty here on purpose. A Maps JavaScript API key restricted by HTTP referrer
+     to this origin, filled in at deploy; see docs/google-setup.md. Empty means
+     js/directions.js builds no provider and the Directions button never renders,
+     which is the app exactly as it shipped before it existed. -->
+<meta name="google-maps-key" content="AIzaSyAYFxzL7aBdnDrbmzkgOQPYTSIm2J-4Xck">
 <meta name="theme-color" content="#0b0d10">
 <link rel="manifest" href="/Vacant/manifest.webmanifest">
 <!-- With no icon link a browser asks the ORIGIN root for /favicon.ico, and
@@ -797,6 +802,12 @@
   .facts .w { display: flex; align-items: center; gap: .3rem; color: var(--fg); white-space: nowrap; }
   .acts { display: flex; flex-wrap: wrap; gap: .5rem; padding: .7rem 1.1rem 0; }
   .acts a.bar-btn { text-decoration: none; }
+  .steps { padding: .2rem 1.1rem 0; }
+  .steps-ask, .steps-wait, .steps-none, .steps-src { margin: .5rem 0; font-size: .86rem; color: var(--dim); }
+  .steps-ask .bar-btn { margin-top: .5rem; }
+  .steps-list { margin: .6rem 0; padding-left: 1.3rem; display: grid; gap: .45rem; }
+  .steps-list li { font-size: .93rem; line-height: 1.35; }
+  .steps-m { color: var(--dim); font-variant-numeric: tabular-nums; }
   /* The needle turns, the button does not, so the label stays readable while
      the arrow points. */
   #bearing .ico { transition: transform .12s linear; }

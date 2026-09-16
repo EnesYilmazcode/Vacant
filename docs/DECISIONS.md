@@ -4068,3 +4068,90 @@ references; rebuilding it moved the tie-break count in
 note in `js/app.js`, which claimed seven of 96 buildings sit outside the 2.2 km
 gate. None of the 46 does, so that claim now reads off the full 612-building
 index, where 268 do. Full write-up in `docs/research/entrances.md`.
+
+## 2026-09-16  The walk follows OSU's own sidewalks, and DETOUR leaves walkMinutes
+
+`js/engine.js` quoted every walk as `straight-line metres x DETOUR 1.3 /
+WALK_MPM 78`. It now routes over OSU's published sidewalk centrelines, from a
+committed 21 KB file, offline, with the old estimate kept as the fallback.
+
+**Decided against three alternatives, and the third is the close one.**
+
+Not Google. [#115](https://github.com/EnesYilmazcode/Vacant/issues/115)'s
+research note priced it: cost, an online dependency, a privacy transfer on every
+ranked query, and map-policy constraints, for a provider whose consumer numbers
+this project could not use as ground truth anyway.
+
+Not an OSM/Valhalla proof of concept, which that note recommended as the
+privacy-preserving fallback. It is the right answer for a campus whose
+university publishes nothing. Ohio State publishes the network: layer 9 of
+`Data/ReferenceData_RO`, "Sidewalk Centerline", on the same read-only server
+`data/buildings.json` (layer 15 of the sibling service) and `data/entrances.json`
+(layer 10) already come from, under the same attribution. No key, no account, no
+request at query time.
+
+**Not a recalibrated constant, and this is what the measurement settled.** That
+was the cheapest option on the issue's own list: no new file, no new code, one
+number. Measured against 230 routes from OSU's own routing service, refitting
+1.30 to the best-fitting 1.38 does close most of the gap in magnitude -- mean
+absolute error 60.6 m to 55.6 m, median 43.4 m to 37.2 m. It closes exactly none
+of it in order. A single multiplier is monotone, so it cannot move one of the
+1,125 building pairs, and it does not: 142 inverted at 1.30 and 142 at 1.38. The
+graph moves it to 112. Order is what decides which room the card shows, and
+`DETOUR` was never able to touch it.
+
+The old model was not biased so much as spread. Over 4,574 replayed rows its
+mean signed error is +11.1 m -- it overstated about as often as it understated --
+while understating 19.0% of walks by a whole minute or more and 4.7% by two or
+more. One number cannot be right in two places at once, and OSU circuity runs
+from a p10 near 1.18 to a p90 of 1.85.
+
+**What it moves.** Over 169 standing points on a grid across the building
+envelope, the nearest building changes at 20.9% of them and the ordered top three
+at 63.2%. That reproduces, from a file on disk with no network, what the original
+note measured against OSU's online service: 14.3% and 66.0% over 238 replayed
+searches. 115 rows that used to be offered as walkable are not, and 257 that were
+excluded are.
+
+**`walkMinutes` is now pace and nothing else.** `DETOUR` moved upstream into a
+new `walkMetres`, which returns routed metres where the graph reaches and
+`approachMetres x DETOUR` where it does not. This is the separation the research
+note asked for in as many words: while one constant stood for both "campus paths
+bend" and "people walk at 78 m a minute", neither could be fitted without moving
+the other. [#26](https://github.com/EnesYilmazcode/Vacant/issues/26), the
+ground-truth walk, now has one quantity to fit instead of two summed into a
+fudge factor.
+
+**The fallback is per ORIGIN, never per building.** A standing point more than
+150 m from any centreline gets no field at all and the whole ranking falls back
+together. A list half routed and half estimated would be sorted on the difference
+between two models that disagree by a median 33 m. `js/app.js` awaits the file in
+its boot `Promise.all` rather than letting it land late, so there is no
+asynchronous result that can reorder a list already on screen -- which is a
+requirement the issue states and which no online provider could have met.
+
+**What it costs.** 21,594 gzipped bytes of data and 4,000 of code. The data side
+of the app grows 23.1%, which is the largest single addition it has taken. The
+geometry between two junctions is thrown away to afford it: the file carries how
+many metres join two junctions and not the shape of them, which is only
+acceptable because [#44](https://github.com/EnesYilmazcode/Vacant/issues/44)
+already settled that the line on the map is a direction and not a route.
+
+**Three figures moved as a consequence and are not behaviour changes.** A ranked
+row's `metres` is the metres WALKED now rather than the straight line, so the
+buildings picker's distance tie-break fires on 2,010 of 96,768 closed lists
+instead of 2,836, never by more than one place -- scaling by 1.30 before rounding
+simply leaves fewer ties. And the off-campus gate's analytic bound moved the
+wrong way: a routed walk can only be longer than the straight line, so
+`MAX_WALK x WALK_MPM` is the correct reach rather than that over `DETOUR`, which
+puts the bound at 2.346 km above the 2.2 km gate. Five building pairs sit in that
+window, the nearest Scott Hall at 857 m, and reaching one needs a route with zero
+detour against a measured median circuity of 1.41. The note the gate prints holds
+in practice and the gate deserves its own issue.
+
+**What is not fixed.** This is still one published network measured against
+another, not a walked route with a stopwatch. The layer carries `PercentSlo`,
+`Accessible`, `SurfaceMat` and `PotentialH` per segment and this graph reads none
+of them, because an edge is a length; a cost per edge is what an
+accessible-routing option would need. Full write-up, with the commands, in
+`docs/research/walking-routes-115.md`.

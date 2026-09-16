@@ -32,13 +32,26 @@ question, because the room is not where you are standing.
 
 Vacant answers **how long the room is yours once you get there**. It takes the gap
 in the room's schedule, subtracts the walk, and leaves ten minutes at the end so
-you are not packing up while the next class files in. Walk time is straight line
-distance times 1.3 for the fact that campus paths bend, at 78 metres a minute,
-measured to the nearest door Ohio State publishes for the building rather than to
-the middle of it. That last part is newer than the rest and is worth one line of
-its own: the building table gives a polygon centroid, so until
-[the doors landed](docs/research/entrances.md) every walk in the app ended inside
-a wall, a median 23 m short of where a walk ends.
+you are not packing up while the next class files in. The walk runs **over Ohio
+State's own sidewalks**, from where you are standing to the nearest door the
+university publishes for the building, at 78 metres a minute.
+
+Both halves of that are newer than the rest. The building table gives a polygon
+centroid, so until [the doors landed](docs/research/entrances.md) every walk
+ended inside a wall, a median 23 m short. And until
+[the pavement landed](docs/research/walking-routes-115.md) the walk itself was a
+straight line multiplied by 1.3, one constant applied everywhere, which cannot
+see a river, a stadium, a rail corridor or a fence.
+
+Measured over 4,574 walks from 169 standing points, that constant **understated
+one walk in five by a minute or more**, and one in twenty-one by two or more. It
+overstated about as many, which is the point: the error is not a bias a better
+constant could absorb, it is spread, and a single multiplier cannot reorder
+anything.
+
+The worst of them are all the same shape. Stand on the west bank and the old
+model quoted nine minutes to Animal Science, because it walked you across the
+Olentangy. It is sixteen. The bridge is the whole difference.
 
 Read the third row of the list further down. PAES A111 says **free till 4:00pm**.
 The next class in that room starts at 4:10pm, you are four minutes away, and
@@ -190,7 +203,7 @@ sits at the bottom, then **Add to Home Screen**. iOS 26 defaults to that Compact
 layout, which is why the app offers you both. On Android, Chrome has **Install
 app** in its menu.
 
-Installed, the whole app is 153 KB of shell and about 90 KB of schedule, gzipped, and
+Installed, the whole app is 159 KB of shell and about 112 KB of schedule, gzipped, and
 none of it is fetched again to answer a question. Turn the network off, open it,
 and it still ranks rooms. That matters because the moment you want it most is the
 moment you are in a basement with one bar.
@@ -237,8 +250,8 @@ room-keyed list of busy intervals. The page downloads that file, subtracts today
 intervals from the building's published opening hours, and ranks what is left by
 walk time. There is no server, no database, no build step and no dependencies.
 
-Everything the page fetches to produce a ranked list is **fourteen files, 472 KB,
-or 108 KB over the wire once gzipped**. Measured with `node:zlib` over the tree
+Everything the page fetches to produce a ranked list is **fifteen files, 515 KB,
+or 129 KB over the wire once gzipped**. Measured with `node:zlib` over the tree
 as committed. The campus map is another 98 KB, 38 KB gzipped, and is warmed after
 the first answer rather than before it.
 
@@ -311,7 +324,13 @@ node scripts/fetch-campus.mjs           # campus polygons  -> data/campus.json
 node scripts/fetch-building-hours.mjs   # Registrar table  -> data/buildings-hours.json
 node scripts/fetch-rooms.mjs 1268       # the class schedule -> data/harvest-1268.json.gz
 node scripts/build-index.mjs 1268       # invert it        -> data/rooms-1268.json
+node scripts/fetch-sidewalks.mjs        # the sidewalks    -> data/walk-graph.json
 ```
+
+The sidewalks are not on the weekly clock the schedule is on. `walk-graph.json`
+is OSU's own centreline layer, contracted to 5,242 junctions and 7,977 edges,
+and it only needs rebuilding when OSU repaves something or opens a path. Run it
+after `fetch-buildings`, which writes the doors the graph is pruned around.
 
 The harvest itself is not committed, because it is regenerated weekly, so a fresh
 clone has to run `fetch-rooms` before `build-index`. One pass over the schedule is

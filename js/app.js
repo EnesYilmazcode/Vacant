@@ -24,7 +24,8 @@ import { overlayForDate } from '../scripts/lib/club-occupancy.mjs';
 import { blocksOn, classesOn, dayClaim } from './day.js';
 // `query` arrives as `ladder` because js/app.js already holds a `state.query`,
 // which is the buildings search box and has nothing to do with the engine.
-import { MAX_WALK, activeSessions, approachMetres, calendarOn, distanceMetres, mark, measure, query as ladder, rank, shape, tally, walkMinutes } from './engine.js';
+import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, query as ladder, rank, shape, tally, walkMetres, walkMinutes } from './engine.js';
+import { createRouter, decodeWalkGraph } from './route.js';
 // The deadline every request on the path to a first answer shares. It lives in
 // js/firstrun.js because that is the module holding the rule it comes from.
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
@@ -908,6 +909,9 @@ function answer() {
     hoursFor,
     sessions: state.rooms.sessions,
     date,
+    // Null off campus, and then every row falls back to the straight line
+    // together. js/engine.js walkMetres is the only reader.
+    field: state.walkField,
     // scheduleFor() already removed class tuples on a no-class day without
     // removing registered events, so the engine sweeps what remains.
     classesSuspended: false,
@@ -1935,6 +1939,7 @@ function paintNear(reason) {
     hoursFor,
     day: state.day,
     nowMin: nowMinutes(now),
+    field: state.walkField,
   });
   state.groups = groups;
 
@@ -2188,6 +2193,18 @@ function clearPickedOrigin() {
 function useOrigin(origin, note) {
   state.origin = origin;
   state.accuracy = origin.accuracy;
+  // The walk is measured from here, so the field is rebuilt here and nowhere
+  // else. One Dijkstra over 5,242 nodes, which is the only work the sidewalk
+  // graph does per position; every room and every building then reads its
+  // distance out of the result.
+  //
+  // No ceiling. data/walk-graph.json is already pruned to what a door can reach
+  // in MAX_WALK minutes, so the prune IS the bound and a second one here would
+  // only leave the far rows of the buildings picker on a different walk model
+  // from the near ones.
+  state.walkField = Number.isFinite(origin?.lat) && Number.isFinite(origin?.lon)
+    ? (state.router?.from(origin.lat, origin.lon, Infinity) ?? null)
+    : null;
   // The dot, its accuracy ring and the end of the walk line all hang off this.
   frames.wake();
   // The one place the app branches on where the origin came from. Nothing in
@@ -2493,7 +2510,7 @@ function roomHtml(id) {
   const metres = Number.isFinite(r?.metres)
     ? r.metres
     : state.origin && b && Number.isFinite(b.lat) && Number.isFinite(b.lon)
-      ? Math.round(approachMetres(state.origin, b))
+      ? Math.round(walkMetres(state.origin, b, room.b, state.walkField))
       : null;
 
   // The day the screen is drawing, which is the day it has to describe.
@@ -2708,6 +2725,9 @@ async function paintAbout() {
   const block = diagnosticsBlock({
     build,
     controlling,
+    // Whether the sidewalk graph answered for this origin, or the straight-line
+    // fallback did.
+    routed: !!state.walkField,
     term: state.current?.term,
     termName: state.current?.termName,
     generated: state.current?.generated,
@@ -2954,7 +2974,7 @@ function repaintRoom() {
   if (orientationOff) orientationOff();
   const b = state.buildings?.[room.b];
   if (!b || !Number.isFinite(b.lat) || !Number.isFinite(b.lon) || !state.origin) return;
-  const metres = Math.round(approachMetres(state.origin, b));
+  const metres = Math.round(walkMetres(state.origin, b, room.b, state.walkField));
   const walk = walkMinutes(metres);
   // Nothing a reader can see has changed. A repaint costs them their place in
   // the day grid, and it is not worth spending on a number that came back the
@@ -3604,11 +3624,17 @@ async function boot() {
       state.photos = new Set();
     });
 
-  const [rooms, roomEvents, buildings, hours, located] = await Promise.all([
+  const [rooms, roomEvents, buildings, hours, walkGraph, located] = await Promise.all([
     parsedIndex(`${BASE}${current.rooms}`, signal),
     fetch(`${BASE}${current.events}`, { signal }).then(answered).then((r) => r.json()),
     fetch(`${BASE}${current.buildings}`, { signal }).then(answered).then((r) => r.json()).then((d) => d.buildings),
     json('buildings-hours.json').catch(() => null),
+    // AWAITED, unlike the photo manifest below, and that is the whole reason
+    // the walk model cannot flip under a reader. A graph that arrived after the
+    // first ranking would reorder a list already on screen, which is the
+    // asynchronous failure #115 names. It is 21 KB gzipped, it is in the
+    // service worker's shell, and offline it comes from the cache.
+    json('walk-graph.json').catch(() => null),
     fix,
   ]);
   state.classRooms = rooms;
@@ -3619,6 +3645,10 @@ async function boot() {
   state.rooms = overlaid.index;
   state.eventCoverage = overlaid.coverage;
   state.buildings = buildings;
+  // Built once, before useOrigin below asks it for a field. A missing or
+  // unreadable file leaves this null and every walk falls back to the straight
+  // line, which is what the app did before #115 and still does off campus.
+  state.router = createRouter(decodeWalkGraph(walkGraph), buildings);
   state.counts = roomsPerBuilding(rooms);
   state.hours = hours;
   const [slug, table] = pickHoursTerm(hours, current);

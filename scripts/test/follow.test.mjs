@@ -319,7 +319,7 @@ test('the room repaint moves the numbers and not the order', () => {
   // approachMetres and not distanceMetres, which is the same requirement one
   // layer down: the ranking measures to the building's nearest door, so a
   // repaint measuring to its centroid would print a walk the list never used.
-  assert.match(repaint, /const metres = Math\.round\(approachMetres\(state\.origin, b\)\);/);
+  assert.match(repaint, /const metres = Math\.round\(walkMetres\(state\.origin, b, room\.b, state\.walkField\)\);/);
   assert.match(repaint, /const walk = walkMinutes\(metres\);/);
   assert.match(repaint, /state\.selected\.metres = metres;/);
   assert.match(repaint, /state\.selected\.walk = walk;/);

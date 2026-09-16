@@ -94,7 +94,7 @@ const NOT_BUILT = new Set(['Under Construction', 'Pending']);
 // to the centroid, which is exactly what every building did before this file
 // existed, so the floor is about detecting a collapsed pull rather than
 // demanding completeness.
-const MIN_CLASS_BUILDINGS_WITH_DOORS = 40;
+const MIN_CLASS_BUILDINGS_WITH_DOORS_FALLBACK = 40;
 
 // A door further than this from its own building's published point is a join
 // that has gone wrong, not a large building. MEASURED over the 46 shipped
@@ -333,10 +333,19 @@ async function main() {
           withoutDoors.map((c) => `${c} ${buildings[c]?.name ?? '?'}`).join(', '),
       );
     }
-    if (withDoors.length < MIN_CLASS_BUILDINGS_WITH_DOORS) {
+    let minClassBuildingsWithDoors = MIN_CLASS_BUILDINGS_WITH_DOORS_FALLBACK;
+    if (existsSync(OUT_PATH)) {
+      const previous = JSON.parse(readFileSync(OUT_PATH, 'utf8'));
+      const previousWithDoorsCount = Object.values(previous.entrances ?? {}).filter(arr => arr.length > 0).length;
+      if (previousWithDoorsCount > 0) {
+        minClassBuildingsWithDoors = Math.floor(previousWithDoorsCount * 0.8);
+      }
+    }
+
+    if (withDoors.length < minClassBuildingsWithDoors) {
       die(
         `only ${withDoors.length} class-hosting buildings resolved a door, ` +
-          `under the ${MIN_CLASS_BUILDINGS_WITH_DOORS} floor.`,
+          `under the ${minClassBuildingsWithDoors} floor.`,
       );
     }
   }

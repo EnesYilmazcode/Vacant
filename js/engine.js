@@ -667,7 +667,15 @@ const seatRank = (seats) => (seats == null ? Number.MAX_SAFE_INTEGER : seats);
 // need, this orders by how badly they miss.
 export function scoreOf(row, need = 0) {
   if (row.usable == null) return row.walk; // unknown hours emit no window to trade
-  return row.walk - SURPLUS_WEIGHT * Math.min(row.usable - need, SURPLUS_CAP);
+  
+  const surplus = row.usable - need;
+  if (need > 0 && surplus >= 0) {
+    // For fixed-duration requests, walk time is primary if need is met.
+    // Additional availability is only a tie-break.
+    return row.walk - 0.001 * Math.min(surplus, SURPLUS_CAP);
+  }
+  
+  return row.walk - SURPLUS_WEIGHT * Math.min(surplus, SURPLUS_CAP);
 }
 
 // The total order. It ends on the room id so the list cannot reshuffle between

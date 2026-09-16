@@ -4155,3 +4155,56 @@ another, not a walked route with a stopwatch. The layer carries `PercentSlo`,
 of them, because an edge is a length; a cost per edge is what an
 accessible-routing option would need. Full write-up, with the commands, in
 `docs/research/walking-routes-115.md`.
+
+## 2026-09-16  Google is asked for the words of a walk, never for its length
+
+Vacant can say "4 minutes" with no signal and cannot say "turn right at 18th".
+That asymmetry is not an oversight, it is the shape of `data/walk-graph.json`:
+the file carries how many metres join two junctions and not the shape of them,
+because [#44](https://github.com/EnesYilmazcode/Vacant/issues/44) settled that
+the line on the map is a direction and not a route. A provider with the geometry
+and the street names has to be asked for turn-by-turn, and this adds one.
+
+**What it does not do.** It does not rank. `docs/research/walking-routes-115.md`
+measured Google against OSU's own routing service alongside the bundled graph,
+and Google was not the closer of the two: at Ohio Stadium the two disagree by six
+minutes in opposite directions. `js/directions.js` ships a `matrix()` that would
+rank, because a Distance Matrix call is nearly free once the script is loaded,
+and nothing calls it. The minutes on every screen are still measured over the
+sidewalk graph, on the phone. What Google is asked for is the one thing the graph
+cannot produce, which is words.
+
+**What it costs.** 5,055 gzipped bytes of shell, 3,037 of it `js/directions.js`,
+and nothing at all in data. Per tap it costs one Directions request, for one
+building the reader has already chosen after swiping past the ones they did not.
+Fetching steps for a card on sight would be 425 rooms over 50 buildings and a
+bill for answers nobody read.
+
+**The key is not in this repository, and cannot be the kind that could be.** The
+app is a static site on GitHub Pages with no backend, so any key it uses is in a
+bundle anyone can read. The REST Routes endpoints cannot be restricted by HTTP
+referrer, which makes a key in this bundle a key anyone can bill. The Maps
+JavaScript API services can, so those are what `js/directions.js` uses, and
+`docs/google-setup.md` is the restriction. `index.html` carries the key in an
+empty meta tag: empty builds no provider, which renders no button, which is the
+app exactly as it was before this landed.
+
+**Consent is read on every call and not captured once.** Before this, no part of
+the app sent a coordinate anywhere except into a maps URL the reader tapped.
+That is still true until they agree, and the first tap explains what will be sent
+before sending it. Refusing costs the words and none of the numbers, which is the
+property worth protecting: the walk is still measured on the phone.
+
+**Every failure is the graph.** No key, no consent, offline, quota, timeout, a
+half-filled matrix, an answer that arrives after the reader has moved: all of
+them are `null` from `js/directions.js`, and `null` means the screen keeps the
+routed minutes it already had and says the steps are unavailable in one line. A
+moved origin bumps a generation so a walk asked from where the reader used to be
+is dropped on arrival rather than rendered.
+
+**What is not fixed.** The steps are Google's and the minutes are OSU's, and the
+two will sometimes disagree on screen. That is named in the line under the list
+rather than hidden by overwriting one with the other. `WALK` is still beta at
+Google and can omit pavements. And the licence is why there is no line drawn on
+the map: Google's service-specific terms restrict using Routes content with a
+non-Google map, so the steps are text beside the map and never a route on it.

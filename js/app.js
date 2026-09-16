@@ -26,6 +26,7 @@ import { blocksOn, classesOn, dayClaim } from './day.js';
 // which is the buildings search box and has nothing to do with the engine.
 import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, query as ladder, rank, shape, tally, walkMetres, walkMinutes } from './engine.js';
 import { createRouter, decodeWalkGraph } from './route.js';
+import { createDirections } from './directions.js';
 // The deadline every request on the path to a first answer shares. It lives in
 // js/firstrun.js because that is the module holding the rule it comes from.
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
@@ -2202,6 +2203,11 @@ function useOrigin(origin, note) {
   // in MAX_WALK minutes, so the prune IS the bound and a second one here would
   // only leave the far rows of the buildings picker on a different walk model
   // from the near ones.
+  // A walk in the air was asked from where the reader used to be. Bumping the
+  // generation drops it on arrival rather than letting it render against the
+  // new origin, which is the rule docs/research/walking-routes-115.md sets for
+  // any asynchronous provider.
+  state.directions?.invalidate();
   state.walkField = Number.isFinite(origin?.lat) && Number.isFinite(origin?.lon)
     ? (state.router?.from(origin.lat, origin.lon, Infinity) ?? null)
     : null;
@@ -2563,6 +2569,11 @@ function roomHtml(id) {
   // because those rooms no longer ship.
   const body = dayGridHtml(room, bname, date, schedule);
 
+  // Empty until asked, and filled in place rather than by redrawing the screen:
+  // showRoom rebuilds this whole subtree, and a reader who has scrolled down to
+  // the day grid should not be thrown back to the top by an answer arriving.
+  const steps = state.directions ? '<div class="steps" id="steps" hidden></div>' : '';
+
   // The one control on this screen that leaves the app, and the reason #44's
   // straight line is allowed to stay a direction rather than a route: it is a
   // refusal to route only while there is a visible way out to something that
@@ -2575,6 +2586,7 @@ function roomHtml(id) {
             <svg class="ico" aria-hidden="true" hidden><use href="#i-arrow"/></svg>
             <span>Point me</span>
           </button>
+          ${state.directions ? `<button type="button" class="bar-btn" data-act="directions" data-b="${esc(room.b)}" aria-label="The walk to ${esc(bname)}, street by street">Step by step</button>` : ''}
           <a class="bar-btn" aria-label="Walking directions to ${esc(bname)}, in your maps app"
              href="${esc(mapsHref({ lat: b.lat, lon: b.lon, origin: state.origin, ua: navigator.userAgent, maxTouchPoints: navigator.maxTouchPoints }))}">Directions</a>
           <button type="button" class="bar-btn" data-act="about" aria-label="What Vacant knows">Sources</button>
@@ -2585,8 +2597,60 @@ function roomHtml(id) {
     <p class="claim">${esc(claim.head)}${claim.sub ? `<span class="sub">${esc(claim.sub)}</span>` : ''}</p>
     <p class="facts">${facts.join('')}</p>
     ${acts}
+    ${steps}
     ${body}
     ${caveatHtml(overlaid.coverage)}`;
+}
+
+// The steps, asked for and not fetched on sight.
+//
+// One tap, one request, for the one building the reader has already chosen. A
+// card they swipe past costs nothing, which is the whole reason this is a button
+// and not part of paintCard: 425 rooms over 50 buildings, fetched on sight,
+// would be a bill and a battery for answers nobody read.
+//
+// The walk on this screen does not move. It was measured over OSU's sidewalks
+// before the reader tapped, and Google's own duration is deliberately not
+// written over it: docs/research/walking-routes-115.md measured the two against
+// OSU's service and Google was not the closer of them. What Google is asked for
+// is the thing the bundled graph cannot say, which is the words.
+//
+// Nothing here can leave the screen in a worse state than it found it. No key,
+// no consent, offline, quota, timeout: js/directions.js answers null and this
+// says so in one line, under a walk that is still correct.
+async function askSteps(code) {
+  const box = $('steps');
+  const b = state.buildings?.[code];
+  if (!box || !b || !state.origin) return;
+
+  if (!state.googleConsent) {
+    box.hidden = false;
+    box.innerHTML = `<p class="steps-ask">Step-by-step directions send where you are
+      standing to Google. Nothing else in Vacant does that.
+      <button type="button" class="bar-btn" id="steps-ok">Allow and continue</button></p>`;
+    $('steps-ok').onclick = () => {
+      state.googleConsent = true;
+      askSteps(code);
+    };
+    return;
+  }
+
+  box.hidden = false;
+  box.innerHTML = '<p class="steps-wait">Asking Google for the walk...</p>';
+  const got = await state.directions.steps(state.origin, b);
+
+  // The reader may have left, or moved, while that was in the air.
+  if ($('steps') !== box || !box.isConnected) return;
+  if (!got) {
+    box.innerHTML = `<p class="steps-none">No step-by-step directions right now.
+      The ${esc(String(shortName(b.name)))} walk above still holds.</p>`;
+    return;
+  }
+
+  box.innerHTML =
+    `<ol class="steps-list">` +
+    got.steps.map((st) => `<li>${esc(st.text)}${Number.isFinite(st.metres) ? ` <span class="steps-m">${st.metres} m</span>` : ''}</li>`).join('') +
+    `</ol><p class="steps-src">Walking steps from Google. The minutes above are measured over OSU's own sidewalks.</p>`;
 }
 
 // The compass needle. It stays off until it is asked for, because iOS only
@@ -2951,7 +3015,9 @@ function wireRoom(id) {
       $('room').scrollTop = at;
     };
   }
-  for (const el of $('room').querySelectorAll('[data-act]')) el.onclick = () => openAbout();
+  for (const el of $('room').querySelectorAll('[data-act]')) {
+    el.onclick = el.dataset.act === 'directions' ? () => askSteps(el.dataset.b) : () => openAbout();
+  }
 }
 
 // The room screen, redrawn where it stands, for a fix that landed while it was
@@ -3649,6 +3715,15 @@ async function boot() {
   // unreadable file leaves this null and every walk falls back to the straight
   // line, which is what the app did before #115 and still does off campus.
   state.router = createRouter(decodeWalkGraph(walkGraph), buildings);
+  // Beside the router and not instead of it. An empty or missing key builds
+  // null, which is the signal roomHtml reads to render no Directions button at
+  // all -- a key nobody has configured must not leave a control that cannot
+  // work. Consent is read on every call rather than captured here, so it is
+  // still the student's to give and to take back.
+  state.directions = createDirections({
+    key: document.querySelector('meta[name="google-maps-key"]')?.content?.trim() ?? '',
+    consent: () => state.googleConsent === true,
+  });
   state.counts = roomsPerBuilding(rooms);
   state.hours = hours;
   const [slug, table] = pickHoursTerm(hours, current);

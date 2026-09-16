@@ -4,6 +4,21 @@ Research for [#115](https://github.com/EnesYilmazcode/Vacant/issues/115),
 checked 2026-09-12. Prices and service terms can change. This is engineering
 research, not legal advice.
 
+## Update, 2026-09-16: it ships, over OSU's own sidewalks
+
+Everything below stands as written and is the reason for what was built. The
+answer turned out to be none of the providers this note compared. OSU publishes
+the network itself -- layer 9 of `Data/ReferenceData_RO`, "Sidewalk Centerline",
+on the same read-only server `data/buildings.json` and `data/entrances.json`
+already come from, under the same attribution. It does not need a key, an
+account, a request at query time or a privacy transfer, because it can simply be
+downloaded and committed.
+
+`scripts/fetch-sidewalks.mjs` builds it, `js/route.js` searches it, and
+`data/walk-graph.json` is 21 KB gzipped. **[Routing over OSU's own
+sidewalks](#routing-over-osus-own-sidewalks)** at the end of this note has the
+build, the measurements and what is still wrong with it.
+
 ## Executive conclusion
 
 Vacant should not integrate Google Maps as the production fix for #115 yet.
@@ -388,6 +403,192 @@ Exit: every provider failure leaves an immediate usable local result.
 
 Exit: production improves physically walked top-choice accuracy enough to justify
 its privacy, reliability, maintenance, and cost.
+
+## Routing over OSU's own sidewalks
+
+Built 2026-09-16. Reproduce every figure here with:
+
+```sh
+node docs/research/walking-graph-sample.mjs          # offline, no network
+node docs/research/walking-graph-sample.mjs --osu    # the control, ~230 requests
+```
+
+### What is committed
+
+`data/walk-graph.json` is OSU's Sidewalk Centerline layer over a campus
+envelope, reduced to a routing graph and nothing else:
+
+| pass | in | out |
+| --- | ---: | ---: |
+| fetched, 8 paged requests | 47,745 statewide | 15,531 in the envelope |
+| noded at 0.5 m | 38,077 drawn vertices | 19,197 nodes |
+| largest connected component | 15 components | 18,593 nodes, 96.9% |
+| degree-2 contraction | 18,593 nodes | 6,069 junctions |
+| pruned past 1,000 m of any door | 6,069 | **5,242 nodes, 7,977 edges** |
+
+44,223 bytes on disk, **21,594 gzipped**. The shape of the pavement between two
+junctions is not in the file. Only its length is, because the app quotes a walk
+and never draws one -- [#44](https://github.com/EnesYilmazcode/Vacant/issues/44)
+settled that the line on the map is a direction rather than a route -- and
+throwing the geometry away is most of why this fits in 21 KB.
+
+Two encoding decisions carry the rest. Nodes are written in Hilbert order and
+delta-encoded, so a junction costs about two bytes. And an edge stores its
+**excess over the straight line between its own two endpoints**, which the
+decoder can recompute, rather than its length: a contracted sidewalk run is
+nearly straight, so 5,583 of 7,977 edges store a zero. That alone takes the bare
+binary from 23.3 KB gzipped to 18.4 KB without meaningfully changing its raw
+size.
+
+### What was NOT filtered, and why
+
+The layer's `Descriptio` field looks like a walkability taxonomy and is not one.
+Filtering on it was tried and scored against 220 routes from OSU's own routing
+service:
+
+| kept | mean abs err | median | pair inversions |
+| --- | ---: | ---: | ---: |
+| everything | 43.6 m | 28.8 m | 90 / 990 |
+| without `Building` | 57.9 m | 50.3 m | 151 / 990 |
+| without `No Sidewalk` | 43.7 m | 28.8 m | 91 / 990 |
+| without `Warning Pad` | 359.4 m | 109.6 m | 245 / 990 |
+
+`Building` segments are the paths that run along and into a building, not routes
+through its middle; dropping 1,270 of them forces detours OSU's own network does
+not make. `Warning Pad` is the tactile pad at a kerb, 1.7 m long on average, and
+it is the piece that *joins* a sidewalk to its crosswalk: dropping 2,010 of them
+shatters the graph from 6,069 junctions to 2,139.
+
+`No Sidewalk` is the one that is arguably wrong to keep. It marks 34.6 km where
+a road has no pavement, which is a real thing to know and a thing this graph has
+no way to express, since an edge is only a length. It changes one control pair
+in 990, because those stretches are not on the way to a classroom. It goes back
+on the table the day the graph carries a cost per edge.
+
+Contracted runs were also **not** split to keep edges short, which was the
+obvious worry, since a standing point snaps onto the graph at a node. Pinning an
+extra node every 40, 25 or 15 m makes accuracy flat-to-worse and the file 34% to
+74% larger. The snap leg gets walked either way.
+
+### Against OSU's own router
+
+230 centroid-to-centroid walks from 24 origins -- 12 buildings and 12 points
+inside the envelope. Centroids on both sides, because a centroid is the only
+endpoint OSU's service can be given, and comparing a routed *door* against a
+routed *centroid* would measure the doors rather than the routing.
+
+| model | mean signed | mean abs | median abs | p90 abs | pair inversions |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| straight line x 1.30 (shipped) | -37.3 m | 60.6 m | 43.4 m | 145.8 m | 142 / 1,125 |
+| **this graph** | **-24.5 m** | **52.5 m** | **33.0 m** | **126.8 m** | **112 / 1,125** |
+| straight line x 1.38 (best fit) | -6.7 m | 55.6 m | 37.2 m | 140.3 m | 142 / 1,125 |
+
+The third row is the one that decides this. Refitting the constant to 1.38 is
+cheap, needs no new file, and closes most of the gap **in magnitude**. It closes
+none of it in **order**: a single multiplier is monotone, so it cannot move one
+pair out of 1,125. Ordering is what picks the room on the card, and only
+geometry moves it.
+
+OSU circuity over this sample is a median 1.41 and a p90 of 1.85. A constant
+near the median is right for the median walk and wrong for the tails, which is
+exactly the failure the first sample in this note found around Prior Hall.
+
+### What it changes in the product
+
+Offline replay, no network: 169 standing points on a grid over the envelope,
+every one of the 46 room-holding buildings, 4,574 rows inside `MAX_WALK`.
+
+| | |
+| --- | ---: |
+| same whole minute as before | 44.9% |
+| old model understated by >= 1 min | **19.0%** |
+| understated by >= 2 min | 4.7% |
+| understated by >= 3 min | 1.5% |
+| understated by >= 5 min | 0.3% |
+| offered as walkable, actually out of reach | 115 rows, 2.5% |
+| excluded as too far, actually reachable | 257 rows, 5.6% |
+| **nearest building changes** | **34 of 163 points, 20.9%** |
+| ordered top three changes | 103 of 163, 63.2% |
+
+The 20.9% and 63.2% are an independent reproduction of this note's own earlier
+finding -- OSU's online service moved the first building in 14.3% of 238 replayed
+searches and the top three in 66.0% -- from a file on disk with no network.
+
+Note that the old model **overstated** about as often as it understated: the mean
+signed error is +11.1 m. The problem was never the size of `DETOUR`. It was that
+one number cannot be right in two places at once.
+
+The worst rows are all the same shape, and it is a bridge:
+
+| standing at | building | quoted | walks |
+| --- | --- | ---: | ---: |
+| 39.99875, -83.02865 | Animal Science | 9 min | **16 min** |
+| 39.99875, -83.02865 | Kottman Hall | 8 min | 14 min |
+| 40.00176, -83.02367 | Knowlton Hall | 10 min | 16 min |
+| 40.00101, -83.02367 | Dreese Laboratories | 11 min | 16 min |
+
+### How it behaves when it cannot answer
+
+The graph answers or it does not, **per origin and never per building**. A
+standing point more than 150 m from any centreline gets no field at all, and
+every row in that ranking falls back to `straight line x DETOUR` together. A
+ranking that mixed the two would be sorted on the difference between two models
+that disagree by a median 33 m, which is the failure this note warned about.
+
+There is no route request at query time, so there is no timeout, no quota, no
+stale asynchronous result and nothing to reorder a list already on screen.
+`js/app.js` **awaits** the file in its boot `Promise.all` rather than letting it
+arrive late, and the service worker warms it, so an installed app routes with the
+network off. A missing or unreadable file leaves the router null and the app does
+exactly what it did before this change.
+
+`walkMinutes` no longer contains `DETOUR`. Geometry now lives upstream in
+`walkMetres` and `walkMinutes` is pace alone, which is the separation the
+comparative experiment above argued for: route geometry and walking speed had to
+be choosable separately, and while one constant meant both, neither could be
+fitted without moving the other.
+
+### Cost, licensing, privacy
+
+- **Download.** 21,594 gzipped bytes, once, cached until OSU repaves. That is a
+  23.1% increase in what the app fetches to answer a question, and it is the
+  single largest thing this app has ever added.
+- **Latency.** One Dijkstra per origin over 5,242 nodes and 7,977 edges, about a
+  millisecond, then every building reads its distance out of the result.
+- **Update method.** `node scripts/fetch-sidewalks.mjs`, 8 requests. Not on the
+  weekly schedule clock; sidewalks do not change weekly.
+- **Licensing.** OSU FITS GIS, the same source and the same attribution string
+  `data/buildings.json` and `data/entrances.json` already carry, recorded inside
+  the file.
+- **Privacy.** Strictly better than before. The walk is computed on the device
+  from a committed file, and no position is sent anywhere. The external
+  **Directions** handoff from
+  [#86](https://github.com/EnesYilmazcode/Vacant/issues/86) is untouched and is
+  still the only thing that hands a coordinate to anybody.
+
+### What is still wrong with it
+
+- **It is still not ground truth.** It is one published network measured against
+  another published network. [#26](https://github.com/EnesYilmazcode/Vacant/issues/26)
+  is still the walk nobody has taken, and `WALK_MPM` is still unfitted. What
+  changed is that there is now one error to explain rather than two.
+- **It routes as the crow walks on pavement.** No stairs penalty, no slope, no
+  door-open check, no construction. The layer carries `PercentSlo`,
+  `Accessible`, `SurfaceMat` and `PotentialH` per segment and this graph reads
+  none of them, because an edge is a length. A cost per edge is the next
+  version, and it is what would make an accessible-route option possible.
+- **The off-campus gate is now loose on paper.** `OFF_CAMPUS_KM` is 2.2, and the
+  old analytic bound was the farthest room-holding building (1.41 km) plus
+  `MAX_WALK x WALK_MPM / DETOUR` (0.72 km). A routed walk can only be longer
+  than the straight line, so the correct bound is `MAX_WALK x WALK_MPM`
+  (0.936 km), which is 2.346 km and sits above the gate. Five building pairs fall
+  in that window, the nearest being Scott Hall at 857 m. Reaching one needs a
+  route with no detour at all against a measured median circuity of 1.41, so the
+  note the gate prints holds in practice. It is worth a separate issue.
+- **The building the graph cannot reach is not distinguished from the building
+  it can reach slowly.** `metresTo` returns null for both, and the caller falls
+  back. On the committed data every one of the 50 buildings has a landing, so
+  this has never fired.
 
 ## Limitations
 

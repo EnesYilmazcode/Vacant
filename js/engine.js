@@ -297,7 +297,36 @@ export function approachMetres(origin, building) {
   return best;
 }
 
-export const walkMinutes = (metres) => Math.ceil((metres * DETOUR) / WALK_MPM);
+// The metres a walk actually covers, which is the number every screen and the
+// whole ranking is built on.
+//
+// Two sources, and which one answered is not a detail. data/walk-graph.json is
+// OSU's own sidewalk network; where it reaches, this is a routed distance over
+// pavement and DETOUR plays no part. Where it does not -- a standing point more
+// than 150 m from any path, a building with no landing, a term whose file has
+// not been built, a browser that failed to fetch it -- the old straight line
+// times DETOUR answers instead, and says so by being the only thing left.
+//
+// The fallback is per ORIGIN and not per building: js/route.js returns no field
+// at all rather than a field with holes in it, so one ranking is never half
+// routed and half estimated. Mixing the two inside one list is the failure mode
+// #115 names, because the models disagree by a median 35 m and the list is
+// sorted on the difference.
+export function walkMetres(origin, building, code, field) {
+  const routed = field?.metresTo(code);
+  if (Number.isFinite(routed)) return routed;
+  return approachMetres(origin, building) * DETOUR;
+}
+
+// Pace, and nothing else.
+//
+// DETOUR used to live in here, which is what made the two unseparable: one
+// number stood for both "campus paths bend" and "people walk at 78 m a minute",
+// and #115's measurement could not move either without moving the other. The
+// geometry is now upstream in walkMetres, so this is the one place a fitted
+// walking speed would land -- and #26, the ground-truth walk, is still the
+// measurement that would fit it.
+export const walkMinutes = (walked) => Math.ceil(walked / WALK_MPM);
 
 // ----------------------------------------------------------------- the maths
 
@@ -812,6 +841,10 @@ const nowMs = () => (perf && perf.now ? perf.now() : 0);
 function sweep(rooms, opts) {
   const {
     origin, now, day, buildings, hoursFor, active,
+    // The walking field for THIS origin, from js/route.js, or nothing. Passed
+    // in rather than imported so the engine stays a pure function of its
+    // arguments and the tests can rank with and without a graph.
+    field,
     dayStart = DAY_START, dayEnd = DAY_END, classesSuspended = false,
   } = opts;
   const walkCache = new Map();
@@ -837,7 +870,7 @@ function sweep(rooms, opts) {
     // times out of ten.
     let cached = walkCache.get(room.b);
     if (cached === undefined) {
-      const metres = approachMetres(origin, building);
+      const metres = walkMetres(origin, building, room.b, field);
       // A geolocation fix that never resolved reaches here as NaN. Without this
       // every room comes back with NaN minutes in arbitrary order.
       cached = Number.isFinite(metres) ? { metres, walk: walkMinutes(metres) } : null;

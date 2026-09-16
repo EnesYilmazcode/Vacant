@@ -7,8 +7,8 @@
 // One cache would either re-download the room index on every deploy or pin an
 // installed icon to last month's app.js forever.
 //
-// Measured on 2026-09-13 over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 155,377 bytes, data 93,566.
+// Measured on 2026-09-15 over the committed blobs, which is the copy Pages serves:
+// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 162,405 bytes, data 115,160.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these seventeen files, which is most of a percent of
@@ -60,6 +60,23 @@
 // It read 133,694 before the answer became one card you swipe rather than a
 // list you scan, which cost another 4,935: 3,082 on js/app.js for the deck, the
 // two verdicts and the gesture, and 1,853 on index.html for the card itself.
+//
+// The shell read 155,377 and the data 93,566 before the walk followed pavement.
+// That is the single largest thing this app has ever added to what a phone
+// downloads, and it is worth naming the two halves separately.
+//
+// The shell grew 7,028: 4,000 of it is js/route.js, which decodes the graph and
+// searches it, and the rest is the comment in js/engine.js recording what #115
+// measured and why DETOUR no longer lives inside walkMinutes.
+//
+// The data grew 21,594, all of it data/walk-graph.json, and that is a 23.1%
+// increase in what the app fetches to answer a question. It buys the difference
+// between a walk that crosses the Olentangy where there is no bridge and one
+// that goes round: measured over 4,574 rows from 169 standing points, the old
+// constant understated 19.0% of walks by a minute or more and 4.7% by two or
+// more. It is warmed rather than precached with the shell, so a deploy that
+// does not touch the sidewalks does not re-fetch it, and OSU repaves on a far
+// slower clock than Enes deploys.
 //
 // It read 98,246 while four modules js/app.js imports were missing from the
 // list below. They are 23,296 gzipped bytes, so the figure was measuring a list
@@ -142,6 +159,7 @@ const SHELL_ASSETS = [
   SCOPE + 'scripts/lib/club-occupancy.mjs',
   SCOPE + 'js/map.js',
   SCOPE + 'js/preferences.js',
+  SCOPE + 'js/route.js',
   SCOPE + 'js/pwa.js',
   SCOPE + 'js/install.js',
   SCOPE + 'js/firstrun.js',
@@ -156,7 +174,14 @@ const SHELL_ASSETS = [
 // Everything the first answer needs that is not code. These live in the data
 // cache rather than the shell because campus.json alone is 37.9 KB gzipped and
 // re-downloading it on every deploy is the waste this split exists to avoid.
-const WARM_ALWAYS = ['data/campus.json', 'data/buildings-hours.json'];
+//
+// data/walk-graph.json is here and not in the shell for the same reason: it is
+// OSU's sidewalk network, it changes when OSU repaves something rather than
+// when Enes deploys, and at 21 KB gzipped it is not worth re-fetching on a
+// deploy that did not touch it. js/app.js AWAITS it at boot, so the first
+// ranking is never the one that gets the straight-line fallback and the second
+// one the routed answer.
+const WARM_ALWAYS = ['data/campus.json', 'data/buildings-hours.json', 'data/walk-graph.json'];
 
 self.addEventListener('install', (event) => {
   // No skipWaiting here, deliberately. A worker that takes over a live page can

@@ -795,7 +795,7 @@ test('the room screen subtracts the walk, the way the engine says to', () => {
   // the walk: measured headlessly on a Thursday at 12:15, all 23 rooms in the
   // top 40 that carried a claim were 5 minutes long.
   const nowMin = 735;
-  const metres = 147;
+  const metres = 191; // metres WALKED since #115, which is the old 147 m straight line
   const engine = usableMinutes({ now: nowMin, gapStart: 420, gapEnd: 930, metres });
   const naive = 930 - PACKUP - nowMin;
   assert.equal(naive - engine, 3, 'the walk is 3 minutes, so the old formula was 3 minutes long');
@@ -938,7 +938,7 @@ const DIAG = {
     cap: 46,
     building: '279',
     metres: 412,
-    walk: 7,
+    walk: 6,
     gapStart: 835,
     gapEnd: 970,
     session: 0,
@@ -953,7 +953,7 @@ test('the block prints what a maintainer needs to reproduce a wrong answer', () 
   const block = diagnosticsBlock(DIAG);
   for (const want of ['a3f9c21', '1268', 'Autumn 2026', '5 days old', '871 rooms', '96 buildings', '10 sessions',
     'gps', '+/-32 m', 'age 14 s', 'America/New_York', 'vacant-data-1268', 'DL0357', 'type 1B', 'cap 46',
-    'bldg 279', '412 m -> 7 min', 'sess 0', 'usable 2h03', 'leaveBy']) {
+    'bldg 279', '412 m walked -> 6 min', 'straight line x 1.3', 'sess 0', 'usable 2h03', 'leaveBy']) {
     assert.ok(block.includes(want), `block is missing ${want}`);
   }
   assert.match(block, /busy Thu\s+8:00am-8:55am/);
@@ -970,7 +970,7 @@ test('leaveBy is the last minute you could have set off and still got that usabl
   // Same room, tapped at 12:30 for a gap that does not open until 13:55: the
   // deadline is the gap start less the seven minute walk.
   const waiting = diagnosticsBlock({ ...DIAG, room: { ...DIAG.room, nowMin: 750 } });
-  assert.match(waiting, /leaveBy 1:48pm/);
+  assert.match(waiting, /leaveBy 1:49pm/);
 
   // A pick stored before this line existed carries no clock, and the line stops
   // rather than inventing one.
@@ -2147,8 +2147,15 @@ test('the closed group breaks a distance tie on which door opens first', () => {
     }
   }
   assert.equal(lists, 96768);
-  assert.equal(moved, 2836);
-  assert.equal(furthest, 2);
+  // 2,836 before #115. A row's metres are the metres WALKED now, which for the
+  // fallback is the straight line times 1.30, so two buildings that rounded to
+  // the same whole metre no longer always do. Fewer distance ties means the
+  // opensAt tie-break has fewer lists to break.
+  assert.equal(moved, 2010);
+  // One place, which is what the comment in js/state.js has always claimed. It
+  // was two while a row's metres were the straight line: two buildings tied on
+  // rounded distance could sit either side of a third.
+  assert.equal(furthest, 1);
 });
 
 // ---- the screens that say it
@@ -2305,8 +2312,18 @@ test('the off-campus gate is a walk, and the file says which buildings sit outsi
   // one. What is airtight is the narrower claim below, that not one of them
   // holds a room the ranking can offer.
   for (const b of beyond) {
+    // Through the app's own estimate, which is what this claim is about:
+    // walkMinutes takes metres WALKED since #115, and the fallback that answers
+    // for a point this far out is the straight line times DETOUR.
+    //
+    // The stricter bound a routed walk allows -- MAX_WALK x WALK_MPM = 936 m of
+    // straight line, since pavement can only be longer -- admits five pairs,
+    // the nearest being Scott Hall at 857 m. Reaching one needs a route with no
+    // detour at all against a measured median circuity of 1.44, so the note
+    // holds in practice and the gate is worth a second look on paper.
+    // docs/research/walking-routes-115.md records both numbers.
     const near = Object.entries(SLICE).filter(
-      ([code, o]) => code !== b.code && walkMinutes(distanceMetres(b, o)) <= MAX_WALK,
+      ([code, o]) => code !== b.code && walkMinutes(distanceMetres(b, o) * DETOUR) <= MAX_WALK,
     );
     assert.equal(
       near.filter(([code]) => held.has(code)).length,

@@ -45,13 +45,20 @@ function farCorners() {
   return out;
 }
 
-test('one straight-line metre is one second of predicted walk', () => {
+test('one straight-line metre is one second of ESTIMATED walk', () => {
   // The identity the DETOUR comment leans on, and the reason a stopwatch alone
   // cannot separate the two constants: it fits the ratio and nothing else.
+  //
+  // It is now the identity of the FALLBACK only. Where data/walk-graph.json
+  // reaches, the metres are routed over pavement and DETOUR is not applied at
+  // all, which is the separation #115 asked for: geometry upstream in
+  // walkMetres, pace here.
   assert.equal((DETOUR / WALK_MPM) * 60, 1);
-  // And the rounding it survives, since walkMinutes ceils.
-  assert.equal(walkMinutes(60), 1);
-  assert.equal(walkMinutes(61), 2);
+  // And the rounding it survives, since walkMinutes ceils. Stated through the
+  // composition, because neither half means a walk on its own any more.
+  const estimated = (straight) => walkMinutes(straight * DETOUR);
+  assert.equal(estimated(60), 1);
+  assert.equal(estimated(61), 2);
 });
 
 test('the centroid bias in the DETOUR comment is what the footprints say', () => {

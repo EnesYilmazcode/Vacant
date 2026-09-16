@@ -19,7 +19,7 @@
 //
 // Runs in the browser and under node, and imports nothing that touches the DOM.
 
-import { DAY_END, DAY_START, MAX_WALK, PACKUP, activeSessions, approachMetres, calendarOn, refusalFor, walkMinutes } from './engine.js';
+import { DAY_END, DAY_START, DETOUR, MAX_WALK, PACKUP, activeSessions, calendarOn, refusalFor, walkMetres, walkMinutes } from './engine.js';
 
 // ------------------------------------------------------------------- clock
 
@@ -560,7 +560,7 @@ export function roomsPerBuilding(index) {
 // interleaved. A building with no published hours is not sorted among the open
 // ones, because "we do not know" is a weaker claim than "open until 11pm" and
 // the order has to carry that difference where a label would be skipped.
-export function rankBuildings({ origin, buildings, counts, hoursFor, day, nowMin }) {
+export function rankBuildings({ origin, buildings, counts, hoursFor, day, nowMin, field }) {
   const open = [];
   const unknown = [];
   const closed = [];
@@ -568,7 +568,9 @@ export function rankBuildings({ origin, buildings, counts, hoursFor, day, nowMin
   for (const [code, count] of Object.entries(counts ?? {})) {
     const b = buildings?.[code];
     if (!b || !Number.isFinite(b.lat) || !Number.isFinite(b.lon)) continue;
-    const metres = approachMetres(origin, b);
+    // The same routed metres the room ranking uses, so the picker and the card
+    // cannot quote two different walks to the same building.
+    const metres = walkMetres(origin, b, code, field);
     if (!Number.isFinite(metres)) continue;
     const hours = hoursFor ? hoursFor(code, day) : undefined;
     // Five states, not two. 43 of the 47 buildings in the Registrar pool
@@ -603,9 +605,15 @@ export function rankBuildings({ origin, buildings, counts, hoursFor, day, nowMin
   const byWalk = (a, b) => a.walk - b.walk || a.metres - b.metres;
   // Two shut doors the same distance away are not the same answer: the one that
   // opens sooner is. The key is the NEXT door and not opensAt, which for a row
-  // already shut for the day is the minute it opened this morning. Moves 2,984
-  // of 96,768 closed lists, 3.08%, never by more than one place, and
+  // already shut for the day is the minute it opened this morning. Moves 2,010
+  // of 96,768 closed lists, 2.08%, never by more than one place, and
   // scripts/test/screens.test.mjs asserts both figures.
+  //
+  // It moved 2,836 of them until #115, and the drop is not a behaviour change:
+  // a row's metres are the metres WALKED now, which for the straight-line
+  // fallback is the old distance times 1.30, so two buildings that rounded to
+  // the same whole metre mostly no longer do. Fewer ties, fewer lists for this
+  // to break.
   const nextDoor = (r) => (r.when === 'before' ? r.opensAt : MINUTES_IN_DAY + 1);
   const byDoor = (a, b) => byWalk(a, b) || nextDoor(a) - nextDoor(b);
   open.sort(byWalk);
@@ -1066,7 +1074,13 @@ export function diagnosticsBlock(d) {
   if (d.room) {
     const r = d.room;
     rows.push(line('room', `${r.id}  type ${r.type ?? '?'}  cap ${r.cap ?? '?'}  bldg ${r.building ?? '?'}`));
-    if (Number.isFinite(r.metres)) rows.push(line('walk', `${r.metres} m -> ${r.walk} min   (WALK_MPM 78, DETOUR 1.30)`));
+    if (Number.isFinite(r.metres)) {
+      // Which model answered is the thing worth reading off a dev panel: a
+      // routed figure and an estimated one are not the same claim, and off
+      // campus every row silently becomes the second.
+      const how = d.routed ? 'routed over sidewalks' : `straight line x ${DETOUR}`;
+      rows.push(line('walk', `${r.metres} m walked -> ${r.walk} min   (${how}, WALK_MPM 78)`));
+    }
     if (Number.isFinite(r.gapStart)) {
       const usable = r.usable == null ? 'unknown' : dur(r.usable);
       // The last minute you could have set off and still got the usable figure

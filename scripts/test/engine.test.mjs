@@ -23,6 +23,7 @@ import {
   WALK_MPM,
   activeMask,
   activeSessions,
+  approachMetres,
   bestGap,
   calendarOn,
   distanceMetres,
@@ -38,6 +39,7 @@ import {
   tierOf,
   typeRank,
   usableMinutes,
+  walkMetres,
   walkMinutes,
 } from '../../js/engine.js';
 // The rung sentences live in js/state.js: js/app.js touches the DOM at import
@@ -52,7 +54,7 @@ test('the usable-minutes formula does not count corridor waiting as study time',
   // The case that decides the whole differentiator. Gap 14:00-16:00, now 13:50,
   // a 6 minute walk. You arrive at 13:56 and wait 4 minutes for the previous
   // class to clear, so you get 120 minutes, not 124.
-  const metres = 6 * WALK_MPM / DETOUR; // exactly a 6 minute walk
+  const metres = 6 * WALK_MPM; // exactly a 6 minute walk, in metres WALKED
   const usable = usableMinutes({
     now: at(13, 50),
     gapStart: at(14),
@@ -72,7 +74,7 @@ test('the usable-minutes formula does not count corridor waiting as study time',
 test('arriving after the gap has already started costs only the walk', () => {
   // now 14:30, gap 14:00-16:00, 6 minute walk: you arrive at 14:36 and the room
   // is already free, so there is no waiting to discount.
-  const metres = 6 * WALK_MPM / DETOUR;
+  const metres = 6 * WALK_MPM;
   assert.equal(
     usableMinutes({ now: at(14, 30), gapStart: at(14), gapEnd: at(16), metres, packup: 0 }),
     84,
@@ -85,15 +87,39 @@ test('packup comes off the end, not the start', () => {
 });
 
 test('a gap you cannot reach in time yields a non-positive number', () => {
-  const metres = 60 * WALK_MPM / DETOUR; // an hour of walking
+  const metres = 60 * WALK_MPM; // an hour of walking
   assert.ok(usableMinutes({ now: at(15, 30), gapStart: at(14), gapEnd: at(16), metres }) <= 0);
 });
 
-test('walk time rounds up and includes the detour factor', () => {
+test('walk time is pace and nothing else, and rounds up', () => {
+  // walkMinutes takes the metres you will WALK. It held the detour constant
+  // until #115, which is what made the two impossible to fit separately.
   assert.equal(walkMinutes(0), 0);
-  assert.equal(walkMinutes(78), 2, '78 m straight line is 101 m walked, so 2 minutes');
+  assert.equal(walkMinutes(78), 1, 'a minute of walking is a minute');
+  assert.equal(walkMinutes(79), 2, 'and every rounding here breaks pessimistic');
   assert.equal(walkMinutes(1), 1, 'never zero for a non-zero distance');
-  assert.ok(walkMinutes(1000) > (1000 / WALK_MPM), 'the detour makes it longer than straight line');
+});
+
+test('without a graph the walk is the straight line times the detour, as before', () => {
+  // The fallback has to reproduce the old number exactly, because it IS the old
+  // number: every origin off the sidewalk network still gets this one.
+  const building = { lat: ORIGIN.lat, lon: ORIGIN.lon, d: [0, 100] };
+  const straight = approachMetres(ORIGIN, building);
+  assert.ok(Math.abs(straight - 100) < 0.5, `${straight} m`);
+  const walked = walkMetres(ORIGIN, building, '279', null);
+  assert.ok(Math.abs(walked - straight * DETOUR) < 1e-9);
+  assert.ok(walked > straight, 'the detour makes it longer than the straight line');
+  // 130 m walked at 78 m/min is 1.67 minutes, which ceils to 2.
+  assert.equal(walkMinutes(walked), 2);
+});
+
+test('a field that answers replaces the detour rather than compounding it', () => {
+  const building = { lat: ORIGIN.lat, lon: ORIGIN.lon, d: [0, 100] };
+  const field = { metresTo: (code) => (code === '279' ? 250 : null) };
+  assert.equal(walkMetres(ORIGIN, building, '279', field), 250, 'routed metres, untouched');
+  // A building the field cannot reach falls back on its own.
+  const missed = walkMetres(ORIGIN, building, '003', field);
+  assert.ok(Math.abs(missed - approachMetres(ORIGIN, building) * DETOUR) < 1e-9);
 });
 
 test('equirectangular distance matches haversine at campus scale', () => {
@@ -632,7 +658,7 @@ test('the passing period never becomes the answer just because you are standing 
 // --- the walk subtraction, which the naive formula gets wrong in both directions ---
 
 test('a room that frees in 5 minutes and is a 6 minute walk away is free when you get there', () => {
-  const metres = 6 * WALK_MPM / DETOUR; // exactly a 6 minute walk
+  const metres = 6 * WALK_MPM; // exactly a 6 minute walk, in metres WALKED
   const now = at(10);
   const room = { busy: [[TUE, DAY_START, now + 5]] };
   const gap = bestGap(room, {
@@ -645,7 +671,7 @@ test('a room that frees in 5 minutes and is a 6 minute walk away is free when yo
 test('the naive formulas bracket the truth, one over and one under', () => {
   // Gap 13:20-16:00, now 13:00, a 6 minute walk. You arrive at 13:06 and wait
   // 14 minutes, so you get 160 minutes with no packup buffer.
-  const metres = 6 * WALK_MPM / DETOUR;
+  const metres = 6 * WALK_MPM;
   const now = at(13);
   const gapStart = at(13, 20);
   const gapEnd = at(16);
@@ -661,13 +687,13 @@ test('the naive formulas bracket the truth, one over and one under', () => {
   assert.ok(understates < truth && truth < overstates);
 });
 
-test('walk time rounds up, so a 61 metre walk is two minutes and not one', () => {
-  assert.equal(walkMinutes(60), 1);
-  assert.equal(walkMinutes(61), 2, 'every rounding in this engine breaks pessimistic');
+test('walk time rounds up, so a 79 metre walk is two minutes and not one', () => {
+  assert.equal(walkMinutes(78), 1);
+  assert.equal(walkMinutes(79), 2, 'every rounding in this engine breaks pessimistic');
 });
 
 test('leaveBy is now when the room is free and the gap start minus the walk when it is not', () => {
-  const metres = 6 * WALK_MPM / DETOUR;
+  const metres = 6 * WALK_MPM;
   assert.equal(leaveBy({ now: at(13), gapStart: at(12), metres }), at(13), 'already free, so go');
   assert.equal(leaveBy({ now: at(13), gapStart: at(14), metres }), at(13, 54), 'no need to sprint');
 });

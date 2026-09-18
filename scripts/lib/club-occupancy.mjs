@@ -167,22 +167,3 @@ export function overlayForDate(index, roomEvents, { date, classesSuspended = fal
     meetings,
   };
 }
-
-export function clubDisclosure({ meetings, rejected, coverage, weekStart, weekEnd, blockCount }) {
-  const excluded = rejected.length;
-  if (coverage === 'outside-snapshot') {
-    return {
-      message: `No Room Matrix coverage outside ${weekStart} through ${weekEnd}.`,
-      excluded,
-      blocksExcluded: blockCount,
-    };
-  }
-  return {
-    message: meetings.length
-      ? `${meetings.length} registered non-class event occurrence(s) included.`
-      : 'No registered non-class events found for this date.',
-    excluded,
-    blocksExcluded: blockCount,
-    sourceCoverage: coverage,
-  };
-}

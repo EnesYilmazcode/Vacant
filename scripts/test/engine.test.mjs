@@ -19,7 +19,6 @@ import {
   SECONDARY_TYPES,
   SILENT_SHARE,
   SURPLUS_CAP,
-  SURPLUS_WEIGHT,
   WALK_MPM,
   activeMask,
   activeSessions,

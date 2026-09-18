@@ -1088,10 +1088,8 @@ function seatsOf(r) {
 // every room of an index built before the general-assignment pull, and a label
 // on all 425 rows would say nothing at all.
 //
-// Plain text in the window line, not a `<b>`. `.r-win b` is `--fg` at weight
-// 650 on a line that is otherwise `--dim`, and it exists for the free-window --
-// the promise the row is making. windowOf and seatsOf emit plain text, so a
-// bolded caveat would have been the ONLY emphasised token on the row: the
+// Plain text in the window line, not a `<b>`. windowOf and seatsOf emit plain
+// text, so a bolded caveat would have been the ONLY emphasised token on the row: the
 // reason the room ranks low, shouting over the reason it is on screen at all. A
 // word among numbers, after the same middot the seat count uses, is already
 // distinct enough. No class either: the one it carried was never styled

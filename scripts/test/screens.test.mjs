@@ -2912,9 +2912,8 @@ test('the click toggle reads travel, not net displacement', () => {
 test('the departmental label is a caveat, not the loudest thing on the row', () => {
   const dept = APP.slice(APP.indexOf('function deptOf('), APP.indexOf('const WALK_ICON'));
   assert.ok(dept.length > 0, 'deptOf is gone');
-  // `.r-win b` is --fg at weight 650 and it belongs to the free-window: the
-  // promise the row makes. windowOf and seatsOf emit plain text, so bolding the
-  // reason a room ranks LOW would make it the only emphasised token on the row.
+  // windowOf and seatsOf emit plain text, so bolding the reason a room ranks
+  // LOW would make it the only emphasised token on the row.
   assert.doesNotMatch(dept, /<b[\s>]/, 'the label is bold, and it outshouts the window it sits beside');
   assert.match(dept, /&middot; departmental/, 'the label lost the separator the seat count uses');
   // It carried a class nothing ever styled.

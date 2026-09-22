@@ -538,15 +538,6 @@ export function roomSearchOn({ now, current, index, ranked, busyDay = busyDayOf(
   return minute >= window.start && minute < window.end;
 }
 
-// Buildings whose published hours are non-null on all seven days. Read out of
-// the hours table rather than typed into the app, so a term rollover that
-// closes one of them on Sundays drops it from this list with no code change.
-export function allWeekCodes(hoursTerm) {
-  return Object.entries(hoursTerm?.buildings ?? {})
-    .filter(([, rec]) => Array.isArray(rec.hours) && rec.hours.every((d) => Array.isArray(d)))
-    .map(([code]) => code);
-}
-
 export function roomsPerBuilding(index) {
   const counts = {};
   for (const room of Object.values(index?.rooms ?? {})) {

@@ -16,7 +16,6 @@ import {
   clock,
   closedDayFor,
   diagnosticsBlock,
-  inScheduledHours,
   inTermOn,
   indexFloorCheck,
   isoDate,
@@ -27,6 +26,7 @@ import {
   resolveState,
   roomSearchOn,
   roomsPerBuilding,
+  scheduleCoversDate,
   scheduleDarkOn,
   scheduleShareOn,
   staleness,
@@ -211,18 +211,26 @@ test('current.json wins over the measurement when it carries busyDay', () => {
 });
 
 test('the unscheduled trigger flips when latestEnd moves', () => {
+  // Ported off inScheduledHours (removed by the 2026-09-23 sweep -- it had no
+  // production caller, app.js's gate always went through roomSearchOn
+  // instead) onto the function that actually decides this in production.
+  // roomSearchOn's weekday window is exactly busyDay.earliestStart..latestEnd,
+  // the same boundary this test was written to pin down.
   const thu = at('2026-09-03', 21, 40);
   const early = { ...CUR, busyDay: { earliestStart: 480, latestEnd: 1290, weekdays: [false, true, true, true, true, true, false] } };
   const late = { ...CUR, busyDay: { ...early.busyDay, latestEnd: 1380 } };
-  assert.equal(inScheduledHours({ now: thu, current: early, index: CAL }), false);
-  assert.equal(inScheduledHours({ now: thu, current: late, index: CAL }), true);
+  assert.equal(roomSearchOn({ now: thu, current: early, index: CAL }), false);
+  assert.equal(roomSearchOn({ now: thu, current: late, index: CAL }), true);
 });
 
-test('a weekend evening is never in scheduled hours', () => {
-  assert.equal(inScheduledHours({ now: at('2026-09-05', 20, 0), current: CUR, index: CAL }), false);
-  assert.equal(inScheduledHours({ now: at('2026-09-03', 14, 2), current: CUR, index: CAL }), true);
-});
-
+// A test used to live here asserting "a weekend evening is never in scheduled
+// hours" against the now-removed inScheduledHours. That was true of
+// inScheduledHours specifically (it never grants weekends at all, since
+// busyDay.weekdays is false for Sat/Sun) but was never true of the app: on a
+// weekend, roomSearchOn deliberately opens the 7am-11pm DAY_START/DAY_END
+// window instead (see the comment above roomSearchWindow), which the test
+// below this one already covers in full across both weekend days and the
+// hours on either side of that window.
 test('weekend room search opens in daytime without bypassing refusals', () => {
   for (const date of ['2026-09-19', '2026-09-20']) {
     for (const [hour, expected] of [[6, false], [7, true], [12, true], [22, true], [23, false]]) {
@@ -243,9 +251,11 @@ test('weekend room search opens in daytime without bypassing refusals', () => {
 
 test('a shut campus is not scheduled hours, but a no-classes day still is', () => {
   // Autumn break really does leave the buildings open, so the ranked list is
-  // still the right answer there and the quiet-campus line says why.
-  assert.equal(inScheduledHours({ now: at('2026-09-07', 12, 0), current: CUR, index: CAL }), false);
-  assert.equal(inScheduledHours({ now: at('2026-10-15', 12, 0), current: CUR, index: CAL }), true);
+  // still the right answer there and the quiet-campus line says why. Ported
+  // off inScheduledHours onto scheduleCoversDate, the date-level half of it
+  // that this test was actually exercising (the minute never mattered here).
+  assert.equal(scheduleCoversDate({ now: at('2026-09-07', 12, 0), current: CUR, index: CAL }), false);
+  assert.equal(scheduleCoversDate({ now: at('2026-10-15', 12, 0), current: CUR, index: CAL }), true);
 });
 
 test('a day whose sessions have all ended is not a scheduled day', () => {
@@ -301,7 +311,7 @@ test('finals week does not rank rooms even with no exam window in the data', () 
     assert.equal(s.ranked, false, `${iso} still ranks`);
     assert.equal(s.kind, 'TERM_ENDED');
     assert.ok(s.action, `${iso} still offers the buildings screen`);
-    assert.equal(inScheduledHours({ now: at(iso), current: CURRENT, index: NO_EXAMS }), false, `${iso} is scheduled`);
+    assert.equal(roomSearchOn({ now: at(iso), current: CURRENT, index: NO_EXAMS }), false, `${iso} is scheduled`);
   }
   // The SCHEDULE_DARK fallback itself, which no date on the shipped calendar
   // can reach any more. It is the reason this test exists, so it is exercised
@@ -314,7 +324,7 @@ test('finals week does not rank rooms even with no exam window in the data', () 
   assert.ok(dark.action);
   // Midday on a real Thursday is untouched.
   assert.equal(resolveState({ now: at('2026-09-03', 12, 15), current: CURRENT, index: NO_EXAMS }).ranked, true);
-  assert.equal(inScheduledHours({ now: at('2026-09-03', 12, 15), current: CURRENT, index: INDEX }), true);
+  assert.equal(roomSearchOn({ now: at('2026-09-03', 12, 15), current: CURRENT, index: INDEX }), true);
 });
 
 test('resolveState refuses exactly when refusalFor does, and never on its own', () => {

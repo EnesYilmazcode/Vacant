@@ -504,18 +504,6 @@ export function scheduleCoversDate({ now, current, index, busyDay = busyDayOf(cu
   return !scheduleDarkOn({ now, index });
 }
 
-// True when the class schedule constrains this minute at all. Outside it every
-// room in the index reads free and the ranked list quietly becomes a distance
-// sort wearing the clothes of a schedule answer.
-export function inScheduledHours({ now, current, index }) {
-  // Measured once and handed down: busyDayOf sorts every block in the index and
-  // this path runs on every repaint.
-  const busyDay = busyDayOf(current, index);
-  if (!scheduleCoversDate({ now, current, index, busyDay })) return false;
-  const minute = now.getHours() * 60 + now.getMinutes();
-  return minute >= busyDay.earliestStart && minute < busyDay.latestEnd;
-}
-
 // The live search can still be useful on Saturday and Sunday when the class
 // schedule is sparse. Keep the ordinary weekday boundary, but offer weekend
 // searches during the engine's 7am-11pm sweep window. The ranked verdict still

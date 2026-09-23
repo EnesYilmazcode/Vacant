@@ -1339,6 +1339,7 @@ test('the card carries the two things Enes said were the point, and nothing else
   }
   assert.ok(paint.includes('cardParts(r)'), 'the card stopped naming the building and the room');
   assert.equal(paint.includes('caveatHtml'), false, 'the coverage paragraph is back on the card');
+  assert.doesNotMatch(paint, /registered events not checked/i, 'the event warning is back on the card');
   assert.equal(paint.includes('MAX_WALK'), true, 'the end of the deck stopped naming the walk cap');
 
   // The strip is NOT filler. It is the only thing that says the answer is

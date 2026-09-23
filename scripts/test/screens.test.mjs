@@ -34,7 +34,6 @@ import {
   windowPhrase,
 } from '../../js/state.js';
 import { roomClaim } from '../../js/claim.js';
-import { filterRoomsByPreferences } from '../../js/preferences.js';
 import { blocksOn, classesOn, dayClaim } from '../../js/day.js';
 import {
   BACK_PX,
@@ -1717,25 +1716,6 @@ const HERE = { lat: 39.99944, lon: -83.01502 }; // the Thompson Library steps
 const opening = (day, nowMin) =>
   nextOpening({ buildings: SLICE, counts: COUNTS, hoursFor: DOORS, day, nowMin });
 
-test('weekend room needs return suitable rooms only where building hours allow them', () => {
-  const all = Object.entries(INDEX.rooms).map(([id, room]) => ({ id, ...room }));
-  const matching = filterRoomsByPreferences(all, { minSeats: 20, features: ['whiteboards'] });
-  assert.ok(matching.length > 0);
-  for (const [date, day] of [['2026-09-19', 6], ['2026-09-20', 0]]) {
-    assert.ok(matching.some((room) => DOORS(room.b, day) === null), 'the filter includes some closed buildings');
-    const rows = rank(matching, {
-      origin: HERE, now: 12 * 60, day, needed: 60, buildings: SLICE,
-      hoursFor: DOORS, sessions: INDEX.sessions, date,
-    });
-    assert.ok(rows.length > 0, `${date} has no usable matching room`);
-    for (const row of rows) {
-      const room = INDEX.rooms[row.id];
-      assert.ok(room.cap >= 20 && room.features.includes(44), row.id);
-      assert.notEqual(DOORS(room.b, day), null, `${row.id} is in a published-closed building`);
-    }
-  }
-});
-
 // A date walked forward by whole days, at a wall-clock minute.
 const on = (d, plus, min = 0) =>
   new Date(d.getFullYear(), d.getMonth(), d.getDate() + plus, Math.floor(min / 60), min % 60);
@@ -2893,50 +2873,15 @@ test('the room screen says the label as fully as the row it came from', () => {
   assert.match(line, /not a general-assignment room/, 'and the sentence is not the one the row uses');
 });
 
-test('room needs stay optional and closed on the one-question screen', () => {
+test('the one-question screen has no room-needs control', () => {
   const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-  const details = html.slice(html.indexOf('<details id="needs"'), html.indexOf('</details>', html.indexOf('<details id="needs"')));
-  assert.ok(details.length > 0, 'the Room needs disclosure is gone');
-  assert.doesNotMatch(details, /<details[^>]*\sopen(?:\s|>)/, 'optional room needs open over the duration question');
-  assert.match(details, /id="need-seats"[^>]*type="number"[^>]*min="1"[^>]*max="999"/);
-  assert.match(details, /id="need-features"/, 'the published feature choices have nowhere to render');
+  assert.doesNotMatch(html, /<details[^>]+id="needs"/);
+  assert.doesNotMatch(html, />Room needs</);
 });
 
-test('room requirements filter before ranking and never guess missing details', () => {
-  const answer = APP.slice(APP.indexOf('function answer()'), APP.indexOf('// A name over 24 characters'));
-  assert.match(answer, /filterRoomsByPreferences\(allRooms, state\.preferences\)/);
-  assert.ok(
-    answer.indexOf('filterRoomsByPreferences') < answer.indexOf('rank(rooms, ask)'),
-    'ranking runs before the room requirements are applied',
-  );
-  assert.match(APP, /Missing room details do not count as a match/);
-  assert.match(APP, /data-act="clear-needs"/, 'a zero-result filter has no way out');
-});
-
-test('furniture choices wait for published data while minimum seats works now', () => {
-  const availability = APP.slice(APP.indexOf('function paintNeedsAvailability()'), APP.indexOf('function attachNeeds()'));
-  assert.match(availability, /state\.featureCoverage\.known === 0/);
-  assert.match(availability, /input\.disabled = !state\.ready \|\| state\.featureCoverage\.known === 0/);
-  assert.match(availability, /Minimum seats works now/);
-  // Boot used to enable every disabled descendant of #ask. That would turn the
-  // furniture controls on even when no room carries the field yet.
-  assert.doesNotMatch(APP, /querySelectorAll\('#ask \[disabled\]'\)/);
-  assert.match(APP, /querySelectorAll\('#ask \[data-min\]\[disabled\]'\)/);
-});
-
-test('changing room needs invalidates a list reached with browser Forward', () => {
-  const change = APP.slice(APP.indexOf('function changeNeeds()'), APP.indexOf('function paintNeedsAvailability()'));
-  assert.match(change, /state\.preferencesDirty = true/);
-
-  const pop = APP.slice(APP.indexOf("window.addEventListener('popstate'"), APP.indexOf('// Coming back to the foreground'));
-  assert.match(pop, /v === 'list'/);
-  assert.match(pop, /if \(state\.preferencesDirty\) answer\(\)/);
-});
-
-test('a broader room filter cannot keep the previous fallback warning', () => {
+test('a new answer cannot keep the previous fallback warning', () => {
   const answer = APP.slice(APP.indexOf('function answer()'), APP.indexOf('// A name over 24 characters'));
   const firstPaint = answer.indexOf('paintList();');
   assert.ok(answer.indexOf('state.rung = null') < firstPaint);
   assert.ok(answer.indexOf('state.relaxed = false') < firstPaint);
-  assert.ok(answer.indexOf('state.preferencesDirty = false') < firstPaint);
 });

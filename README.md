@@ -10,17 +10,11 @@ it. Bin it and it hands you the next one. Take it and it shows you the way.
 
 | | |
 | :--: | :--: |
-| <img src="docs/media/ask.webp" alt="The opening screen: Vacant over a dark campus map, buttons for 30 min, 1 hour, 2 hours and rest of day, and a collapsed optional Room needs control" width="270"> | <img src="docs/media/card.webp" alt="A card showing Dulles Hall 012 over a photograph of blue classroom chairs and chalkboards. The plate reads free till 1:50pm, 4 min and 25 seats; a bin and tick sit near the bottom." width="270"> |
+| <img src="docs/media/ask.webp" alt="The opening screen: Vacant over a dark campus map, with buttons for 30 min, 1 hour, 2 hours and rest of day" width="270"> | <img src="docs/media/card.webp" alt="A card showing Dulles Hall 012 over a photograph of blue classroom chairs and chalkboards. The plate reads free till 1:50pm, 4 min and 25 seats; a bin and tick sit near the bottom." width="270"> |
 | One question. | One answer. |
 
-The opening screen has an optional **Room needs** disclosure. Set a minimum seat
-count or require Registrar-published furniture details such as whiteboards and
-movable tables. Every selected feature must be known for a room to match; rooms
-with unpublished details are left out of a feature-filtered answer. The
-unfiltered one-tap question stays the default.
-
-On weekends, the same room search and Room needs controls are available from
-7am to 11pm even though few classes meet. Vacant still excludes buildings the
+On weekends, the same room search is available from 7am to 11pm even though few
+classes meet. Vacant still excludes buildings the
 Registrar publishes as closed and checks registered events when that week's
 snapshot is available. An empty class timetable does not mean every door is
 open; the app says when event coverage is missing.

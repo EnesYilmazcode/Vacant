@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
-import { aspect, decodeFeature, decodeShape, inBounds, toGrid, toLonLat } from '../../js/campus.js';
+import { aspect, decodeFeature, decodeShape, toGrid, toLonLat } from '../../js/campus.js';
 
 const MAP = { bbox: [-83.04, 39.98, -82.99, 40.02], grid: 65535 };
 
@@ -47,11 +47,6 @@ test('grid values outside 0..grid are allowed in BOTH directions', () => {
   // of 65535, so a Uint16Array would wrap the high end and teleport it.
   assert.ok(toGrid([MAP.bbox[0] - 0.01, MAP.bbox[1]], MAP)[0] < 0, 'low side');
   assert.ok(toGrid([MAP.bbox[2] + 0.01, MAP.bbox[3]], MAP)[0] > MAP.grid, 'high side');
-});
-
-test('inBounds answers whether a room has anything to point at', () => {
-  assert.equal(inBounds([-83.015, 40.0], MAP), true);
-  assert.equal(inBounds([-81.93, 40.78], MAP), false, 'Wooster is not on the map');
 });
 
 test('the aspect ratio is pinned to a literal, not re-derived', () => {
@@ -136,9 +131,12 @@ test('every building that hosts classes and sits on the map has a footprint near
   const metresPerX = ((c.bbox[2] - c.bbox[0]) * 85000) / c.grid;
   const metresPerY = ((c.bbox[3] - c.bbox[1]) * 111000) / c.grid;
   const missing = [];
+  // inBounds() lived in js/campus.js for exactly this bbox check; removed by
+  // the 2026-09-24 sweep as dead code (no production caller), inlined here.
+  const onMap = ([lon, lat]) => lon >= c.bbox[0] && lon <= c.bbox[2] && lat >= c.bbox[1] && lat <= c.bbox[3];
   for (const code of codes) {
     const b = buildings[code];
-    if (!b || !inBounds([b.lon, b.lat], c)) continue;
+    if (!b || !onMap([b.lon, b.lat])) continue;
     const [gx, gy] = toGrid([b.lon, b.lat], c);
     const near = centroids.some(
       (p) => Math.hypot((p[0] - gx) * metresPerX, (p[1] - gy) * metresPerY) < 250,

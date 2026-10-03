@@ -1,54 +1,54 @@
 {
   "term": "1268",
-  "runs": 6,
-  "facetTotal": 26315,
+  "runs": 7,
+  "facetTotal": 26358,
   "passes": 5,
   "history": [
     {
       "pass": 1,
-      "saw": 26384,
-      "added": 26384,
-      "addedWithRoom": 8472,
-      "unionAfter": 26384
+      "saw": 26240,
+      "added": 26240,
+      "addedWithRoom": 8465,
+      "unionAfter": 26240
     },
     {
       "pass": 2,
-      "saw": 26532,
-      "added": 525,
-      "addedWithRoom": 0,
-      "unionAfter": 26909
+      "saw": 26391,
+      "added": 687,
+      "addedWithRoom": 5,
+      "unionAfter": 26927
     },
     {
       "pass": 3,
-      "saw": 26211,
-      "added": 129,
-      "addedWithRoom": 2,
-      "unionAfter": 27038
+      "saw": 26263,
+      "added": 156,
+      "addedWithRoom": 3,
+      "unionAfter": 27083
     },
     {
       "pass": 4,
-      "saw": 26181,
-      "added": 52,
+      "saw": 26287,
+      "added": 57,
       "addedWithRoom": 0,
-      "unionAfter": 27090
+      "unionAfter": 27140
     },
     {
       "pass": 5,
-      "saw": 26245,
-      "added": 2,
+      "saw": 26300,
+      "added": 0,
       "addedWithRoom": 0,
-      "unionAfter": 27092
+      "unionAfter": 27140
     }
   ],
-  "distinctMeetings": 27092,
-  "meetingsInARealRoom": 8474,
-  "missedBySinglePass": 708,
-  "roomedMissedBySinglePass": 2,
+  "distinctMeetings": 27140,
+  "meetingsInARealRoom": 8473,
+  "missedBySinglePass": 900,
+  "roomedMissedBySinglePass": 8,
   "requests": 676,
   "buckets": [
     {
       "slug": "1xxx",
-      "facetCount": 2598
+      "facetCount": 2594
     },
     {
       "slug": "2xxx",
@@ -60,7 +60,7 @@
     },
     {
       "slug": "4xxx",
-      "facetCount": 6322
+      "facetCount": 6366
     },
     {
       "slug": "5xxx",
@@ -68,15 +68,15 @@
     },
     {
       "slug": "6xxx",
-      "facetCount": 2303
+      "facetCount": 2302
     },
     {
       "slug": "7xxx",
-      "facetCount": 2991
+      "facetCount": 2992
     },
     {
       "slug": "8xxx",
-      "facetCount": 5550
+      "facetCount": 5553
     }
   ]
 }

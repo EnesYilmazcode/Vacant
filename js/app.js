@@ -1302,6 +1302,9 @@ function select(i) {
 // gesture arrives in, so nothing here has to know the screen size.
 const SWIPE_PX = 84;
 const SWIPE_V = 0.45;
+const DESKTOP_CARD = '(min-width: 900px) and (hover: hover) and (pointer: fine)';
+
+const desktopCardMode = () => globalThis.matchMedia?.(DESKTOP_CARD).matches === true;
 
 // The warp, in two numbers that are both about what a READER sees.
 //
@@ -1513,10 +1516,12 @@ function paintCard() {
         </div>
         <p class="c-acts">
           <button type="button" class="c-act no" id="c-no" aria-label="Not this one, show the next room">
-            <svg class="ico" aria-hidden="true"><use href="#i-bin"/></svg>
+            <svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg>
+            <span class="c-act-label">Next room</span>
           </button>
           <button type="button" class="c-act yes" id="c-yes" aria-label="Take this room and show me the way">
-            <svg class="ico" aria-hidden="true"><use href="#i-tick"/></svg>
+            <svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg>
+            <span class="c-act-label">Show route</span>
           </button>
         </p>
       </article>
@@ -1615,6 +1620,19 @@ function acceptCard() {
 // card would otherwise become a sheet drag on its eighth pixel and take the
 // answer away.
 function attachSwipe(el) {
+  const keydown = (e) => {
+    if (e.key === 'ArrowLeft') rejectCard();
+    else if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') acceptCard();
+    else if (e.key === 'ArrowDown') toAsk();
+    else return;
+    e.preventDefault();
+  };
+  el.addEventListener('keydown', keydown);
+
+  // A mouse on a wide screen gets visible actions instead of a gesture whose
+  // affordance belongs to a touch surface. Keyboard shortcuts stay available.
+  if (desktopCardMode()) return;
+
   const stamps = { no: el.querySelector('.c-stamp.no'), yes: el.querySelector('.c-stamp.yes') };
   let drag = null;
 
@@ -1727,13 +1745,6 @@ function attachSwipe(el) {
   el.addEventListener('pointercancel', end);
   el.addEventListener('lostpointercapture', abandon);
 
-  el.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft') rejectCard();
-    else if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') acceptCard();
-    else if (e.key === 'ArrowDown') toAsk();
-    else return;
-    e.preventDefault();
-  });
 }
 
 // ------------------------------------------------------------- the duration

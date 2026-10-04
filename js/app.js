@@ -311,10 +311,14 @@ function surface() {
 // rect, for the same reason viewport() is cached.
 const railHeight = () => parseFloat(document.body.style.getPropertyValue('--bar-h')) || 0;
 
-// Whether the canvas is part of the current task. A picked or browsed place is
+// Whether the canvas is part of the current task. The all-rooms list keeps the
+// campus in view even before a row is selected; otherwise it becomes a nearly
+// full-screen column with no visual context. A picked or browsed place is also
 // meaningful before it has a destination pin, so both location screens retain
 // the campus view while the reader decides.
-const targeted = () => Boolean(state.selected || state.screen === 'pick' || state.screen === 'browse');
+const targeted = () => Boolean(
+  state.selected || ['list', 'pick', 'browse'].includes(state.screen),
+);
 
 // Where the sheet rests and how high it may go THIS second, in pixels.
 // Everything that used to write PEEK or FULL asks these, so the sheet's height

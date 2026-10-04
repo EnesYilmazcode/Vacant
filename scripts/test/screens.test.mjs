@@ -920,7 +920,15 @@ test('browsing buildings is a destination flow, not another origin picker', () =
   assert.doesNotMatch(groups, /seats|feature|capacity/i);
   assert.match(browse, /openRoom\(row\.dataset\.room\)/);
   assert.doesNotMatch(browse, /pickBuilding|commitPickedOrigin/);
-  assert.match(APP, /state\.screen === 'browse'/, 'the campus map disappears before a building is selected');
+  const start = APP.indexOf('const targeted =');
+  const targeted = APP.slice(start, APP.indexOf(';', start) + 1);
+  assert.match(targeted, /['"]browse['"]/, 'the campus map disappears before a building is selected');
+});
+
+test('see all rooms keeps the campus map before a row is selected', () => {
+  const start = APP.indexOf('const targeted =');
+  const targeted = APP.slice(start, APP.indexOf(';', start) + 1);
+  assert.match(targeted, /['"]list['"]/, 'the all-rooms list still covers the campus map');
 });
 
 // -------------------------------------------------------- #24 diagnostics
@@ -2809,14 +2817,11 @@ test('the two floors are how far down the sheet goes and the end of the grip tra
   assert.equal(floorFor('grip', covered), covered - DISMISS_PX);
 });
 
-// ---- the map is only on screen when it has an answer on it
+// ---- the map is only on screen when the task benefits from it
 
-test('a screen with nothing on the map covers it until a row is tapped', () => {
-  // The complaint this came from, in numbers: at 393x852 the list rested at
-  // peek and left a 528px band of campus carrying nothing but the blue dot,
-  // which is 62% of the screen spent on a picture of where the reader already
-  // is. Tapping a row is what puts something on that canvas, so tapping a row
-  // is what uncovers it.
+test('read-only screens with nothing on the map still cover it', () => {
+  // This is the generic no-target state. The all-rooms list deliberately does
+  // not pass false any more: it keeps the campus visible as part of browsing.
   for (const screen of ['list', 'near', 'room', 'about']) {
     assert.equal(restFor(screen, false), COVER, `${screen} still leaves a map band`);
     assert.equal(restFor(screen, true), REST[screen]);

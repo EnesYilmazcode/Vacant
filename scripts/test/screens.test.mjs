@@ -920,6 +920,7 @@ test('browsing buildings is a destination flow, not another origin picker', () =
   assert.doesNotMatch(groups, /seats|feature|capacity/i);
   assert.match(browse, /openRoom\(row\.dataset\.room\)/);
   assert.doesNotMatch(browse, /pickBuilding|commitPickedOrigin/);
+  assert.match(APP, /state\.screen === 'browse'/, 'the campus map disappears before a building is selected');
 });
 
 // -------------------------------------------------------- #24 diagnostics

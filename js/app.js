@@ -311,9 +311,10 @@ function surface() {
 // rect, for the same reason viewport() is cached.
 const railHeight = () => parseFloat(document.body.style.getPropertyValue('--bar-h')) || 0;
 
-// Whether the canvas has a DESTINATION on it, which is the only reason to show
-// a map. Your own dot is not one. js/sheet.js has the rest of this.
-const targeted = () => Boolean(state.selected || state.screen === 'pick');
+// Whether the canvas is part of the current task. A picked or browsed place is
+// meaningful before it has a destination pin, so both location screens retain
+// the campus view while the reader decides.
+const targeted = () => Boolean(state.selected || state.screen === 'pick' || state.screen === 'browse');
 
 // Where the sheet rests and how high it may go THIS second, in pixels.
 // Everything that used to write PEEK or FULL asks these, so the sheet's height

@@ -2994,18 +2994,15 @@ function showCard() {
   sheetHeight();
 }
 
-function showList() {
-  // Cleared before showPane, because reframe() in there composes the camera
-  // for the band this screen leaves and the band now depends on it.
-  //
-  // Nothing else clears it on the way back. followAction reads state.selected
-  // as "a finger is on a row somebody is reaching for" and returns 'hold', and
-  // under 'hold' refresh() never runs, so answer() -- the only other thing that
-  // nulls it -- never runs either. Open the app, tap a room, press back, walk:
-  // the gate stays shut and the list holds boot values for the rest of the
-  // session, which is exactly the staleness #87 exists to remove. Selection is
-  // a property of the room screen; coming back to the list ends it.
-  state.selected = null;
+function showList(view = null) {
+  // A list entry remembers the row and exact scroll position it had when the
+  // reader opened a room. New list entries carry neither, so a fresh answer
+  // still starts unselected at the top.
+  const remembered = view?.selected
+    ? state.results.find((room) => room.id === view.selected) ?? null
+    : null;
+  state.selected = remembered;
+  state.listScroll = Number.isFinite(view?.scroll) ? Math.max(0, view.scroll) : 0;
   showPane('list');
   // openList() pushes over whatever was showing, and the menu can open the list
   // from the way as well as from the card.
@@ -3014,6 +3011,7 @@ function showList() {
     history.state?.from === 'way' ? 'Back to the way' : 'Back to the card',
   );
   $('list').scrollTop = state.listScroll;
+  markRows();
   sheetHeight();
 }
 
@@ -3039,10 +3037,13 @@ function showPick() {
   focusHeading($('pick-h'));
 }
 
-function showBrowse() {
+function showBrowse(view = null) {
+  state.browseBuilding = view?.building ?? null;
+  state.browseQuery = view?.query ?? state.browseQuery;
   showPane('browse');
   $('back').setAttribute('aria-label', 'Back');
   paintBrowse();
+  $('browse').scrollTop = Number.isFinite(view?.scroll) ? Math.max(0, view.scroll) : 0;
   sheetHeight();
 }
 
@@ -3181,9 +3182,10 @@ function showRoom(id, { keepDay = false } = {}) {
 //
 // This does its own pane work rather than calling showPane('list'), because
 // showPane names the screen after the pane and this screen is not the list: it
-// has a plate, no back arrow, and a selection the list deliberately clears.
-function showWay(id) {
-  const room = state.rooms?.rooms?.[id];
+// has a plate, no back arrow, and a selection its history entry remembers.
+function showWay(id, view = null) {
+  const selectedId = view?.selected ?? id;
+  const room = state.rooms?.rooms?.[selectedId];
   if (!room) return showCard();
   // The compass, before anything else, and the reason this line is not just
   // tidiness: the way is reachable FROM the room screen. Take a room, tap its
@@ -3193,10 +3195,10 @@ function showWay(id) {
   // has already thrown away, and the next room's Point me overwrites the closure
   // that could still have removed them.
   if (orientationOff) orientationOff();
-  const r = state.results.find((x) => x.id === id);
+  const r = state.results.find((x) => x.id === selectedId);
   // Before the panes, for the same reason showList and showRoom set it there:
   // reframe() composes the camera for the band this decides.
-  state.selected = r ?? { id, building: room.b, walk: null };
+  state.selected = r ?? { id: selectedId, building: room.b, walk: null };
 
   for (const pane of PANES) $(pane).hidden = pane !== 'list';
   $('find').hidden = true;
@@ -3214,7 +3216,7 @@ function showWay(id) {
   const arrived = state.screen !== 'way';
   state.screen = 'way';
   syncPaneTouch();
-  paintWay(id, r);
+  paintWay(selectedId, r);
   markRows();
   sheetHeight();
   // The rows open showing the room the arrow points at. Bin nineteen and take
@@ -3225,8 +3227,10 @@ function showWay(id) {
   // pinning that to the top would push "You asked for 2h00" off the pane to fix
   // nothing.
   const list = $('list');
+  const rememberedScroll = Number.isFinite(view?.scroll) ? Math.max(0, view.scroll) : null;
+  if (rememberedScroll != null) list.scrollTop = rememberedScroll;
   const row = list.querySelector('.row.on');
-  if (row) {
+  if (row && rememberedScroll == null) {
     const top = row.offsetTop - list.offsetTop;
     if (top < list.scrollTop || top + row.offsetHeight > list.scrollTop + list.clientHeight) {
       list.scrollTop = Math.max(0, top - 8);
@@ -3267,8 +3271,9 @@ function paintWay(id, r) {
 // dismiss travel is the sheet's own, unchanged: it calls toAsk(), which is
 // history.back(), and from here that is one step.
 function openWay(id) {
-  history.pushState({ v: 'way', room: id }, '', `?room=${encodeURIComponent(id)}`);
-  showWay(id);
+  const view = { v: 'way', room: id, selected: id, scroll: $('list').scrollTop };
+  history.pushState(view, '', `?room=${encodeURIComponent(id)}`);
+  showWay(id, view);
 }
 
 function toAsk() {
@@ -3304,7 +3309,34 @@ function choose(min) {
   showCard();
 }
 
+function rememberViewContext() {
+  const current = history.state;
+  if (!current) return;
+  if (state.screen === 'list' || state.screen === 'way') {
+    const selected = state.selected?.id ?? null;
+    const view = { ...current, selected, scroll: $('list').scrollTop };
+    if (state.screen === 'way') view.room = selected ?? current.room;
+    history.replaceState(
+      view,
+      '',
+    );
+    return;
+  }
+  if (state.screen === 'browse') {
+    history.replaceState(
+      {
+        ...current,
+        building: state.browseBuilding,
+        query: state.browseQuery,
+        scroll: $('browse').scrollTop,
+      },
+      '',
+    );
+  }
+}
+
 function openRoom(id) {
+  rememberViewContext();
   rememberPick(id);
   // The screen underneath, kept in the entry rather than in a variable, so a
   // reopen from popstate names the same pane a press of back will reach.
@@ -3315,8 +3347,14 @@ function openRoom(id) {
 // The ranking, from the card. Its own history entry, so Back off the list
 // lands on the card the reader came from rather than on the question.
 function openList() {
-  history.pushState({ v: 'list', from: state.screen }, '', cleanUrl());
-  showList();
+  const view = {
+    v: 'list',
+    from: state.screen,
+    selected: state.screen === 'way' ? state.selected?.id ?? null : null,
+    scroll: state.screen === 'way' ? $('list').scrollTop : 0,
+  };
+  history.pushState(view, '', cleanUrl());
+  showList(view);
 }
 
 function openPick() {
@@ -3328,8 +3366,9 @@ function openBrowse() {
   state.browseBuilding = null;
   state.browseQuery = '';
   state.selected = null;
-  history.pushState({ v: 'browse' }, '', cleanUrl());
-  showBrowse();
+  const view = { v: 'browse', building: null, query: '', scroll: 0 };
+  history.pushState(view, '', cleanUrl());
+  showBrowse(view);
 }
 
 function openAbout() {
@@ -3858,12 +3897,12 @@ window.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('popstate', (e) => {
     const v = e.state?.v;
     if (v === 'room') showRoom(e.state.room);
-    else if (v === 'way') showWay(e.state.room);
+    else if (v === 'way') showWay(e.state.room, e.state);
     else if (v === 'card') showCard();
-    else if (v === 'list') showList();
+    else if (v === 'list') showList(e.state);
     else if (v === 'near') showNear();
     else if (v === 'pick') showPick();
-    else if (v === 'browse') showBrowse();
+    else if (v === 'browse') showBrowse(e.state);
     else if (v === 'about') showAbout();
     else showAsk();
   });

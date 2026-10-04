@@ -1493,7 +1493,8 @@ test('neither screen without a back arrow is a dead end', () => {
   assert.match(bodyOf('attachMenu'), /act\('m-back', \(\) => history\.back\(\)\)/);
   assert.match(APP, /attachMenu\(\);/);
   // Which means the way needs a history entry of its own for back to land on.
-  assert.match(bodyOf('openWay'), /history\.pushState\(\{ v: 'way'/);
+  assert.match(bodyOf('openWay'), /const view = \{ v: 'way'/);
+  assert.match(bodyOf('openWay'), /history\.pushState\(view/);
 
   // One corner, two controls, never both, and the menu is on the two screens
   // the arrow left.
@@ -1735,7 +1736,8 @@ test('back names the screen it lands on, at every step of the answer', () => {
   );
   // The list is reached from the card and, through the menu, from the way, so
   // its label is a pair rather than a string.
-  assert.match(bodyOf('openList'), /pushState\(\{[^}]*from: state\.screen/);
+  assert.match(bodyOf('openList'), /from: state\.screen/);
+  assert.match(bodyOf('openList'), /pushState\(view/);
   assert.match(
     bodyOf('showList'),
     /from === 'way'\s*\?\s*'Back to the way'\s*:\s*'Back to the card'/,
@@ -1747,6 +1749,27 @@ test('back names the screen it lands on, at every step of the answer', () => {
   for (const min of ['30', '60', '120', 'day']) {
     assert.match(html, new RegExp(`class="opt[^"]*" data-min="${min}"`), `the ${min} choice is gone`);
   }
+});
+
+test('back restores the room, building and scroll position it left', () => {
+  const remember = bodyOf('rememberViewContext');
+  assert.match(remember, /state\.screen === 'list' \|\| state\.screen === 'way'/);
+  assert.match(remember, /selected:?,?\s*scroll: \$\('list'\)\.scrollTop|selected, scroll: \$\('list'\)\.scrollTop/);
+  assert.match(remember, /building: state\.browseBuilding/);
+  assert.match(remember, /scroll: \$\('browse'\)\.scrollTop/);
+  assert.match(bodyOf('openRoom'), /rememberViewContext\(\)/);
+
+  const list = bodyOf('showList');
+  assert.match(list, /state\.results\.find\(\(room\) => room\.id === view\.selected\)/);
+  assert.match(list, /\$\('list'\)\.scrollTop = state\.listScroll/);
+
+  const way = bodyOf('showWay');
+  assert.match(way, /const selectedId = view\?\.selected \?\? id/);
+  assert.match(way, /list\.scrollTop = rememberedScroll/);
+
+  const browse = bodyOf('showBrowse');
+  assert.match(browse, /state\.browseBuilding = view\?\.building \?\? null/);
+  assert.match(browse, /\$\('browse'\)\.scrollTop =/);
 });
 
 // ---- the night gate
@@ -2868,24 +2891,18 @@ test('the map class is written in one place, off the same pair the sheet reads',
   assert.match(css, /body\.nomap #map \{[^}]*pointer-events: none/);
 });
 
-test('every place that drops the selection re-rests the sheet', () => {
-  // There are two, and only one of them goes through showList(). A re-rank
-  // clears it in answer(), and a re-rank can happen with a row lit: the Check
+test('a re-rank that drops the selection re-rests the sheet', () => {
+  // A re-rank clears the selection in answer(), and it can happen with a row lit: the Check
   // again button in the list footer and the visibilitychange handler both call
   // refresh() without asking followAction first. Driven at 393x852 before this
   // line existed, both ways in: the row went dark and the sheet stayed at 324
   // over a canvas with nothing left on it, which is the band this whole change
   // removes. Now 776, or 708 with the install rail up.
-  for (const fn of ['answer', 'showList']) {
-    const body = bodyOf(fn);
-    const cleared = body.indexOf('state.selected = null');
-    assert.ok(cleared > 0, `${fn} no longer clears the selection`);
-    assert.match(
-      body.slice(cleared),
-      /sheetHeight\(\)|showPane\('list'\)/,
-      `${fn} drops the selection without re-resting the sheet`,
-    );
-  }
+  const body = bodyOf('answer');
+  const cleared = body.indexOf('state.selected = null');
+  assert.ok(cleared > 0, 'answer no longer clears the selection');
+  assert.match(body.slice(cleared), /sheetHeight\(\)/, 'answer drops the selection without re-resting the sheet');
+  assert.doesNotMatch(bodyOf('showList'), /state\.selected = null/, 'back to the list loses its selected room');
   // The question screen has no sheet to rest, and setSheet would stamp its name
   // on sheetScreen.
   assert.match(bodyOf('answer'), /if \(state\.screen !== 'ask'\) sheetHeight\(\);/);
@@ -2905,9 +2922,8 @@ test('the sheet asks where it rests rather than assuming peek and full', () => {
 test('a height dragged over a lit room is not restored over a covered map', () => {
   const H = 852;
   const rest = restPxFor('list', H, 0, false);
-  // Back out of a room and the selection is gone with it, so the 324px sheet
-  // the list was dragged to would come back over a canvas with nothing on it:
-  // the empty band, restored by the one path that skips the rest.
+  // A fresh list entry has no selected room, so a dragged height from another
+  // screen cannot come back over a canvas with nothing on it.
   assert.equal(openAt('list', { screen: 'list', h: 324 }, rest, false), rest);
   // With a room still lit it is that screen's height and it keeps it.
   assert.equal(openAt('list', { screen: 'list', h: 324 }, PEEK * H, true), 324);

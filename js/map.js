@@ -5,12 +5,18 @@
 // them at 60 fps would pin a phone's main thread, and the flyover in particular
 // only ever changes the transform, never the geometry.
 //
-// A VIEWPORT is { width, height, band, dpr }, all in CSS pixels except dpr.
+// A VIEWPORT is { width, height, band, right, dpr }, all in CSS pixels except dpr.
 // `band` is the distance from the top of the canvas to the top of the sheet,
 // and it is what the map centres itself in. The canvas is the whole screen but
 // the sheet covers the bottom of it, so centring on height/2 put the user's own
 // dot 101 px behind the sheet on a 390x844 phone and drew 0 of 40 you-to-room
 // lines in full. `band` defaults to `height`, which is the old behaviour.
+//
+// `right` is the same idea turned on its side: how much of the canvas, from its
+// right edge, the desktop side panel covers. The map centres and clamps in the
+// strip LEFT of it. Without it a 1000px laptop window centred the camera 212px
+// to the right of the visible map and the east of campus could never be pulled
+// out from under the panel. It defaults to 0, which is the phone layout.
 //
 // The camera functions below are pure: they take a view and return a new one,
 // so they test under node with no DOM. Gesture listening is the one piece here
@@ -83,6 +89,10 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 // The sheet covers the bottom of the canvas, so the map's usable height is the
 // band above it. Callers that have no sheet pass none and get the old centring.
 const bandOf = (viewport) => viewport.band ?? viewport.height;
+
+// Likewise across: the width the side panel leaves, floored at one pixel so a
+// panel wider than the window still leaves a divisor.
+const paneOf = (viewport) => Math.max(1, viewport.width - (viewport.right ?? 0));
 
 // How much raster this device actually needs, so the blit is near 1:1 at the
 // tightest view rather than magnifying a fixed bitmap. At the old fixed 0.014
@@ -179,14 +189,14 @@ export function makeView({ cx, cy, span, rotation = 0 }) {
 }
 
 const viewScale = (basemap, view, viewport) =>
-  Math.min(viewport.width, bandOf(viewport)) / (view.span * basemap.size);
+  Math.min(paneOf(viewport), bandOf(viewport)) / (view.span * basemap.size);
 
 // ------------------------------------------------------------------- camera
 
 // How far in the raster lets us go, and how far out is still campus rather
 // than a grey rectangle with campus in the middle of it.
 export function spanLimits(basemap, viewport, maxMagnification = MAX_MAGNIFICATION) {
-  const shorter = Math.min(viewport.width, bandOf(viewport));
+  const shorter = Math.min(paneOf(viewport), bandOf(viewport));
   const min = Math.max(SPAN_MIN, (shorter * (viewport.dpr ?? 1)) / (maxMagnification * basemap.size));
   return min > SPAN_MAX ? { min: SPAN_MAX, max: SPAN_MAX } : { min, max: SPAN_MAX };
 }
@@ -198,12 +208,12 @@ export function spanLimits(basemap, viewport, maxMagnification = MAX_MAGNIFICATI
 export function clampView(view, basemap, viewport) {
   const { min, max } = spanLimits(basemap, viewport);
   const span = clamp(view.span, min, max);
-  const scale = Math.min(viewport.width, bandOf(viewport)) / (span * basemap.size);
+  const scale = Math.min(paneOf(viewport), bandOf(viewport)) / (span * basemap.size);
   const gridW = basemap.width / basemap.sx;
   const gridH = basemap.height / basemap.sy;
-  const halfW = viewport.width / (2 * scale * basemap.sx);
+  const halfW = paneOf(viewport) / (2 * scale * basemap.sx);
   const halfH = bandOf(viewport) / (2 * scale * basemap.sy);
-  const marginW = viewport.width * PAN_MARGIN / (scale * basemap.sx);
+  const marginW = paneOf(viewport) * PAN_MARGIN / (scale * basemap.sx);
   const marginH = bandOf(viewport) * PAN_MARGIN / (scale * basemap.sy);
   return makeView({
     // Wider than the map on an axis: centre on that axis rather than pin to an
@@ -278,8 +288,8 @@ export function fitPair(a, b, basemap, viewport, { pad = FIT_PAD, rotation = 0 }
   let span = limits.min;
   if (ex > 0 || ey > 0) {
     // A zero extent contributes Infinity, so the other axis decides.
-    const scale = (1 - 2 * pad) * Math.min(viewport.width / ex, bandOf(viewport) / ey);
-    span = Math.min(viewport.width, bandOf(viewport)) / (scale * basemap.size);
+    const scale = (1 - 2 * pad) * Math.min(paneOf(viewport) / ex, bandOf(viewport) / ey);
+    span = Math.min(paneOf(viewport), bandOf(viewport)) / (scale * basemap.size);
   }
   return clampView(makeView({ cx, cy, span, rotation }), basemap, viewport);
 }
@@ -292,7 +302,7 @@ export function project([gx, gy], basemap, view, viewport) {
   const cos = Math.cos(view.rotation);
   const sin = Math.sin(view.rotation);
   return [
-    viewport.width / 2 + dx * cos - dy * sin,
+    paneOf(viewport) / 2 + dx * cos - dy * sin,
     bandOf(viewport) / 2 + dx * sin + dy * cos,
   ];
 }
@@ -301,7 +311,7 @@ export function project([gx, gy], basemap, view, viewport) {
 // what makes anchored zoom land where the finger is.
 export function unproject([x, y], basemap, view, viewport) {
   const scale = viewScale(basemap, view, viewport);
-  const ux = x - viewport.width / 2;
+  const ux = x - paneOf(viewport) / 2;
   const uy = y - bandOf(viewport) / 2;
   const cos = Math.cos(view.rotation);
   const sin = Math.sin(view.rotation);
@@ -390,7 +400,7 @@ export function drawFrame(ctx, basemap, view, viewport) {
   ctx.fillRect(0, 0, width, height);
 
   const scale = viewScale(basemap, view, viewport);
-  ctx.translate(width / 2, bandOf(viewport) / 2);
+  ctx.translate(paneOf(viewport) / 2, bandOf(viewport) / 2);
   ctx.rotate(view.rotation);
   ctx.scale(scale, scale);
   ctx.translate(-view.cx * basemap.sx, -(basemap.height - view.cy * basemap.sy));

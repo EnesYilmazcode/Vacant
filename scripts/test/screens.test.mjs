@@ -2714,7 +2714,7 @@ test('viewport() reads that one table rather than deciding a second time', () =>
   const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
   const at = src.indexOf('function viewport()');
   const body = src.slice(at, src.indexOf('\n}', at));
-  assert.match(body, /band: bandFor\(state\.screen, height, railHeight\(\)\)/);
+  assert.match(body, /band: bandFor\(state\.screen, height, railHeight\(\)(, split)?\)/);
   assert.equal(/state\.screen ===/.test(body), false, 'viewport() decides the resting height a second time');
   // And it does NOT ask whether anything is selected. The band is the strip the
   // map is looked at through, which is the targeted one on every screen; the

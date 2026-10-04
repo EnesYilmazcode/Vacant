@@ -78,7 +78,7 @@ import {
   unproject,
   zoomBy,
 } from './map.js';
-import { bandFor, capFor, floorFor, lowPxFor, openAt, restPxFor, sheetAfterDrag } from './sheet.js';
+import { bandFor, capFor, floorFor, lowPxFor, openAt, restPxFor, sheetAfterDrag, sideFor } from './sheet.js';
 
 const BASE = new URL('.', import.meta.url).pathname.replace(/js\/$/, '');
 
@@ -348,13 +348,25 @@ const lowNow = () => lowPxFor(state.screen, window.innerHeight, railHeight(), ta
 //
 // Cached rather than measured, because reading the sheet's rect inside the
 // frame loop forces layout sixty times a second.
+//
+// On a desktop the sheet is a full-height panel on the right instead, so the
+// band is the whole height above the rail and `right` carries the panel. Left
+// as the phone band, a laptop composed the map for the top 62% of the window
+// and could never pan the east of campus out from under the panel.
+const splitQuery = globalThis.matchMedia?.('(min-width: 900px) and (hover: hover) and (pointer: fine)');
+let remPx = 0;
+const rootRem = () =>
+  remPx || (remPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
+
 function viewport() {
   const width = lastSize.w || window.innerWidth;
   const height = lastSize.h || window.innerHeight;
+  const split = splitQuery?.matches === true;
   return {
     width,
     height,
-    band: bandFor(state.screen, height, railHeight()),
+    band: bandFor(state.screen, height, railHeight(), split),
+    right: sideFor(state.screen, width, rootRem(), split),
     dpr: lastSize.dpr || Math.min(window.devicePixelRatio || 1, 2),
   };
 }
@@ -3927,6 +3939,9 @@ window.addEventListener('DOMContentLoaded', () => {
   attachSheet();
   attachMenu();
   window.addEventListener('resize', () => {
+    // The root font size can change with the zoom level, and the side panel's
+    // width is in rem.
+    remPx = 0;
     if (state.screen !== 'ask') sheetHeight();
     // surface() reallocates the backing store on the next frame and the band
     // moves with the height, so a resize that does not reach the loop leaves a

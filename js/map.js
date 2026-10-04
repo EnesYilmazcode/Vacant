@@ -524,6 +524,28 @@ export function drawYou(ctx, { at, accuracyM = 0, guess = false }, basemap, view
   ctx.restore();
 }
 
+// A point the reader is considering, distinct from the blue origin already in
+// use. It is deliberately a ring: confirming it turns it into the solid dot.
+export function drawPin(ctx, { at }, basemap, view, viewport) {
+  if (!at) return;
+  const dpr = viewport.dpr ?? 1;
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const [x, y] = project(at, basemap, view, viewport);
+  ctx.beginPath();
+  ctx.arc(x, y, 10, 0, Math.PI * 2);
+  ctx.fillStyle = PALETTE.targetGlow;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x, y, 6, 0, Math.PI * 2);
+  ctx.fillStyle = PALETTE.bg;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = PALETTE.target;
+  ctx.stroke();
+  ctx.restore();
+}
+
 // --------------------------------------------------------------- frame loop
 
 // A frame loop that stops.

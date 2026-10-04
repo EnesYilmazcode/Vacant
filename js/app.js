@@ -18,7 +18,7 @@
 // picker, and what the app believes. The sheet routes between them so the map,
 // the highlight and the line stay on screen while you read.
 
-import { toGrid } from './campus.js';
+import { toGrid, toLonLat } from './campus.js';
 import { roomClaim } from './claim.js';
 import { overlayForDate } from '../scripts/lib/club-occupancy.mjs';
 import { blocksOn, classesOn, dayClaim } from './day.js';
@@ -67,6 +67,7 @@ import {
   clampView,
   createFrameLoop,
   drawFrame,
+  drawPin,
   drawTarget,
   drawYou,
   fitPair,
@@ -74,6 +75,7 @@ import {
   makeView,
   panBy,
   pixelsPerGridFor,
+  unproject,
   zoomBy,
 } from './map.js';
 import { bandFor, capFor, floorFor, lowPxFor, openAt, restPxFor, sheetAfterDrag } from './sheet.js';
@@ -234,6 +236,7 @@ const state = {
   situation: null,
   groups: null,
   query: '',
+  pickPoint: null,
   includeLocation: false,
   screen: 'ask',
   listScroll: 0,
@@ -307,7 +310,7 @@ const railHeight = () => parseFloat(document.body.style.getPropertyValue('--bar-
 
 // Whether the canvas has a DESTINATION on it, which is the only reason to show
 // a map. Your own dot is not one. js/sheet.js has the rest of this.
-const targeted = () => Boolean(state.selected);
+const targeted = () => Boolean(state.selected || state.screen === 'pick');
 
 // Where the sheet rests and how high it may go THIS second, in pixels.
 // Everything that used to write PEEK or FULL asks these, so the sheet's height
@@ -412,6 +415,16 @@ function render(now) {
     state.view,
     vp,
   );
+
+  if (state.pickPoint && state.campus) {
+    drawPin(
+      ctx,
+      { at: toGrid([state.pickPoint.lon, state.pickPoint.lat], state.campus) },
+      state.basemap,
+      state.view,
+      vp,
+    );
+  }
 
   // The drift over campus is the one thing on this canvas that moves by itself.
   // Under prefers-reduced-motion t is pinned to 0 above, so the flyover computes
@@ -704,6 +717,7 @@ function attachSheet() {
     // on a pane bottoms out AT peek, so it never gets here.
     if (dismiss) {
       setSheet(peek, true);
+      if (state.screen === 'pick') return;
       toAsk();
       return;
     }
@@ -2031,7 +2045,12 @@ function paintPick() {
     .join('');
 
   $('pick').innerHTML =
-    '<h2 class="msg" id="pick-h" tabindex="-1">Where are you?</h2>' +
+    '<h2 class="msg" id="pick-h" tabindex="-1">Set starting location</h2>' +
+    '<p class="why">Choose a building or tap the map to place an exact pin.</p>' +
+    (state.pickPoint
+      ? `<div class="pick-pin"><span>Pin placed on the map</span>
+          <button type="button" class="bar-btn" id="pick-pin-use">Use this point</button></div>`
+      : '') +
     (q ? '' : `<div class="shortcuts">${shortcuts}</div>`) +
     (rows.length
       ? rows.map(pickRow).join('')
@@ -2040,6 +2059,7 @@ function paintPick() {
   for (const el of $('pick').querySelectorAll('[data-code]')) {
     el.onclick = () => pickBuilding(el.dataset.code);
   }
+  $('pick-pin-use')?.addEventListener('click', pickMapPoint);
   // The abbreviations arrive after the first paint and repaint the whole list,
   // which drops focus on the floor unless it is put back.
   if (document.activeElement === document.body) focusHeading($('pick-h'));
@@ -2057,6 +2077,21 @@ function pickBuilding(code) {
     label: shortName(b.name),
     at: Date.now(),
   };
+  commitPickedOrigin(origin);
+}
+
+function pickMapPoint() {
+  if (!state.pickPoint) return;
+  commitPickedOrigin({
+    ...state.pickPoint,
+    accuracy: 0,
+    source: 'picked',
+    label: 'map pin',
+    at: Date.now(),
+  });
+}
+
+function commitPickedOrigin(origin) {
   safeSet(KEY_ORIGIN, JSON.stringify(origin));
   // Now, not at the next fix. startWatch() refuses a picked origin, but a pick
   // made mid-session happens while a watch is already open, and followAction
@@ -2887,6 +2922,7 @@ function showNear() {
 
 function showPick() {
   loadShorts();
+  state.pickPoint = null;
   showPane('pick');
   $('back').setAttribute('aria-label', 'Back without picking a building');
   paintPick();
@@ -3760,6 +3796,14 @@ window.addEventListener('DOMContentLoaded', () => {
       state.view = zoomBy(state.view, factor, state.basemap, viewport(), anchor);
       state.userMoved = true;
       frames.wake();
+    },
+    onTap: (point) => {
+      if (state.screen !== 'pick' || !state.basemap || !state.view || !state.campus) return;
+      const [lon, lat] = toLonLat(unproject(point, state.basemap, state.view, viewport()), state.campus);
+      state.pickPoint = { lat, lon };
+      paintPick();
+      frames.wake();
+      say('Pin placed on the map. Use this point, or choose a building.');
     },
   });
 

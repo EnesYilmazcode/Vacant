@@ -2645,7 +2645,8 @@ test('the strip the map composes for is the one that screen actually leaves', ()
   assert.equal(bandFor('room', 852), 239);
   assert.equal(bandFor('list', 852), 528);
   assert.equal(bandFor('near', 852), 528);
-  assert.equal(bandFor('pick', 852), 187);
+  // The picker exposes the map because tapping it can now set an exact origin.
+  assert.equal(bandFor('pick', 852), 528);
   assert.equal(bandFor('about', 852), 187);
   // The question screen has no sheet, so the whole canvas is the band.
   assert.equal(bandFor('ask', 852), 852);
@@ -2778,10 +2779,13 @@ test('a screen with nothing on the map covers it until a row is tapped', () => {
   // which is 62% of the screen spent on a picture of where the reader already
   // is. Tapping a row is what puts something on that canvas, so tapping a row
   // is what uncovers it.
-  for (const screen of ['list', 'near', 'room', 'pick', 'about']) {
+  for (const screen of ['list', 'near', 'room', 'about']) {
     assert.equal(restFor(screen, false), COVER, `${screen} still leaves a map band`);
     assert.equal(restFor(screen, true), REST[screen]);
   }
+  // Unlike the read-only screens, the picker needs an exposed map before a
+  // selection exists because the map itself is one of its controls.
+  assert.equal(restFor('pick', false), REST.pick);
   // The question screen is the exception twice over: no sheet, and a blurred
   // drifting background rather than a map anybody reads.
   assert.equal(restFor('ask', false), REST.ask);

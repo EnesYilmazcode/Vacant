@@ -723,6 +723,12 @@
   .pick-row .pn { flex: 1 1 auto; min-width: 0; }
   .pick-row .ps { color: var(--dim); font-size: .8rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   .pick-row .pc { color: var(--dim); font-size: .84rem; white-space: nowrap; }
+  .pick-pin {
+    display: flex; align-items: center; justify-content: space-between; gap: .7rem;
+    margin: .3rem .7rem .7rem; padding: .65rem .75rem;
+    border: 1px solid var(--accent); border-radius: 12px; background: var(--card);
+    font-size: .9rem;
+  }
   /* A container query carries no specificity of its own, so this block has to
      sit BELOW .b-row and .pick-row or the plain rules win on source order.
      .b-row had the container name and no rule inside the query at all: measured
@@ -1090,7 +1096,7 @@
 
 <canvas id="map"></canvas>
 <p id="note" hidden><span id="note-text"></span>
-  <button id="note-pick" class="bar-btn" hidden>Pick a building</button>
+  <button id="note-pick" class="bar-btn" hidden>Set starting location</button>
 </p>
 <button id="back" hidden aria-label="Back to the question">
   <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg>
@@ -1109,7 +1115,7 @@
   <div class="m-panel">
     <button type="button" class="m-item" id="m-back">Back</button>
     <button type="button" class="m-item" id="m-list">See all rooms</button>
-    <button type="button" class="m-item" id="m-pick">Pick your building</button>
+    <button type="button" class="m-item" id="m-pick">Set starting location</button>
     <button type="button" class="m-item" id="m-recheck">Check again</button>
     <button type="button" class="m-item" id="m-about">What Vacant knows</button>
   </div>
@@ -1159,7 +1165,7 @@
     <button id="gate-go" class="opt" hidden></button>
   </div>
   <p class="prov" id="ask-where" hidden></p>
-  <button id="ask-pick" class="opt" hidden>Pick your building</button>
+  <button id="ask-pick" class="opt" hidden>Set starting location</button>
 </section>
 
 <section id="sheet" hidden>

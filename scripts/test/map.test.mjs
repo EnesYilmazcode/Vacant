@@ -12,6 +12,7 @@ import {
   ARROW_SPREAD,
   FIT_PAD,
   MAX_MAGNIFICATION,
+  PAN_MARGIN,
   SETTLED_SPAN,
   SPAN_MAX,
   SPAN_MIN,
@@ -29,7 +30,7 @@ import {
   unproject,
   zoomBy,
 } from '../../js/map.js';
-import { bandFor } from '../../js/sheet.js';
+import { bandFor, sideFor } from '../../js/sheet.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -134,14 +135,60 @@ test('clampView holds the span inside the limits and never mutates', () => {
   assert.equal(clampView(makeView({ ...CENTRE, span: 9 }), BASEMAP, PEEK).span, SPAN_MAX);
 });
 
-test('the visible rectangle cannot leave the map', () => {
-  const off = clampView(makeView({ cx: 1e6, cy: -1e6, span: 0.2 }), BASEMAP, PEEK);
+test('edge buildings can move clear of the sheet without losing the map', () => {
   const gridW = BASEMAP.width / BASEMAP.sx;
   const gridH = BASEMAP.height / BASEMAP.sy;
-  const corner = unproject([0, 0], BASEMAP, off, PEEK);
-  const far = unproject([PEEK.width, PEEK.band], BASEMAP, off, PEEK);
-  assert.ok(corner[0] >= -1 && far[0] <= gridW + 1, `x ${corner[0]} to ${far[0]}`);
-  assert.ok(far[1] >= -1 && corner[1] <= gridH + 1, `y ${far[1]} to ${corner[1]}`);
+  const west = clampView(makeView({ cx: -1e6, cy: gridH / 2, span: 0.2 }), BASEMAP, PEEK);
+  const east = clampView(makeView({ cx: 1e6, cy: gridH / 2, span: 0.2 }), BASEMAP, PEEK);
+  const south = clampView(makeView({ cx: gridW / 2, cy: -1e6, span: 0.2 }), BASEMAP, PEEK);
+  const north = clampView(makeView({ cx: gridW / 2, cy: 1e6, span: 0.2 }), BASEMAP, PEEK);
+
+  near(project([0, gridH / 2], BASEMAP, west, PEEK)[0], PEEK.width * PAN_MARGIN, 1e-6, 'west edge');
+  near(project([gridW, gridH / 2], BASEMAP, east, PEEK)[0], PEEK.width * (1 - PAN_MARGIN), 1e-6, 'east edge');
+  near(project([gridW / 2, 0], BASEMAP, south, PEEK)[1], PEEK.band * (1 - PAN_MARGIN), 1e-6, 'south edge');
+  near(project([gridW / 2, gridH], BASEMAP, north, PEEK)[1], PEEK.band * PAN_MARGIN, 1e-6, 'north edge');
+});
+
+// A 1440x900 laptop on the desktop split: the list panel docked on the right.
+const DESK = {
+  width: 1440,
+  height: 900,
+  band: bandFor('list', 900, 0, true),
+  right: sideFor('list', 1440, 16, true),
+  dpr: 2,
+};
+
+test('on a desktop the map centres in the strip left of the side panel', () => {
+  const pane = DESK.width - DESK.right;
+  const at = project([CENTRE.cx, CENTRE.cy], BASEMAP, CENTRE, DESK);
+  near(at[0], pane / 2, 1e-6, 'centre x');
+  near(at[1], DESK.height / 2, 1e-6, 'centre y, the panel covers none of the height');
+  const back = unproject(at, BASEMAP, CENTRE, DESK);
+  near(back[0], CENTRE.cx, 1e-6, 'round trip x');
+  near(back[1], CENTRE.cy, 1e-6, 'round trip y');
+});
+
+test('the east of campus can be pulled out from under the side panel', () => {
+  // Composed for the whole width, the east edge stopped at 70% of 1440px,
+  // which is 1008px and under a panel starting at 904px.
+  const gridW = BASEMAP.width / BASEMAP.sx;
+  const gridH = BASEMAP.height / BASEMAP.sy;
+  const pane = DESK.width - DESK.right;
+  const east = clampView(makeView({ cx: 1e6, cy: gridH / 2, span: 0.2 }), BASEMAP, DESK);
+  const x = project([gridW, gridH / 2], BASEMAP, east, DESK)[0];
+  near(x, pane * (1 - PAN_MARGIN), 1e-6, 'east edge');
+  assert.ok(x < pane, `the east edge reaches ${x}px, the panel starts at ${pane}px`);
+});
+
+test('the side panel is only there on the desktop split, and never on ask', () => {
+  assert.equal(sideFor('list', 1440, 16, false), 0);
+  assert.equal(sideFor('ask', 1440, 16, true), 0);
+  // right: 1.5rem; width: min(32rem, 40vw), from index.html.
+  assert.equal(sideFor('list', 1440, 16, true), 512 + 24);
+  assert.equal(sideFor('room', 1000, 16, true), 400 + 24);
+  assert.match(read('index.html'), /right: 1\.5rem; top: 1\.5rem; bottom: 1\.5rem;\s*width: min\(32rem, 40vw\)/);
+  assert.equal(bandFor('room', 900, 0, true), 900);
+  assert.equal(bandFor('room', 900, 60, true), 840);
 });
 
 test('an axis wider than the map centres on it instead of pinning to an edge', () => {
@@ -186,10 +233,11 @@ test('pan is rotation aware', () => {
   near(moved, 100, 1e-6, 'the ground still followed the finger');
 });
 
-test('a fling stops at the edge of campus', () => {
+test('a fling stops at the bounded pan margin', () => {
   const out = panBy(CENTRE, 1e6, 1e6, BASEMAP, PEEK);
-  const corner = unproject([0, 0], BASEMAP, out, PEEK);
-  assert.ok(corner[0] >= -1, `left edge at ${corner[0]}`);
+  const gridH = BASEMAP.height / BASEMAP.sy;
+  near(project([0, out.cy], BASEMAP, out, PEEK)[0], PEEK.width * PAN_MARGIN, 1e-6, 'left stop');
+  near(project([out.cx, gridH], BASEMAP, out, PEEK)[1], PEEK.band * PAN_MARGIN, 1e-6, 'top stop');
 });
 
 // --- zoom ---

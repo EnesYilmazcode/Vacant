@@ -18,7 +18,7 @@
 // picker, and what the app believes. The sheet routes between them so the map,
 // the highlight and the line stay on screen while you read.
 
-import { toGrid } from './campus.js';
+import { toGrid, toLonLat } from './campus.js';
 import { roomClaim } from './claim.js';
 import { overlayForDate } from '../scripts/lib/club-occupancy.mjs';
 import { blocksOn, classesOn, dayClaim } from './day.js';
@@ -67,6 +67,7 @@ import {
   clampView,
   createFrameLoop,
   drawFrame,
+  drawPin,
   drawTarget,
   drawYou,
   fitPair,
@@ -74,9 +75,10 @@ import {
   makeView,
   panBy,
   pixelsPerGridFor,
+  unproject,
   zoomBy,
 } from './map.js';
-import { bandFor, capFor, floorFor, lowPxFor, openAt, restPxFor, sheetAfterDrag } from './sheet.js';
+import { bandFor, capFor, floorFor, lowPxFor, openAt, restPxFor, sheetAfterDrag, sideFor } from './sheet.js';
 
 const BASE = new URL('.', import.meta.url).pathname.replace(/js\/$/, '');
 
@@ -196,6 +198,7 @@ const state = {
   duration: safeGet(KEY_DURATION) ?? '30',
   needed: 30,
   results: [],
+  allResults: [],
   // How deep into the ranking the card screen is. Reset by answer(), because a
   // re-rank makes "the third one" a different room.
   cardIndex: 0,
@@ -234,6 +237,9 @@ const state = {
   situation: null,
   groups: null,
   query: '',
+  browseQuery: '',
+  browseBuilding: null,
+  pickPoint: null,
   includeLocation: false,
   screen: 'ask',
   listScroll: 0,
@@ -305,9 +311,14 @@ function surface() {
 // rect, for the same reason viewport() is cached.
 const railHeight = () => parseFloat(document.body.style.getPropertyValue('--bar-h')) || 0;
 
-// Whether the canvas has a DESTINATION on it, which is the only reason to show
-// a map. Your own dot is not one. js/sheet.js has the rest of this.
-const targeted = () => Boolean(state.selected);
+// Whether the canvas is part of the current task. The all-rooms list keeps the
+// campus in view even before a row is selected; otherwise it becomes a nearly
+// full-screen column with no visual context. A picked or browsed place is also
+// meaningful before it has a destination pin, so both location screens retain
+// the campus view while the reader decides.
+const targeted = () => Boolean(
+  state.selected || ['list', 'pick', 'browse'].includes(state.screen),
+);
 
 // Where the sheet rests and how high it may go THIS second, in pixels.
 // Everything that used to write PEEK or FULL asks these, so the sheet's height
@@ -337,13 +348,25 @@ const lowNow = () => lowPxFor(state.screen, window.innerHeight, railHeight(), ta
 //
 // Cached rather than measured, because reading the sheet's rect inside the
 // frame loop forces layout sixty times a second.
+//
+// On a desktop the sheet is a full-height panel on the right instead, so the
+// band is the whole height above the rail and `right` carries the panel. Left
+// as the phone band, a laptop composed the map for the top 62% of the window
+// and could never pan the east of campus out from under the panel.
+const splitQuery = globalThis.matchMedia?.('(min-width: 900px) and (hover: hover) and (pointer: fine)');
+let remPx = 0;
+const rootRem = () =>
+  remPx || (remPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16);
+
 function viewport() {
   const width = lastSize.w || window.innerWidth;
   const height = lastSize.h || window.innerHeight;
+  const split = splitQuery?.matches === true;
   return {
     width,
     height,
-    band: bandFor(state.screen, height, railHeight()),
+    band: bandFor(state.screen, height, railHeight(), split),
+    right: sideFor(state.screen, width, rootRem(), split),
     dpr: lastSize.dpr || Math.min(window.devicePixelRatio || 1, 2),
   };
 }
@@ -413,6 +436,16 @@ function render(now) {
     vp,
   );
 
+  if (state.pickPoint && state.campus) {
+    drawPin(
+      ctx,
+      { at: toGrid([state.pickPoint.lon, state.pickPoint.lat], state.campus) },
+      state.basemap,
+      state.view,
+      vp,
+    );
+  }
+
   // The drift over campus is the one thing on this canvas that moves by itself.
   // Under prefers-reduced-motion t is pinned to 0 above, so the flyover computes
   // the same view every frame and one paint is the whole of it.
@@ -448,7 +481,7 @@ function frame(r) {
 
 // ---------------------------------------------------------------- the sheet
 
-const PANES = ['card', 'list', 'room', 'near', 'pick', 'about'];
+const PANES = ['card', 'list', 'room', 'near', 'pick', 'browse', 'about'];
 let sheetH = 0;
 // Which screen sheetH was measured on. A height dragged on the room screen is
 // not the list's height, and viewport() reads the list's.
@@ -553,6 +586,7 @@ function attachMenu() {
   // the way it is the card that was taken, and both are the entry underneath.
   act('m-back', () => history.back());
   act('m-list', () => openList());
+  act('m-browse', () => openBrowse());
   act('m-pick', () => openPick());
   act('m-recheck', () => refresh());
   act('m-about', () => openAbout());
@@ -704,6 +738,7 @@ function attachSheet() {
     // on a pane bottoms out AT peek, so it never gets here.
     if (dismiss) {
       setSheet(peek, true);
+      if (state.screen === 'pick') return;
       toAsk();
       return;
     }
@@ -832,6 +867,7 @@ function answer() {
   const results = rank(rooms, ask);
 
   const usable = results.filter((r) => r.wait <= MAX_WAIT_MIN);
+  state.allResults = usable;
   // rank() orders by tier, then walk. The FIRST building to open is not the
   // nearest one that opens: at 6am the nearest might open at 9:00 while one a
   // minute further opens at 7:00, and naming the wrong one is a wrong answer.
@@ -1302,6 +1338,9 @@ function select(i) {
 // gesture arrives in, so nothing here has to know the screen size.
 const SWIPE_PX = 84;
 const SWIPE_V = 0.45;
+const DESKTOP_CARD = '(min-width: 900px) and (hover: hover) and (pointer: fine)';
+
+const desktopCardMode = () => globalThis.matchMedia?.(DESKTOP_CARD).matches === true;
 
 // The warp, in two numbers that are both about what a READER sees.
 //
@@ -1379,6 +1418,30 @@ function drawWarp(canvas, img) {
   }
   return true;
 }
+
+// A desktop card has room for the photograph at its own shape. Draw the whole
+// source there instead of applying the portrait-only ceiling warp.
+function drawContained(canvas, img) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (!w || !h || !img.naturalWidth) return false;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  const scale = Math.min(w / img.naturalWidth, h / img.naturalHeight);
+  const dw = img.naturalWidth * scale;
+  const dh = img.naturalHeight * scale;
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  return true;
+}
+
+const drawCardPhoto = (canvas, img) =>
+  desktopCardMode() ? drawContained(canvas, img) : drawWarp(canvas, img);
 
 // The plate is one line of three facts on a photograph, so the window gets its
 // short form there. "no class rest of today" is the list's wording, where a row
@@ -1496,8 +1559,10 @@ function paintCard() {
     `<div class="c-deck">
       <article class="c-card${photo ? '' : ' plain'}" id="c-top" tabindex="0"
         role="group" aria-label="${esc(said)}">
-        ${photo ? `<canvas class="c-photo" id="c-img" aria-hidden="true"></canvas>` : ''}
-        <span class="c-scrim" aria-hidden="true"></span>
+        <div class="c-media">
+          ${photo ? `<canvas class="c-photo" id="c-img" aria-hidden="true"></canvas>` : ''}
+          <span class="c-scrim" aria-hidden="true"></span>
+        </div>
         <span class="c-stamp no" aria-hidden="true">NEXT</span>
         <span class="c-stamp yes" aria-hidden="true">GO</span>
         <div class="c-plate">
@@ -1513,10 +1578,12 @@ function paintCard() {
         </div>
         <p class="c-acts">
           <button type="button" class="c-act no" id="c-no" aria-label="Not this one, show the next room">
-            <svg class="ico" aria-hidden="true"><use href="#i-bin"/></svg>
+            <svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg>
+            <span class="c-act-label">Next room</span>
           </button>
           <button type="button" class="c-act yes" id="c-yes" aria-label="Take this room and show me the way">
-            <svg class="ico" aria-hidden="true"><use href="#i-tick"/></svg>
+            <svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg>
+            <span class="c-act-label">Show route</span>
           </button>
         </p>
       </article>
@@ -1542,7 +1609,7 @@ function paintCard() {
       // background re-rank -- and drawing into a canvas nothing holds any more
       // is how a stale room ends up under the right name.
       if (!canvas.isConnected) return;
-      if (!drawWarp(canvas, source)) return;
+      if (!drawCardPhoto(canvas, source)) return;
       canvas.classList.add('on');
       // The bitmap is sized to the canvas BOX once and then stretched to fill it
       // by CSS, so every later change of that box squashes the room instead of
@@ -1557,7 +1624,7 @@ function paintCard() {
         const now = `${canvas.clientWidth}x${canvas.clientHeight}`;
         if (now === box) return;
         box = now;
-        drawWarp(canvas, source);
+        drawCardPhoto(canvas, source);
       });
       again.observe(canvas);
     };
@@ -1615,6 +1682,19 @@ function acceptCard() {
 // card would otherwise become a sheet drag on its eighth pixel and take the
 // answer away.
 function attachSwipe(el) {
+  const keydown = (e) => {
+    if (e.key === 'ArrowLeft') rejectCard();
+    else if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') acceptCard();
+    else if (e.key === 'ArrowDown') toAsk();
+    else return;
+    e.preventDefault();
+  };
+  el.addEventListener('keydown', keydown);
+
+  // A mouse on a wide screen gets visible actions instead of a gesture whose
+  // affordance belongs to a touch surface. Keyboard shortcuts stay available.
+  if (desktopCardMode()) return;
+
   const stamps = { no: el.querySelector('.c-stamp.no'), yes: el.querySelector('.c-stamp.yes') };
   let drag = null;
 
@@ -1727,13 +1807,6 @@ function attachSwipe(el) {
   el.addEventListener('pointercancel', end);
   el.addEventListener('lostpointercapture', abandon);
 
-  el.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft') rejectCard();
-    else if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') acceptCard();
-    else if (e.key === 'ArrowDown') toAsk();
-    else return;
-    e.preventDefault();
-  });
 }
 
 // ------------------------------------------------------------- the duration
@@ -1994,7 +2067,12 @@ function paintPick() {
     .join('');
 
   $('pick').innerHTML =
-    '<h2 class="msg" id="pick-h" tabindex="-1">Where are you?</h2>' +
+    '<h2 class="msg" id="pick-h" tabindex="-1">Set starting location</h2>' +
+    '<p class="why">Choose a building or tap the map to place an exact pin.</p>' +
+    (state.pickPoint
+      ? `<div class="pick-pin"><span>Pin placed on the map</span>
+          <button type="button" class="bar-btn" id="pick-pin-use">Use this point</button></div>`
+      : '') +
     (q ? '' : `<div class="shortcuts">${shortcuts}</div>`) +
     (rows.length
       ? rows.map(pickRow).join('')
@@ -2003,6 +2081,7 @@ function paintPick() {
   for (const el of $('pick').querySelectorAll('[data-code]')) {
     el.onclick = () => pickBuilding(el.dataset.code);
   }
+  $('pick-pin-use')?.addEventListener('click', pickMapPoint);
   // The abbreviations arrive after the first paint and repaint the whole list,
   // which drops focus on the floor unless it is put back.
   if (document.activeElement === document.body) focusHeading($('pick-h'));
@@ -2020,6 +2099,21 @@ function pickBuilding(code) {
     label: shortName(b.name),
     at: Date.now(),
   };
+  commitPickedOrigin(origin);
+}
+
+function pickMapPoint() {
+  if (!state.pickPoint) return;
+  commitPickedOrigin({
+    ...state.pickPoint,
+    accuracy: 0,
+    source: 'picked',
+    label: 'map pin',
+    at: Date.now(),
+  });
+}
+
+function commitPickedOrigin(origin) {
   safeSet(KEY_ORIGIN, JSON.stringify(origin));
   // Now, not at the next fix. startWatch() refuses a picked origin, but a pick
   // made mid-session happens while a watch is already open, and followAction
@@ -2056,6 +2150,109 @@ function clearPickedOrigin() {
     // moves to whichever survives, or it lands on the body and is lost.
     ($('origin').hidden ? $('back') : $('origin-where')).focus({ preventScroll: true });
   });
+}
+
+// ------------------------------------------------------ browse buildings
+
+function browseGroups() {
+  const groups = new Map();
+  for (const room of state.allResults) {
+    if (!room.hoursKnown || room.wait !== 0) continue;
+    const rooms = groups.get(room.building) ?? [];
+    rooms.push(room);
+    groups.set(room.building, rooms);
+  }
+  return [...groups.entries()]
+    .map(([code, rooms]) => ({
+      code,
+      name: shortName(state.buildings?.[code]?.name ?? rooms[0]?.name ?? code),
+      rooms,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function paintBrowse() {
+  const pane = $('browse');
+  const groups = browseGroups();
+  const active = state.browseBuilding
+    ? groups.find((group) => group.code === state.browseBuilding)
+    : null;
+
+  if (active) {
+    pane.innerHTML =
+      `<p class="browse-nav"><button type="button" class="bar-btn" id="browse-buildings">
+        <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg> Buildings
+      </button></p>
+      <h2 class="msg" id="browse-h" tabindex="-1">${esc(active.name)}</h2>
+      <p class="why">${active.rooms.length} room${active.rooms.length === 1 ? '' : 's'} available now.</p>` +
+      active.rooms
+        .map((room) => {
+          const label = roomLabel(room);
+          const win = windowOf(room);
+          const seats = seatsOf(room);
+          const dept = deptOf(room);
+          const name = `${label}, ${room.walk} minute walk, ${win.say}, ${seats.say}${dept.say}.`;
+          return `<button type="button" class="row" data-room="${esc(room.id)}" aria-label="${esc(name)}">
+            <span class="r-name">${esc(label)}</span>
+            <span class="r-walk">${WALK_ICON}${room.walk} min</span>
+            <span class="r-win">${win.html} &middot; ${seats.html}${dept.html}</span>
+            <span class="r-chev">${CHEV}</span>
+          </button>`;
+        })
+        .join('');
+    $('browse-buildings').onclick = () => {
+      state.browseBuilding = null;
+      state.selected = null;
+      paintBrowse();
+      setSheet(restNow(), true);
+    };
+    for (const row of pane.querySelectorAll('[data-room]')) {
+      row.onclick = () => openRoom(row.dataset.room);
+    }
+    focusHeading($('browse-h'));
+    syncPaneTouch();
+    return;
+  }
+
+  const q = state.browseQuery.trim().toLowerCase();
+  const shown = q
+    ? groups.filter((group) => group.name.toLowerCase().includes(q))
+    : groups;
+  pane.innerHTML =
+    `<h2 class="msg" id="browse-h" tabindex="-1">Browse buildings</h2>
+     <p class="why">Buildings with classrooms available now.</p>
+     <form class="browse-search" id="browse-search">
+       <input id="browse-q" type="search" autocomplete="off" autocorrect="off" spellcheck="false"
+         placeholder="Search buildings" aria-label="Search available buildings" value="${esc(state.browseQuery)}">
+     </form>` +
+    (shown.length
+      ? shown
+          .map((group) => `<button type="button" class="pick-row" data-building="${esc(group.code)}">
+              <span class="pn">${esc(group.name)}</span>
+              <span class="pc">${group.rooms.length} room${group.rooms.length === 1 ? '' : 's'}</span>
+            </button>`)
+          .join('')
+      : '<p class="empty">No available building matches that search.</p>');
+  $('browse-search').onsubmit = (event) => event.preventDefault();
+  $('browse-q').oninput = (event) => {
+    state.browseQuery = event.target.value;
+    paintBrowse();
+    const input = $('browse-q');
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(input.value.length, input.value.length);
+  };
+  for (const row of pane.querySelectorAll('[data-building]')) {
+    row.onclick = () => {
+      const group = groups.find((item) => item.code === row.dataset.building);
+      state.browseBuilding = row.dataset.building;
+      state.selected = group?.rooms[0] ?? null;
+      paintBrowse();
+      setSheet(restNow(), true);
+      if (state.selected) frame(state.selected);
+    };
+  }
+  focusHeading($('browse-h'));
+  syncPaneTouch();
 }
 
 function useOrigin(origin, note) {
@@ -2814,18 +3011,15 @@ function showCard() {
   sheetHeight();
 }
 
-function showList() {
-  // Cleared before showPane, because reframe() in there composes the camera
-  // for the band this screen leaves and the band now depends on it.
-  //
-  // Nothing else clears it on the way back. followAction reads state.selected
-  // as "a finger is on a row somebody is reaching for" and returns 'hold', and
-  // under 'hold' refresh() never runs, so answer() -- the only other thing that
-  // nulls it -- never runs either. Open the app, tap a room, press back, walk:
-  // the gate stays shut and the list holds boot values for the rest of the
-  // session, which is exactly the staleness #87 exists to remove. Selection is
-  // a property of the room screen; coming back to the list ends it.
-  state.selected = null;
+function showList(view = null) {
+  // A list entry remembers the row and exact scroll position it had when the
+  // reader opened a room. New list entries carry neither, so a fresh answer
+  // still starts unselected at the top.
+  const remembered = view?.selected
+    ? state.results.find((room) => room.id === view.selected) ?? null
+    : null;
+  state.selected = remembered;
+  state.listScroll = Number.isFinite(view?.scroll) ? Math.max(0, view.scroll) : 0;
   showPane('list');
   // openList() pushes over whatever was showing, and the menu can open the list
   // from the way as well as from the card.
@@ -2834,6 +3028,7 @@ function showList() {
     history.state?.from === 'way' ? 'Back to the way' : 'Back to the card',
   );
   $('list').scrollTop = state.listScroll;
+  markRows();
   sheetHeight();
 }
 
@@ -2850,12 +3045,23 @@ function showNear() {
 
 function showPick() {
   loadShorts();
+  state.pickPoint = null;
   showPane('pick');
   $('back').setAttribute('aria-label', 'Back without picking a building');
   paintPick();
   $('pick').scrollTop = 0;
   setSheet(restNow(), true);
   focusHeading($('pick-h'));
+}
+
+function showBrowse(view = null) {
+  state.browseBuilding = view?.building ?? null;
+  state.browseQuery = view?.query ?? state.browseQuery;
+  showPane('browse');
+  $('back').setAttribute('aria-label', 'Back');
+  paintBrowse();
+  $('browse').scrollTop = Number.isFinite(view?.scroll) ? Math.max(0, view.scroll) : 0;
+  sheetHeight();
 }
 
 function showAbout() {
@@ -2955,6 +3161,8 @@ function showRoom(id, { keepDay = false } = {}) {
     'aria-label',
     history.state?.from === 'near'
       ? 'Back to the nearest buildings'
+      : history.state?.from === 'browse'
+        ? 'Back to browse buildings'
       : history.state?.from === 'way'
         ? 'Back to the way'
         : 'Back to the room list',
@@ -2991,9 +3199,10 @@ function showRoom(id, { keepDay = false } = {}) {
 //
 // This does its own pane work rather than calling showPane('list'), because
 // showPane names the screen after the pane and this screen is not the list: it
-// has a plate, no back arrow, and a selection the list deliberately clears.
-function showWay(id) {
-  const room = state.rooms?.rooms?.[id];
+// has a plate, no back arrow, and a selection its history entry remembers.
+function showWay(id, view = null) {
+  const selectedId = view?.selected ?? id;
+  const room = state.rooms?.rooms?.[selectedId];
   if (!room) return showCard();
   // The compass, before anything else, and the reason this line is not just
   // tidiness: the way is reachable FROM the room screen. Take a room, tap its
@@ -3003,10 +3212,10 @@ function showWay(id) {
   // has already thrown away, and the next room's Point me overwrites the closure
   // that could still have removed them.
   if (orientationOff) orientationOff();
-  const r = state.results.find((x) => x.id === id);
+  const r = state.results.find((x) => x.id === selectedId);
   // Before the panes, for the same reason showList and showRoom set it there:
   // reframe() composes the camera for the band this decides.
-  state.selected = r ?? { id, building: room.b, walk: null };
+  state.selected = r ?? { id: selectedId, building: room.b, walk: null };
 
   for (const pane of PANES) $(pane).hidden = pane !== 'list';
   $('find').hidden = true;
@@ -3024,7 +3233,7 @@ function showWay(id) {
   const arrived = state.screen !== 'way';
   state.screen = 'way';
   syncPaneTouch();
-  paintWay(id, r);
+  paintWay(selectedId, r);
   markRows();
   sheetHeight();
   // The rows open showing the room the arrow points at. Bin nineteen and take
@@ -3035,8 +3244,10 @@ function showWay(id) {
   // pinning that to the top would push "You asked for 2h00" off the pane to fix
   // nothing.
   const list = $('list');
+  const rememberedScroll = Number.isFinite(view?.scroll) ? Math.max(0, view.scroll) : null;
+  if (rememberedScroll != null) list.scrollTop = rememberedScroll;
   const row = list.querySelector('.row.on');
-  if (row) {
+  if (row && rememberedScroll == null) {
     const top = row.offsetTop - list.offsetTop;
     if (top < list.scrollTop || top + row.offsetHeight > list.scrollTop + list.clientHeight) {
       list.scrollTop = Math.max(0, top - 8);
@@ -3077,8 +3288,9 @@ function paintWay(id, r) {
 // dismiss travel is the sheet's own, unchanged: it calls toAsk(), which is
 // history.back(), and from here that is one step.
 function openWay(id) {
-  history.pushState({ v: 'way', room: id }, '', `?room=${encodeURIComponent(id)}`);
-  showWay(id);
+  const view = { v: 'way', room: id, selected: id, scroll: $('list').scrollTop };
+  history.pushState(view, '', `?room=${encodeURIComponent(id)}`);
+  showWay(id, view);
 }
 
 function toAsk() {
@@ -3114,7 +3326,34 @@ function choose(min) {
   showCard();
 }
 
+function rememberViewContext() {
+  const current = history.state;
+  if (!current) return;
+  if (state.screen === 'list' || state.screen === 'way') {
+    const selected = state.selected?.id ?? null;
+    const view = { ...current, selected, scroll: $('list').scrollTop };
+    if (state.screen === 'way') view.room = selected ?? current.room;
+    history.replaceState(
+      view,
+      '',
+    );
+    return;
+  }
+  if (state.screen === 'browse') {
+    history.replaceState(
+      {
+        ...current,
+        building: state.browseBuilding,
+        query: state.browseQuery,
+        scroll: $('browse').scrollTop,
+      },
+      '',
+    );
+  }
+}
+
 function openRoom(id) {
+  rememberViewContext();
   rememberPick(id);
   // The screen underneath, kept in the entry rather than in a variable, so a
   // reopen from popstate names the same pane a press of back will reach.
@@ -3125,13 +3364,28 @@ function openRoom(id) {
 // The ranking, from the card. Its own history entry, so Back off the list
 // lands on the card the reader came from rather than on the question.
 function openList() {
-  history.pushState({ v: 'list', from: state.screen }, '', cleanUrl());
-  showList();
+  const view = {
+    v: 'list',
+    from: state.screen,
+    selected: state.screen === 'way' ? state.selected?.id ?? null : null,
+    scroll: state.screen === 'way' ? $('list').scrollTop : 0,
+  };
+  history.pushState(view, '', cleanUrl());
+  showList(view);
 }
 
 function openPick() {
   history.pushState({ v: 'pick' }, '', cleanUrl());
   showPick();
+}
+
+function openBrowse() {
+  state.browseBuilding = null;
+  state.browseQuery = '';
+  state.selected = null;
+  const view = { v: 'browse', building: null, query: '', scroll: 0 };
+  history.pushState(view, '', cleanUrl());
+  showBrowse(view);
 }
 
 function openAbout() {
@@ -3660,11 +3914,12 @@ window.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('popstate', (e) => {
     const v = e.state?.v;
     if (v === 'room') showRoom(e.state.room);
-    else if (v === 'way') showWay(e.state.room);
+    else if (v === 'way') showWay(e.state.room, e.state);
     else if (v === 'card') showCard();
-    else if (v === 'list') showList();
+    else if (v === 'list') showList(e.state);
     else if (v === 'near') showNear();
     else if (v === 'pick') showPick();
+    else if (v === 'browse') showBrowse(e.state);
     else if (v === 'about') showAbout();
     else showAsk();
   });
@@ -3684,6 +3939,9 @@ window.addEventListener('DOMContentLoaded', () => {
   attachSheet();
   attachMenu();
   window.addEventListener('resize', () => {
+    // The root font size can change with the zoom level, and the side panel's
+    // width is in rem.
+    remPx = 0;
     if (state.screen !== 'ask') sheetHeight();
     // surface() reallocates the backing store on the next frame and the band
     // moves with the height, so a resize that does not reach the loop leaves a
@@ -3723,6 +3981,14 @@ window.addEventListener('DOMContentLoaded', () => {
       state.view = zoomBy(state.view, factor, state.basemap, viewport(), anchor);
       state.userMoved = true;
       frames.wake();
+    },
+    onTap: (point) => {
+      if (state.screen !== 'pick' || !state.basemap || !state.view || !state.campus) return;
+      const [lon, lat] = toLonLat(unproject(point, state.basemap, state.view, viewport()), state.campus);
+      state.pickPoint = { lat, lon };
+      paintPick();
+      frames.wake();
+      say('Pin placed on the map. Use this point, or choose a building.');
     },
   });
 

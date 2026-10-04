@@ -28,7 +28,7 @@ export const ROOM_SHEET = 0.72;
 // "the take it and the way should have the other nearby classes at the bottom
 // back". Same band as the list, and for the same reason -- there is a lit
 // footprint and a walk line on that canvas to leave room for.
-export const REST = { ask: 0, way: PEEK, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: FULL, about: FULL };
+export const REST = { ask: 0, way: PEEK, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: PEEK, about: FULL };
 
 // Where a screen rests once it is covering the map, and the strip it still has
 // to leave at the top: 44px of back button on a 0.6rem inset, plus air. In
@@ -55,7 +55,13 @@ const FULL_BLEED = new Set(['card']);
 // `targeted` is state.selected at every call site. Defaulted true so the screens
 // that always have one read unchanged.
 export const restFor = (screen, targeted = true) =>
-  (FULL_BLEED.has(screen) ? 1 : !targeted && screen !== 'ask' && screen !== 'way' ? COVER : REST[screen]) ?? PEEK;
+  (FULL_BLEED.has(screen)
+    ? 1
+    : screen === 'pick'
+      ? REST.pick
+      : !targeted && screen !== 'ask' && screen !== 'way'
+        ? COVER
+        : REST[screen]) ?? PEEK;
 
 // The strip the sheet is NOT covering, which is what the camera centres in.
 // Keyed to where the screen RESTS so a drag slides the sheet over a map that
@@ -84,8 +90,32 @@ export const restFor = (screen, targeted = true) =>
 // here), take a room again -- because frame() stands down once the map has been
 // moved by hand and never puts it back. Same failure as the 68px one above, 68
 // times smaller.
-export const bandFor = (screen, height, rail = 0) =>
-  Math.max(1, Math.round(height * (1 - (FULL_BLEED.has(screen) ? PEEK : restFor(screen)))) - rail);
+//
+// On the desktop split the sheet is a panel on the right and covers none of
+// the height, so the band is everything above the rail. sideFor below carries
+// the panel instead.
+export const bandFor = (screen, height, rail = 0, desktop = false) =>
+  desktop
+    ? Math.max(1, height - rail)
+    : Math.max(1, Math.round(height * (1 - (FULL_BLEED.has(screen) ? PEEK : restFor(screen)))) - rail);
+
+// The desktop split workspace turns the sheet into a full-height panel docked
+// on the right, so the strip the map is seen through is to its LEFT rather than
+// above it. These are the numbers in index.html's desktop @media block:
+// `right: 1.5rem; width: min(32rem, 40vw)`. Change one, change both.
+export const SIDE_REM = 32;
+export const SIDE_VW = 0.4;
+export const SIDE_GAP_REM = 1.5;
+
+// How much of the canvas, from its right edge, the side panel covers. `ask` has
+// no panel. Every other screen gets the panel's width, including the ones that
+// cover the map, for the reason bandFor composes for the targeted rest: the
+// camera is composing for the screen the map comes back on. Phones pass
+// desktop false and get 0, which is the layout they always had.
+export const sideFor = (screen, width, rem = 16, desktop = false) =>
+  !desktop || screen === 'ask'
+    ? 0
+    : Math.round(Math.min(SIDE_REM * rem, SIDE_VW * width) + SIDE_GAP_REM * rem);
 
 // The tallest the sheet may be, in PIXELS. FULL wherever the map is on screen.
 // Where it is covered there is nothing to leave room for but the back button, so

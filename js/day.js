@@ -39,8 +39,8 @@ export function classesOn(room, date, sessions, courses) {
 // Overlaps become one block and back-to-back classes stay two.
 //
 // The DATE decides both halves, not today's weekday. The mask matters as much
-// as the weekday: the term runs three sessions and 18 of 425 rooms have a
-// different Monday either side of the 2026-10-19 boundary, 107 of the 2,975
+// as the weekday: the term runs three sessions and 19 of 425 rooms have a
+// different Monday either side of the 2026-10-19 boundary, 108 of the 2,975
 // room-days in a week.
 export function blocksOn(room, date, sessions) {
   const active = activeSessions(sessions, isoDate(date));

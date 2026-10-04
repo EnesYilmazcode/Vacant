@@ -908,6 +908,29 @@ test('a picked origin ranks rooms from more than one building', () => {
   assert.ok(distinct.size >= 3, `top 20 came from ${distinct.size} buildings`);
 });
 
+test('browsing buildings is a destination flow, not another origin picker', () => {
+  const browse = bodyOf('paintBrowse');
+  const groups = bodyOf('browseGroups');
+  const page = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(page, /id="m-browse">Browse buildings/);
+  assert.match(page, /id="browse" class="pane"/);
+  assert.match(groups, /state\.allResults/);
+  assert.match(groups, /room\.hoursKnown/);
+  assert.match(groups, /room\.wait !== 0/);
+  assert.doesNotMatch(groups, /seats|feature|capacity/i);
+  assert.match(browse, /openRoom\(row\.dataset\.room\)/);
+  assert.doesNotMatch(browse, /pickBuilding|commitPickedOrigin/);
+  const start = APP.indexOf('const targeted =');
+  const targeted = APP.slice(start, APP.indexOf(';', start) + 1);
+  assert.match(targeted, /['"]browse['"]/, 'the campus map disappears before a building is selected');
+});
+
+test('see all rooms keeps the campus map before a row is selected', () => {
+  const start = APP.indexOf('const targeted =');
+  const targeted = APP.slice(start, APP.indexOf(';', start) + 1);
+  assert.match(targeted, /['"]list['"]/, 'the all-rooms list still covers the campus map');
+});
+
 // -------------------------------------------------------- #24 diagnostics
 
 const DIAG = {
@@ -1042,14 +1065,41 @@ const EARLY = weekFrom('2026-10-06');
 const LATE = weekFrom('2026-10-19');
 const dayOf = (week, d) => week.find((x) => x.getDay() === d);
 
-// The 18 rooms whose Monday is not the same class on both sides of that
-// boundary. The test re-derives the list rather than trusting it; it is written
-// out so a build that moves one of them is a diff a reader can see.
-const MONDAY_MOVES = [
-  'AA0108', 'AA0246', 'BE0120', 'BO0317', 'DE0268', 'HA0025',
-  'HC0250', 'HH0159', 'HI0035', 'JR0295', 'KH0116', 'KH0333',
-  'LZ0021', 'PEA0151', 'PS0014', 'RA0059', 'SB0305', 'SB0320',
-];
+// Every room-day whose classes differ across that boundary. This is the
+// reviewable production-data baseline: if the Registrar moves a class, the
+// failure names the exact room and weekday that appeared or disappeared.
+const BOUNDARY_MOVES = {
+  Sun: [],
+  Mon: [
+    'AA0108', 'AA0246', 'BE0120', 'BO0317', 'CZ0330', 'DE0268', 'HA0025',
+    'HC0250', 'HH0159', 'HI0035', 'JR0295', 'KH0116', 'KH0333', 'LZ0021',
+    'PEA0151', 'PS0014', 'RA0059', 'SB0305', 'SB0320',
+  ],
+  Tue: [
+    'AP0388', 'DB0029', 'DB0049', 'DB1116', 'DE0207', 'DE0253', 'EC0014',
+    'EC0258', 'EC0326', 'HH0351', 'KH0112', 'KH0333', 'LZ0021', 'ML0125',
+    'ML0174', 'MP1015', 'PEA0110', 'PEA0151', 'RA0110', 'SB0315', 'SH0100',
+    'SM1005', 'SM2144', 'SOE0200',
+  ],
+  Wed: [
+    'BE0120', 'BO0128', 'BO0313', 'BO0317', 'DB1116', 'DE0268', 'EC0202',
+    'HA0025', 'HC0250', 'HI0031', 'HI0306', 'JR0295', 'KH0104', 'KH0333',
+    'LZ0021', 'PEA0110', 'PEA0151', 'PS0014', 'RA0059', 'SB0320', 'SM1005',
+    'SM1138', 'SOE0200', 'SOE0241', 'TFM0280',
+  ],
+  Thu: [
+    'AP0388', 'DB0029', 'DB0049', 'DB1116', 'DE0207', 'DE0253', 'EC0014',
+    'EC0246', 'EC0258', 'EC0311', 'EC0326', 'HH0351', 'KH0333', 'LZ0021',
+    'ML0100', 'ML0125', 'ML0174', 'PEA0110', 'RA0110', 'SB0315', 'SH0100',
+    'SH0135', 'SM1005', 'SOE0200',
+  ],
+  Fri: [
+    'AA0108', 'BO0313', 'CB0130', 'DB1116', 'DE0268', 'EC0202', 'HA0025',
+    'HC0250', 'KH0112', 'PS0014', 'SB0320', 'SM1005', 'SM1138', 'SOE0200',
+    'SOE0241', 'TFM0280',
+  ],
+  Sat: [],
+};
 
 test('the mask and the weekday both come off the date, over the whole shipped index', () => {
   // The fixture first. If the term stops straddling this boundary the counts
@@ -1058,29 +1108,35 @@ test('the mask and the weekday both come off the date, over the whole shipped in
   for (const d of LATE) assert.deepEqual(activeSessions(INDEX.sessions, isoDate(d)), [false, true, true]);
 
   const rooms = Object.entries(INDEX.rooms);
-  const perDay = [0, 0, 0, 0, 0, 0, 0];
-  const moved = [];
-  let differing = 0;
+  const dayNames = Object.keys(BOUNDARY_MOVES);
+  const moved = Object.fromEntries(dayNames.map((name) => [name, []]));
   for (const [id, room] of rooms) {
     for (let d = 0; d < 7; d++) {
       const early = blocksOn(room, dayOf(EARLY, d), INDEX.sessions);
       const late = blocksOn(room, dayOf(LATE, d), INDEX.sessions);
       if (JSON.stringify(early) === JSON.stringify(late)) continue;
-      differing += 1;
-      perDay[d] += 1;
-      if (d === 1) moved.push(id);
+      moved[dayNames[d]].push(id);
     }
   }
 
-  // The figures js/day.js cites for why the date has to decide the mask.
+  const pairs = (table) =>
+    Object.entries(table).flatMap(([day, ids]) => ids.map((id) => `${day} ${id}`));
+  const expected = new Set(pairs(BOUNDARY_MOVES));
+  const actual = new Set(pairs(moved));
+  const added = [...actual].filter((pair) => !expected.has(pair));
+  const removed = [...expected].filter((pair) => !actual.has(pair));
+  const detail = [
+    'session-boundary room-days changed',
+    `added: ${added.join(', ') || 'none'}`,
+    `removed: ${removed.join(', ') || 'none'}`,
+  ].join('\n');
+
   // Reading the weekday off a clock collapses all seven columns onto one, and
-  // dropping the mask makes both sides equal, so every number here moves under
+  // dropping the mask makes both sides equal, so the full baseline moves under
   // either mutation.
   assert.equal(rooms.length, 425);
   assert.equal(rooms.length * 7, 2975);
-  assert.equal(differing, 107, 'room-days that differ across the session boundary');
-  assert.deepEqual(perDay, [0, 18, 24, 25, 24, 16, 0], 'differing room-days by weekday, Sunday first');
-  assert.deepEqual(moved.sort(), [...MONDAY_MOVES].sort());
+  assert.equal(added.length + removed.length, 0, detail);
 });
 
 test('the grid and the claim read one list of classes, on both sides of the boundary', () => {
@@ -1446,7 +1502,8 @@ test('neither screen without a back arrow is a dead end', () => {
   assert.match(bodyOf('attachMenu'), /act\('m-back', \(\) => history\.back\(\)\)/);
   assert.match(APP, /attachMenu\(\);/);
   // Which means the way needs a history entry of its own for back to land on.
-  assert.match(bodyOf('openWay'), /history\.pushState\(\{ v: 'way'/);
+  assert.match(bodyOf('openWay'), /const view = \{ v: 'way'/);
+  assert.match(bodyOf('openWay'), /history\.pushState\(view/);
 
   // One corner, two controls, never both, and the menu is on the two screens
   // the arrow left.
@@ -1688,7 +1745,8 @@ test('back names the screen it lands on, at every step of the answer', () => {
   );
   // The list is reached from the card and, through the menu, from the way, so
   // its label is a pair rather than a string.
-  assert.match(bodyOf('openList'), /pushState\(\{[^}]*from: state\.screen/);
+  assert.match(bodyOf('openList'), /from: state\.screen/);
+  assert.match(bodyOf('openList'), /pushState\(view/);
   assert.match(
     bodyOf('showList'),
     /from === 'way'\s*\?\s*'Back to the way'\s*:\s*'Back to the card'/,
@@ -1700,6 +1758,27 @@ test('back names the screen it lands on, at every step of the answer', () => {
   for (const min of ['30', '60', '120', 'day']) {
     assert.match(html, new RegExp(`class="opt[^"]*" data-min="${min}"`), `the ${min} choice is gone`);
   }
+});
+
+test('back restores the room, building and scroll position it left', () => {
+  const remember = bodyOf('rememberViewContext');
+  assert.match(remember, /state\.screen === 'list' \|\| state\.screen === 'way'/);
+  assert.match(remember, /selected:?,?\s*scroll: \$\('list'\)\.scrollTop|selected, scroll: \$\('list'\)\.scrollTop/);
+  assert.match(remember, /building: state\.browseBuilding/);
+  assert.match(remember, /scroll: \$\('browse'\)\.scrollTop/);
+  assert.match(bodyOf('openRoom'), /rememberViewContext\(\)/);
+
+  const list = bodyOf('showList');
+  assert.match(list, /state\.results\.find\(\(room\) => room\.id === view\.selected\)/);
+  assert.match(list, /\$\('list'\)\.scrollTop = state\.listScroll/);
+
+  const way = bodyOf('showWay');
+  assert.match(way, /const selectedId = view\?\.selected \?\? id/);
+  assert.match(way, /list\.scrollTop = rememberedScroll/);
+
+  const browse = bodyOf('showBrowse');
+  assert.match(browse, /state\.browseBuilding = view\?\.building \?\? null/);
+  assert.match(browse, /\$\('browse'\)\.scrollTop =/);
 });
 
 // ---- the night gate
@@ -2612,7 +2691,8 @@ test('the strip the map composes for is the one that screen actually leaves', ()
   assert.equal(bandFor('room', 852), 239);
   assert.equal(bandFor('list', 852), 528);
   assert.equal(bandFor('near', 852), 528);
-  assert.equal(bandFor('pick', 852), 187);
+  // The picker exposes the map because tapping it can now set an exact origin.
+  assert.equal(bandFor('pick', 852), 528);
   assert.equal(bandFor('about', 852), 187);
   // The question screen has no sheet, so the whole canvas is the band.
   assert.equal(bandFor('ask', 852), 852);
@@ -2634,7 +2714,7 @@ test('viewport() reads that one table rather than deciding a second time', () =>
   const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
   const at = src.indexOf('function viewport()');
   const body = src.slice(at, src.indexOf('\n}', at));
-  assert.match(body, /band: bandFor\(state\.screen, height, railHeight\(\)\)/);
+  assert.match(body, /band: bandFor\(state\.screen, height, railHeight\(\)(, split)?\)/);
   assert.equal(/state\.screen ===/.test(body), false, 'viewport() decides the resting height a second time');
   // And it does NOT ask whether anything is selected. The band is the strip the
   // map is looked at through, which is the targeted one on every screen; the
@@ -2737,18 +2817,18 @@ test('the two floors are how far down the sheet goes and the end of the grip tra
   assert.equal(floorFor('grip', covered), covered - DISMISS_PX);
 });
 
-// ---- the map is only on screen when it has an answer on it
+// ---- the map is only on screen when the task benefits from it
 
-test('a screen with nothing on the map covers it until a row is tapped', () => {
-  // The complaint this came from, in numbers: at 393x852 the list rested at
-  // peek and left a 528px band of campus carrying nothing but the blue dot,
-  // which is 62% of the screen spent on a picture of where the reader already
-  // is. Tapping a row is what puts something on that canvas, so tapping a row
-  // is what uncovers it.
-  for (const screen of ['list', 'near', 'room', 'pick', 'about']) {
+test('read-only screens with nothing on the map still cover it', () => {
+  // This is the generic no-target state. The all-rooms list deliberately does
+  // not pass false any more: it keeps the campus visible as part of browsing.
+  for (const screen of ['list', 'near', 'room', 'about']) {
     assert.equal(restFor(screen, false), COVER, `${screen} still leaves a map band`);
     assert.equal(restFor(screen, true), REST[screen]);
   }
+  // Unlike the read-only screens, the picker needs an exposed map before a
+  // selection exists because the map itself is one of its controls.
+  assert.equal(restFor('pick', false), REST.pick);
   // The question screen is the exception twice over: no sheet, and a blurred
   // drifting background rather than a map anybody reads.
   assert.equal(restFor('ask', false), REST.ask);
@@ -2817,24 +2897,18 @@ test('the map class is written in one place, off the same pair the sheet reads',
   assert.match(css, /body\.nomap #map \{[^}]*pointer-events: none/);
 });
 
-test('every place that drops the selection re-rests the sheet', () => {
-  // There are two, and only one of them goes through showList(). A re-rank
-  // clears it in answer(), and a re-rank can happen with a row lit: the Check
+test('a re-rank that drops the selection re-rests the sheet', () => {
+  // A re-rank clears the selection in answer(), and it can happen with a row lit: the Check
   // again button in the list footer and the visibilitychange handler both call
   // refresh() without asking followAction first. Driven at 393x852 before this
   // line existed, both ways in: the row went dark and the sheet stayed at 324
   // over a canvas with nothing left on it, which is the band this whole change
   // removes. Now 776, or 708 with the install rail up.
-  for (const fn of ['answer', 'showList']) {
-    const body = bodyOf(fn);
-    const cleared = body.indexOf('state.selected = null');
-    assert.ok(cleared > 0, `${fn} no longer clears the selection`);
-    assert.match(
-      body.slice(cleared),
-      /sheetHeight\(\)|showPane\('list'\)/,
-      `${fn} drops the selection without re-resting the sheet`,
-    );
-  }
+  const body = bodyOf('answer');
+  const cleared = body.indexOf('state.selected = null');
+  assert.ok(cleared > 0, 'answer no longer clears the selection');
+  assert.match(body.slice(cleared), /sheetHeight\(\)/, 'answer drops the selection without re-resting the sheet');
+  assert.doesNotMatch(bodyOf('showList'), /state\.selected = null/, 'back to the list loses its selected room');
   // The question screen has no sheet to rest, and setSheet would stamp its name
   // on sheetScreen.
   assert.match(bodyOf('answer'), /if \(state\.screen !== 'ask'\) sheetHeight\(\);/);
@@ -2854,9 +2928,8 @@ test('the sheet asks where it rests rather than assuming peek and full', () => {
 test('a height dragged over a lit room is not restored over a covered map', () => {
   const H = 852;
   const rest = restPxFor('list', H, 0, false);
-  // Back out of a room and the selection is gone with it, so the 324px sheet
-  // the list was dragged to would come back over a canvas with nothing on it:
-  // the empty band, restored by the one path that skips the rest.
+  // A fresh list entry has no selected room, so a dragged height from another
+  // screen cannot come back over a canvas with nothing on it.
   assert.equal(openAt('list', { screen: 'list', h: 324 }, rest, false), rest);
   // With a room still lit it is that screen's height and it keeps it.
   assert.equal(openAt('list', { screen: 'list', h: 324 }, PEEK * H, true), 324);

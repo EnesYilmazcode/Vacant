@@ -5,12 +5,18 @@
 // them at 60 fps would pin a phone's main thread, and the flyover in particular
 // only ever changes the transform, never the geometry.
 //
-// A VIEWPORT is { width, height, band, dpr }, all in CSS pixels except dpr.
+// A VIEWPORT is { width, height, band, right, dpr }, all in CSS pixels except dpr.
 // `band` is the distance from the top of the canvas to the top of the sheet,
 // and it is what the map centres itself in. The canvas is the whole screen but
 // the sheet covers the bottom of it, so centring on height/2 put the user's own
 // dot 101 px behind the sheet on a 390x844 phone and drew 0 of 40 you-to-room
 // lines in full. `band` defaults to `height`, which is the old behaviour.
+//
+// `right` is the same idea turned on its side: how much of the canvas, from its
+// right edge, the desktop side panel covers. The map centres and clamps in the
+// strip LEFT of it. Without it a 1000px laptop window centred the camera 212px
+// to the right of the visible map and the east of campus could never be pulled
+// out from under the panel. It defaults to 0, which is the phone layout.
 //
 // The camera functions below are pure: they take a view and return a new one,
 // so they test under node with no DOM. Gesture listening is the one piece here
@@ -49,6 +55,14 @@ export const SPAN_MIN = 0.12;
 export const SPAN_MAX = 0.45;
 export const FIT_PAD = 0.18;
 
+// A sheet covers the lower part of the canvas. If the camera stops exactly at
+// the basemap edge, a building on that edge can only reach the edge of the
+// visible band and its marker still reads as trapped under the panel. Let up to
+// this much empty background enter the band so edge buildings can be pulled
+// comfortably into view. The limit remains small enough that most of campus is
+// always present, so a person cannot pan into an unlabelled empty screen.
+export const PAN_MARGIN = 0.30;
+
 // Device pixels per raster pixel before the blit turns to mush. The raster is
 // already at the MAX_RASTER_PX cap, so the only lever left at the tight end is
 // refusing to zoom further: span 0.12 on a 390 px wide dpr-2 phone magnifies
@@ -75,6 +89,10 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 // The sheet covers the bottom of the canvas, so the map's usable height is the
 // band above it. Callers that have no sheet pass none and get the old centring.
 const bandOf = (viewport) => viewport.band ?? viewport.height;
+
+// Likewise across: the width the side panel leaves, floored at one pixel so a
+// panel wider than the window still leaves a divisor.
+const paneOf = (viewport) => Math.max(1, viewport.width - (viewport.right ?? 0));
 
 // How much raster this device actually needs, so the blit is near 1:1 at the
 // tightest view rather than magnifying a fixed bitmap. At the old fixed 0.014
@@ -171,35 +189,37 @@ export function makeView({ cx, cy, span, rotation = 0 }) {
 }
 
 const viewScale = (basemap, view, viewport) =>
-  Math.min(viewport.width, bandOf(viewport)) / (view.span * basemap.size);
+  Math.min(paneOf(viewport), bandOf(viewport)) / (view.span * basemap.size);
 
 // ------------------------------------------------------------------- camera
 
 // How far in the raster lets us go, and how far out is still campus rather
 // than a grey rectangle with campus in the middle of it.
 export function spanLimits(basemap, viewport, maxMagnification = MAX_MAGNIFICATION) {
-  const shorter = Math.min(viewport.width, bandOf(viewport));
+  const shorter = Math.min(paneOf(viewport), bandOf(viewport));
   const min = Math.max(SPAN_MIN, (shorter * (viewport.dpr ?? 1)) / (maxMagnification * basemap.size));
   return min > SPAN_MAX ? { min: SPAN_MAX, max: SPAN_MAX } : { min, max: SPAN_MAX };
 }
 
-// A view the user cannot get lost in: zoom inside the limits, and the visible
-// rectangle inside the map. Pans off the edge are what make a hand-rolled map
-// feel broken, because there is nothing out there to tell you which way back.
-// Returns a new view; rotation passes through.
+// A view the user cannot get lost in: zoom inside the limits and keep at least
+// 70% of each visible axis over the map. The bounded margin is deliberate: the
+// bottom sheet otherwise traps edge buildings against the part of the canvas it
+// covers. Returns a new view; rotation passes through.
 export function clampView(view, basemap, viewport) {
   const { min, max } = spanLimits(basemap, viewport);
   const span = clamp(view.span, min, max);
-  const scale = Math.min(viewport.width, bandOf(viewport)) / (span * basemap.size);
+  const scale = Math.min(paneOf(viewport), bandOf(viewport)) / (span * basemap.size);
   const gridW = basemap.width / basemap.sx;
   const gridH = basemap.height / basemap.sy;
-  const halfW = viewport.width / (2 * scale * basemap.sx);
+  const halfW = paneOf(viewport) / (2 * scale * basemap.sx);
   const halfH = bandOf(viewport) / (2 * scale * basemap.sy);
+  const marginW = paneOf(viewport) * PAN_MARGIN / (scale * basemap.sx);
+  const marginH = bandOf(viewport) * PAN_MARGIN / (scale * basemap.sy);
   return makeView({
     // Wider than the map on an axis: centre on that axis rather than pin to an
     // edge, or the map slides to one side and stays there.
-    cx: halfW * 2 >= gridW ? gridW / 2 : clamp(view.cx, halfW, gridW - halfW),
-    cy: halfH * 2 >= gridH ? gridH / 2 : clamp(view.cy, halfH, gridH - halfH),
+    cx: halfW * 2 >= gridW ? gridW / 2 : clamp(view.cx, halfW - marginW, gridW - halfW + marginW),
+    cy: halfH * 2 >= gridH ? gridH / 2 : clamp(view.cy, halfH - marginH, gridH - halfH + marginH),
     span,
     rotation: view.rotation,
   });
@@ -268,8 +288,8 @@ export function fitPair(a, b, basemap, viewport, { pad = FIT_PAD, rotation = 0 }
   let span = limits.min;
   if (ex > 0 || ey > 0) {
     // A zero extent contributes Infinity, so the other axis decides.
-    const scale = (1 - 2 * pad) * Math.min(viewport.width / ex, bandOf(viewport) / ey);
-    span = Math.min(viewport.width, bandOf(viewport)) / (scale * basemap.size);
+    const scale = (1 - 2 * pad) * Math.min(paneOf(viewport) / ex, bandOf(viewport) / ey);
+    span = Math.min(paneOf(viewport), bandOf(viewport)) / (scale * basemap.size);
   }
   return clampView(makeView({ cx, cy, span, rotation }), basemap, viewport);
 }
@@ -282,7 +302,7 @@ export function project([gx, gy], basemap, view, viewport) {
   const cos = Math.cos(view.rotation);
   const sin = Math.sin(view.rotation);
   return [
-    viewport.width / 2 + dx * cos - dy * sin,
+    paneOf(viewport) / 2 + dx * cos - dy * sin,
     bandOf(viewport) / 2 + dx * sin + dy * cos,
   ];
 }
@@ -291,7 +311,7 @@ export function project([gx, gy], basemap, view, viewport) {
 // what makes anchored zoom land where the finger is.
 export function unproject([x, y], basemap, view, viewport) {
   const scale = viewScale(basemap, view, viewport);
-  const ux = x - viewport.width / 2;
+  const ux = x - paneOf(viewport) / 2;
   const uy = y - bandOf(viewport) / 2;
   const cos = Math.cos(view.rotation);
   const sin = Math.sin(view.rotation);
@@ -380,7 +400,7 @@ export function drawFrame(ctx, basemap, view, viewport) {
   ctx.fillRect(0, 0, width, height);
 
   const scale = viewScale(basemap, view, viewport);
-  ctx.translate(width / 2, bandOf(viewport) / 2);
+  ctx.translate(paneOf(viewport) / 2, bandOf(viewport) / 2);
   ctx.rotate(view.rotation);
   ctx.scale(scale, scale);
   ctx.translate(-view.cx * basemap.sx, -(basemap.height - view.cy * basemap.sy));
@@ -520,6 +540,28 @@ export function drawYou(ctx, { at, accuracyM = 0, guess = false }, basemap, view
   ctx.fill();
   ctx.lineWidth = 2.5;
   ctx.strokeStyle = PALETTE.bg;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// A point the reader is considering, distinct from the blue origin already in
+// use. It is deliberately a ring: confirming it turns it into the solid dot.
+export function drawPin(ctx, { at }, basemap, view, viewport) {
+  if (!at) return;
+  const dpr = viewport.dpr ?? 1;
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const [x, y] = project(at, basemap, view, viewport);
+  ctx.beginPath();
+  ctx.arc(x, y, 10, 0, Math.PI * 2);
+  ctx.fillStyle = PALETTE.targetGlow;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x, y, 6, 0, Math.PI * 2);
+  ctx.fillStyle = PALETTE.bg;
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = PALETTE.target;
   ctx.stroke();
   ctx.restore();
 }

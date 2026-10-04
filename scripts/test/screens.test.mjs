@@ -908,6 +908,20 @@ test('a picked origin ranks rooms from more than one building', () => {
   assert.ok(distinct.size >= 3, `top 20 came from ${distinct.size} buildings`);
 });
 
+test('browsing buildings is a destination flow, not another origin picker', () => {
+  const browse = bodyOf('paintBrowse');
+  const groups = bodyOf('browseGroups');
+  const page = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(page, /id="m-browse">Browse buildings/);
+  assert.match(page, /id="browse" class="pane"/);
+  assert.match(groups, /state\.allResults/);
+  assert.match(groups, /room\.hoursKnown/);
+  assert.match(groups, /room\.wait !== 0/);
+  assert.doesNotMatch(groups, /seats|feature|capacity/i);
+  assert.match(browse, /openRoom\(row\.dataset\.room\)/);
+  assert.doesNotMatch(browse, /pickBuilding|commitPickedOrigin/);
+});
+
 // -------------------------------------------------------- #24 diagnostics
 
 const DIAG = {

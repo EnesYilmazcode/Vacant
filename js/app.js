@@ -198,6 +198,7 @@ const state = {
   duration: safeGet(KEY_DURATION) ?? '30',
   needed: 30,
   results: [],
+  allResults: [],
   // How deep into the ranking the card screen is. Reset by answer(), because a
   // re-rank makes "the third one" a different room.
   cardIndex: 0,
@@ -236,6 +237,8 @@ const state = {
   situation: null,
   groups: null,
   query: '',
+  browseQuery: '',
+  browseBuilding: null,
   pickPoint: null,
   includeLocation: false,
   screen: 'ask',
@@ -461,7 +464,7 @@ function frame(r) {
 
 // ---------------------------------------------------------------- the sheet
 
-const PANES = ['card', 'list', 'room', 'near', 'pick', 'about'];
+const PANES = ['card', 'list', 'room', 'near', 'pick', 'browse', 'about'];
 let sheetH = 0;
 // Which screen sheetH was measured on. A height dragged on the room screen is
 // not the list's height, and viewport() reads the list's.
@@ -566,6 +569,7 @@ function attachMenu() {
   // the way it is the card that was taken, and both are the entry underneath.
   act('m-back', () => history.back());
   act('m-list', () => openList());
+  act('m-browse', () => openBrowse());
   act('m-pick', () => openPick());
   act('m-recheck', () => refresh());
   act('m-about', () => openAbout());
@@ -846,6 +850,7 @@ function answer() {
   const results = rank(rooms, ask);
 
   const usable = results.filter((r) => r.wait <= MAX_WAIT_MIN);
+  state.allResults = usable;
   // rank() orders by tier, then walk. The FIRST building to open is not the
   // nearest one that opens: at 6am the nearest might open at 9:00 while one a
   // minute further opens at 7:00, and naming the wrong one is a wrong answer.
@@ -2130,6 +2135,109 @@ function clearPickedOrigin() {
   });
 }
 
+// ------------------------------------------------------ browse buildings
+
+function browseGroups() {
+  const groups = new Map();
+  for (const room of state.allResults) {
+    if (!room.hoursKnown || room.wait !== 0) continue;
+    const rooms = groups.get(room.building) ?? [];
+    rooms.push(room);
+    groups.set(room.building, rooms);
+  }
+  return [...groups.entries()]
+    .map(([code, rooms]) => ({
+      code,
+      name: shortName(state.buildings?.[code]?.name ?? rooms[0]?.name ?? code),
+      rooms,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function paintBrowse() {
+  const pane = $('browse');
+  const groups = browseGroups();
+  const active = state.browseBuilding
+    ? groups.find((group) => group.code === state.browseBuilding)
+    : null;
+
+  if (active) {
+    pane.innerHTML =
+      `<p class="browse-nav"><button type="button" class="bar-btn" id="browse-buildings">
+        <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg> Buildings
+      </button></p>
+      <h2 class="msg" id="browse-h" tabindex="-1">${esc(active.name)}</h2>
+      <p class="why">${active.rooms.length} room${active.rooms.length === 1 ? '' : 's'} available now.</p>` +
+      active.rooms
+        .map((room) => {
+          const label = roomLabel(room);
+          const win = windowOf(room);
+          const seats = seatsOf(room);
+          const dept = deptOf(room);
+          const name = `${label}, ${room.walk} minute walk, ${win.say}, ${seats.say}${dept.say}.`;
+          return `<button type="button" class="row" data-room="${esc(room.id)}" aria-label="${esc(name)}">
+            <span class="r-name">${esc(label)}</span>
+            <span class="r-walk">${WALK_ICON}${room.walk} min</span>
+            <span class="r-win">${win.html} &middot; ${seats.html}${dept.html}</span>
+            <span class="r-chev">${CHEV}</span>
+          </button>`;
+        })
+        .join('');
+    $('browse-buildings').onclick = () => {
+      state.browseBuilding = null;
+      state.selected = null;
+      paintBrowse();
+      setSheet(restNow(), true);
+    };
+    for (const row of pane.querySelectorAll('[data-room]')) {
+      row.onclick = () => openRoom(row.dataset.room);
+    }
+    focusHeading($('browse-h'));
+    syncPaneTouch();
+    return;
+  }
+
+  const q = state.browseQuery.trim().toLowerCase();
+  const shown = q
+    ? groups.filter((group) => group.name.toLowerCase().includes(q))
+    : groups;
+  pane.innerHTML =
+    `<h2 class="msg" id="browse-h" tabindex="-1">Browse buildings</h2>
+     <p class="why">Buildings with classrooms available now.</p>
+     <form class="browse-search" id="browse-search">
+       <input id="browse-q" type="search" autocomplete="off" autocorrect="off" spellcheck="false"
+         placeholder="Search buildings" aria-label="Search available buildings" value="${esc(state.browseQuery)}">
+     </form>` +
+    (shown.length
+      ? shown
+          .map((group) => `<button type="button" class="pick-row" data-building="${esc(group.code)}">
+              <span class="pn">${esc(group.name)}</span>
+              <span class="pc">${group.rooms.length} room${group.rooms.length === 1 ? '' : 's'}</span>
+            </button>`)
+          .join('')
+      : '<p class="empty">No available building matches that search.</p>');
+  $('browse-search').onsubmit = (event) => event.preventDefault();
+  $('browse-q').oninput = (event) => {
+    state.browseQuery = event.target.value;
+    paintBrowse();
+    const input = $('browse-q');
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(input.value.length, input.value.length);
+  };
+  for (const row of pane.querySelectorAll('[data-building]')) {
+    row.onclick = () => {
+      const group = groups.find((item) => item.code === row.dataset.building);
+      state.browseBuilding = row.dataset.building;
+      state.selected = group?.rooms[0] ?? null;
+      paintBrowse();
+      setSheet(restNow(), true);
+      if (state.selected) frame(state.selected);
+    };
+  }
+  focusHeading($('browse-h'));
+  syncPaneTouch();
+}
+
 function useOrigin(origin, note) {
   state.origin = origin;
   state.accuracy = origin.accuracy;
@@ -2931,6 +3039,13 @@ function showPick() {
   focusHeading($('pick-h'));
 }
 
+function showBrowse() {
+  showPane('browse');
+  $('back').setAttribute('aria-label', 'Back');
+  paintBrowse();
+  sheetHeight();
+}
+
 function showAbout() {
   showPane('about');
   $('back').setAttribute('aria-label', 'Back');
@@ -3028,6 +3143,8 @@ function showRoom(id, { keepDay = false } = {}) {
     'aria-label',
     history.state?.from === 'near'
       ? 'Back to the nearest buildings'
+      : history.state?.from === 'browse'
+        ? 'Back to browse buildings'
       : history.state?.from === 'way'
         ? 'Back to the way'
         : 'Back to the room list',
@@ -3205,6 +3322,14 @@ function openList() {
 function openPick() {
   history.pushState({ v: 'pick' }, '', cleanUrl());
   showPick();
+}
+
+function openBrowse() {
+  state.browseBuilding = null;
+  state.browseQuery = '';
+  state.selected = null;
+  history.pushState({ v: 'browse' }, '', cleanUrl());
+  showBrowse();
 }
 
 function openAbout() {
@@ -3738,6 +3863,7 @@ window.addEventListener('DOMContentLoaded', () => {
     else if (v === 'list') showList();
     else if (v === 'near') showNear();
     else if (v === 'pick') showPick();
+    else if (v === 'browse') showBrowse();
     else if (v === 'about') showAbout();
     else showAsk();
   });

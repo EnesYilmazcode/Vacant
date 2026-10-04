@@ -682,7 +682,7 @@
   .r-chev { grid-area: chev; color: var(--dim); display: flex; align-items: center; justify-content: flex-end; }
   /* rem inside a media query resolves against 16px forever, so the large-text
      reflow has to be a container query in em or it never fires. */
-  #list, #near, #pick, #room { container-type: inline-size; container-name: list; }
+  #list, #near, #pick, #browse, #room { container-type: inline-size; container-name: list; }
   @container list (max-width: 18em) {
     .row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "walk" "win" "chev"; }
     .row .r-walk, .row .r-chev { justify-self: start; }
@@ -755,6 +755,13 @@
     border: 1px solid var(--line); color: var(--fg); font: inherit; font-size: .95rem;
     padding: .5rem .9rem; border-radius: 999px; min-height: 44px;
   }
+  .browse-search { padding: .5rem .7rem; border-bottom: 1px solid var(--line); }
+  .browse-search input {
+    appearance: none; width: 100%; min-height: 44px; padding: .5rem .9rem;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: var(--card); color: var(--fg); font: inherit;
+  }
+  .browse-nav { margin: 0; padding: .7rem 1.1rem 0; }
 
   /* --- the room screen, a second pane in the same sheet --- */
   #room h2 { margin: 0; padding: .1rem 1.1rem .45rem; font-size: 1.05rem; letter-spacing: -.01em; }
@@ -1115,6 +1122,7 @@
   <div class="m-panel">
     <button type="button" class="m-item" id="m-back">Back</button>
     <button type="button" class="m-item" id="m-list">See all rooms</button>
+    <button type="button" class="m-item" id="m-browse">Browse buildings</button>
     <button type="button" class="m-item" id="m-pick">Set starting location</button>
     <button type="button" class="m-item" id="m-recheck">Check again</button>
     <button type="button" class="m-item" id="m-about">What Vacant knows</button>
@@ -1183,6 +1191,7 @@
   <section id="room" class="pane" hidden></section>
   <section id="near" class="pane" hidden></section>
   <section id="pick" class="pane" hidden></section>
+  <section id="browse" class="pane" hidden></section>
   <section id="about" class="pane" hidden></section>
   <!-- REMOVE AFTER ONE RELEASE. #85 deleted the duration chips, and this empty
        node is the only thing standing between that deletion and a frozen app

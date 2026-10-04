@@ -49,6 +49,14 @@ export const SPAN_MIN = 0.12;
 export const SPAN_MAX = 0.45;
 export const FIT_PAD = 0.18;
 
+// A sheet covers the lower part of the canvas. If the camera stops exactly at
+// the basemap edge, a building on that edge can only reach the edge of the
+// visible band and its marker still reads as trapped under the panel. Let up to
+// this much empty background enter the band so edge buildings can be pulled
+// comfortably into view. The limit remains small enough that most of campus is
+// always present, so a person cannot pan into an unlabelled empty screen.
+export const PAN_MARGIN = 0.30;
+
 // Device pixels per raster pixel before the blit turns to mush. The raster is
 // already at the MAX_RASTER_PX cap, so the only lever left at the tight end is
 // refusing to zoom further: span 0.12 on a 390 px wide dpr-2 phone magnifies
@@ -183,10 +191,10 @@ export function spanLimits(basemap, viewport, maxMagnification = MAX_MAGNIFICATI
   return min > SPAN_MAX ? { min: SPAN_MAX, max: SPAN_MAX } : { min, max: SPAN_MAX };
 }
 
-// A view the user cannot get lost in: zoom inside the limits, and the visible
-// rectangle inside the map. Pans off the edge are what make a hand-rolled map
-// feel broken, because there is nothing out there to tell you which way back.
-// Returns a new view; rotation passes through.
+// A view the user cannot get lost in: zoom inside the limits and keep at least
+// 70% of each visible axis over the map. The bounded margin is deliberate: the
+// bottom sheet otherwise traps edge buildings against the part of the canvas it
+// covers. Returns a new view; rotation passes through.
 export function clampView(view, basemap, viewport) {
   const { min, max } = spanLimits(basemap, viewport);
   const span = clamp(view.span, min, max);
@@ -195,11 +203,13 @@ export function clampView(view, basemap, viewport) {
   const gridH = basemap.height / basemap.sy;
   const halfW = viewport.width / (2 * scale * basemap.sx);
   const halfH = bandOf(viewport) / (2 * scale * basemap.sy);
+  const marginW = viewport.width * PAN_MARGIN / (scale * basemap.sx);
+  const marginH = bandOf(viewport) * PAN_MARGIN / (scale * basemap.sy);
   return makeView({
     // Wider than the map on an axis: centre on that axis rather than pin to an
     // edge, or the map slides to one side and stays there.
-    cx: halfW * 2 >= gridW ? gridW / 2 : clamp(view.cx, halfW, gridW - halfW),
-    cy: halfH * 2 >= gridH ? gridH / 2 : clamp(view.cy, halfH, gridH - halfH),
+    cx: halfW * 2 >= gridW ? gridW / 2 : clamp(view.cx, halfW - marginW, gridW - halfW + marginW),
+    cy: halfH * 2 >= gridH ? gridH / 2 : clamp(view.cy, halfH - marginH, gridH - halfH + marginH),
     span,
     rotation: view.rotation,
   });

@@ -12,6 +12,7 @@ import {
   ARROW_SPREAD,
   FIT_PAD,
   MAX_MAGNIFICATION,
+  PAN_MARGIN,
   SETTLED_SPAN,
   SPAN_MAX,
   SPAN_MIN,
@@ -134,14 +135,18 @@ test('clampView holds the span inside the limits and never mutates', () => {
   assert.equal(clampView(makeView({ ...CENTRE, span: 9 }), BASEMAP, PEEK).span, SPAN_MAX);
 });
 
-test('the visible rectangle cannot leave the map', () => {
-  const off = clampView(makeView({ cx: 1e6, cy: -1e6, span: 0.2 }), BASEMAP, PEEK);
+test('edge buildings can move clear of the sheet without losing the map', () => {
   const gridW = BASEMAP.width / BASEMAP.sx;
   const gridH = BASEMAP.height / BASEMAP.sy;
-  const corner = unproject([0, 0], BASEMAP, off, PEEK);
-  const far = unproject([PEEK.width, PEEK.band], BASEMAP, off, PEEK);
-  assert.ok(corner[0] >= -1 && far[0] <= gridW + 1, `x ${corner[0]} to ${far[0]}`);
-  assert.ok(far[1] >= -1 && corner[1] <= gridH + 1, `y ${far[1]} to ${corner[1]}`);
+  const west = clampView(makeView({ cx: -1e6, cy: gridH / 2, span: 0.2 }), BASEMAP, PEEK);
+  const east = clampView(makeView({ cx: 1e6, cy: gridH / 2, span: 0.2 }), BASEMAP, PEEK);
+  const south = clampView(makeView({ cx: gridW / 2, cy: -1e6, span: 0.2 }), BASEMAP, PEEK);
+  const north = clampView(makeView({ cx: gridW / 2, cy: 1e6, span: 0.2 }), BASEMAP, PEEK);
+
+  near(project([0, gridH / 2], BASEMAP, west, PEEK)[0], PEEK.width * PAN_MARGIN, 1e-6, 'west edge');
+  near(project([gridW, gridH / 2], BASEMAP, east, PEEK)[0], PEEK.width * (1 - PAN_MARGIN), 1e-6, 'east edge');
+  near(project([gridW / 2, 0], BASEMAP, south, PEEK)[1], PEEK.band * (1 - PAN_MARGIN), 1e-6, 'south edge');
+  near(project([gridW / 2, gridH], BASEMAP, north, PEEK)[1], PEEK.band * PAN_MARGIN, 1e-6, 'north edge');
 });
 
 test('an axis wider than the map centres on it instead of pinning to an edge', () => {
@@ -186,10 +191,11 @@ test('pan is rotation aware', () => {
   near(moved, 100, 1e-6, 'the ground still followed the finger');
 });
 
-test('a fling stops at the edge of campus', () => {
+test('a fling stops at the bounded pan margin', () => {
   const out = panBy(CENTRE, 1e6, 1e6, BASEMAP, PEEK);
-  const corner = unproject([0, 0], BASEMAP, out, PEEK);
-  assert.ok(corner[0] >= -1, `left edge at ${corner[0]}`);
+  const gridH = BASEMAP.height / BASEMAP.sy;
+  near(project([0, out.cy], BASEMAP, out, PEEK)[0], PEEK.width * PAN_MARGIN, 1e-6, 'left stop');
+  near(project([out.cx, gridH], BASEMAP, out, PEEK)[1], PEEK.band * PAN_MARGIN, 1e-6, 'top stop');
 });
 
 // --- zoom ---

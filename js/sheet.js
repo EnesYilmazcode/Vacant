@@ -28,7 +28,7 @@ export const ROOM_SHEET = 0.72;
 // "the take it and the way should have the other nearby classes at the bottom
 // back". Same band as the list, and for the same reason -- there is a lit
 // footprint and a walk line on that canvas to leave room for.
-export const REST = { ask: 0, way: PEEK, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: FULL, about: FULL };
+export const REST = { ask: 0, way: PEEK, list: PEEK, near: PEEK, room: ROOM_SHEET, pick: PEEK, about: FULL };
 
 // Where a screen rests once it is covering the map, and the strip it still has
 // to leave at the top: 44px of back button on a 0.6rem inset, plus air. In
@@ -55,7 +55,13 @@ const FULL_BLEED = new Set(['card']);
 // `targeted` is state.selected at every call site. Defaulted true so the screens
 // that always have one read unchanged.
 export const restFor = (screen, targeted = true) =>
-  (FULL_BLEED.has(screen) ? 1 : !targeted && screen !== 'ask' && screen !== 'way' ? COVER : REST[screen]) ?? PEEK;
+  (FULL_BLEED.has(screen)
+    ? 1
+    : screen === 'pick'
+      ? REST.pick
+      : !targeted && screen !== 'ask' && screen !== 'way'
+        ? COVER
+        : REST[screen]) ?? PEEK;
 
 // The strip the sheet is NOT covering, which is what the camera centres in.
 // Keyed to where the screen RESTS so a drag slides the sheet over a map that

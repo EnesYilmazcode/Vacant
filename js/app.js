@@ -1383,6 +1383,30 @@ function drawWarp(canvas, img) {
   return true;
 }
 
+// A desktop card has room for the photograph at its own shape. Draw the whole
+// source there instead of applying the portrait-only ceiling warp.
+function drawContained(canvas, img) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (!w || !h || !img.naturalWidth) return false;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  const scale = Math.min(w / img.naturalWidth, h / img.naturalHeight);
+  const dw = img.naturalWidth * scale;
+  const dh = img.naturalHeight * scale;
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  return true;
+}
+
+const drawCardPhoto = (canvas, img) =>
+  desktopCardMode() ? drawContained(canvas, img) : drawWarp(canvas, img);
+
 // The plate is one line of three facts on a photograph, so the window gets its
 // short form there. "no class rest of today" is the list's wording, where a row
 // has the width for it and the rest of the day is the thing being promised; on
@@ -1499,8 +1523,10 @@ function paintCard() {
     `<div class="c-deck">
       <article class="c-card${photo ? '' : ' plain'}" id="c-top" tabindex="0"
         role="group" aria-label="${esc(said)}">
-        ${photo ? `<canvas class="c-photo" id="c-img" aria-hidden="true"></canvas>` : ''}
-        <span class="c-scrim" aria-hidden="true"></span>
+        <div class="c-media">
+          ${photo ? `<canvas class="c-photo" id="c-img" aria-hidden="true"></canvas>` : ''}
+          <span class="c-scrim" aria-hidden="true"></span>
+        </div>
         <span class="c-stamp no" aria-hidden="true">NEXT</span>
         <span class="c-stamp yes" aria-hidden="true">GO</span>
         <div class="c-plate">
@@ -1547,7 +1573,7 @@ function paintCard() {
       // background re-rank -- and drawing into a canvas nothing holds any more
       // is how a stale room ends up under the right name.
       if (!canvas.isConnected) return;
-      if (!drawWarp(canvas, source)) return;
+      if (!drawCardPhoto(canvas, source)) return;
       canvas.classList.add('on');
       // The bitmap is sized to the canvas BOX once and then stretched to fill it
       // by CSS, so every later change of that box squashes the room instead of
@@ -1562,7 +1588,7 @@ function paintCard() {
         const now = `${canvas.clientWidth}x${canvas.clientHeight}`;
         if (now === box) return;
         box = now;
-        drawWarp(canvas, source);
+        drawCardPhoto(canvas, source);
       });
       again.observe(canvas);
     };

@@ -1321,25 +1321,6 @@ test('the duration chips are gone from the page, not merely hidden on it', () =>
   assert.doesNotMatch(APP, /paintChips|attachChips/, 'the chip handlers are still here');
 });
 
-test('the #chips node left behind for the old shell is empty, and dated', () => {
-  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-  // sw.js serves navigations network-first and assets cache-first, so the first
-  // load after this deploys runs the new index.html against the js/app.js still
-  // in the shell cache. That app.js calls attachChips() before it wires #back,
-  // popstate, the sheet or boot(), and its first line is
-  // $('chips').querySelectorAll('.chip') — a TypeError on a missing node, and a
-  // screen frozen on "finding campus..." with no way out. This node exists only
-  // so that forEach runs over nothing instead.
-  const node = html.match(/<div id="chips"[^>]*>([\s\S]*?)<\/div>/);
-  assert.ok(node, 'the shim the old shell needs is gone; see #85 before removing it');
-  assert.equal(node[1].trim(), '', 'the shim grew content, which makes it a control again');
-  assert.match(node[0], /\bhidden\b/, 'the shim is not hidden');
-  // It is scaffolding with an expiry, not a feature. Once a release has shipped
-  // carrying it, no cached app.js reaches for #chips and the node can go.
-  const why = html.slice(Math.max(0, html.indexOf('<div id="chips"') - 1400), html.indexOf('<div id="chips"'));
-  assert.match(why, /REMOVE AFTER ONE RELEASE/, 'the shim lost the note saying it is temporary');
-});
-
 test('the ranked list says which question it is answering', () => {
   const paint = bodyOf('paintList');
   // In the concatenation, so it cannot be a line that renders somewhere else.

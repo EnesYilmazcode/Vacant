@@ -3860,6 +3860,9 @@ async function boot() {
   state.ready = true;
   for (const el of document.querySelectorAll('#ask [data-min][disabled]')) el.disabled = false;
   $('ask').classList.add('ready');
+  // Opacity only changes paint; without this, a screen reader still encounters
+  // "finding campus" after the answer is ready.
+  document.querySelector('#ask .loading').setAttribute('aria-hidden', 'true');
   paintDuration();
   paintGate();
   performance.mark('vacant:ready');
@@ -3892,6 +3895,7 @@ function bootFailed() {
   $('gate').hidden = false;
   // "finding campus..." is keyed to #ask:not(.ready), which never clears here.
   $('ask').classList.add('failed');
+  document.querySelector('#ask .loading').setAttribute('aria-hidden', 'true');
   focusHeading($('gate-h'));
 }
 

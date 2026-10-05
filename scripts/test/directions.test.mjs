@@ -113,6 +113,31 @@ test('a leg becomes the steps the screen renders', async () => {
   assert.equal(r.steps[1].metres, 198);
 });
 
+test('a successful request clears both timeout timers', async () => {
+  const realSetTimeout = globalThis.setTimeout;
+  const realClearTimeout = globalThis.clearTimeout;
+  const pending = new Set();
+  globalThis.setTimeout = (fn, ms, ...args) => {
+    const timer = realSetTimeout(fn, ms, ...args);
+    pending.add(timer);
+    return timer;
+  };
+  globalThis.clearTimeout = (timer) => {
+    pending.delete(timer);
+    return realClearTimeout(timer);
+  };
+  try {
+    const { maps } = fakeMaps({ leg: LEG });
+    const d = createDirections({ key: 'k', consent: yes, maps });
+    assert.ok(await d.steps(ORIGIN, BUILDING));
+    assert.equal(pending.size, 0);
+  } finally {
+    for (const timer of pending) realClearTimeout(timer);
+    globalThis.setTimeout = realSetTimeout;
+    globalThis.clearTimeout = realClearTimeout;
+  }
+});
+
 test('a route with no legs is null and not an empty list', async () => {
   const { maps } = fakeMaps({ leg: { steps: [] } });
   const d = createDirections({ key: 'k', consent: yes, maps });

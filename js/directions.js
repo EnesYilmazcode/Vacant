@@ -87,11 +87,15 @@ function loadMaps(key, doc = document) {
   return loadMaps.pending;
 }
 
-const withTimeout = (promise, ms) =>
-  Promise.race([
+const withTimeout = (promise, ms) => {
+  let timer;
+  return Promise.race([
     promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
-  ]);
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+};
 
 // One provider, built once. `consent` is asked on every call and not once at
 // construction, because the answer is the student's and they can withdraw it:

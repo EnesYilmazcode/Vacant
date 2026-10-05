@@ -3307,12 +3307,17 @@ function choose(min) {
   state.duration = String(min);
   safeSet(KEY_DURATION, state.duration);
   paintDuration();
-  if (!state.rankable) return;
+  const syncDev = () => window.dispatchEvent(new Event('vacant:dev-sync'));
+  if (!state.rankable) {
+    syncDev();
+    return;
+  }
   if (!state.scheduled) {
     if (state.screen !== 'near') {
       history.pushState({ v: 'near' }, '', cleanUrl());
       showNear();
     }
+    syncDev();
     return;
   }
   if (state.screen === 'ask') history.pushState({ v: 'card' }, '', cleanUrl());
@@ -3324,6 +3329,7 @@ function choose(min) {
   // and showCard() paints again over a deck that now exists.
   answer();
   showCard();
+  syncDev();
 }
 
 function rememberViewContext() {

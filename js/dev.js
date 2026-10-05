@@ -308,6 +308,11 @@ export function start(scene) {
     paintOut(out);
   };
 
+  // Duration is the one piece of inspected state changed outside this panel.
+  // app.js announces it after the new ranking is complete, so the question and
+  // the figures below it move together.
+  window.addEventListener('vacant:dev-sync', sync);
+
   when.oninput = () => {
     const ms = parseLocal(when.value);
     if (ms != null) apply({ at: ms });
@@ -334,6 +339,7 @@ export function start(scene) {
     el.dataset.open = el.dataset.open === '1' ? '0' : '1';
   };
   el.querySelector('#dev-off').onclick = () => {
+    window.removeEventListener('vacant:dev-sync', sync);
     sessionStorage.removeItem(KEY);
     sessionStorage.removeItem(KEY_AT);
     sessionStorage.removeItem(KEY_WHERE);

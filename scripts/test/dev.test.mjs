@@ -93,6 +93,14 @@ test('js/dev.js is never downloaded by a student who did not ask for it', () => 
   assert.match(read('js/app.js'), /import\('\.\/dev\.js'\)/);
 });
 
+test('the dev readout follows duration changes made on the question screen', () => {
+  const dev = read('js/dev.js');
+  const app = read('js/app.js');
+  assert.match(app, /window\.dispatchEvent\(new Event\('vacant:dev-sync'\)\)/);
+  assert.match(dev, /window\.addEventListener\('vacant:dev-sync', sync\)/);
+  assert.match(dev, /window\.removeEventListener\('vacant:dev-sync', sync\)/);
+});
+
 // ---- named scenes
 
 // `?dev=1` opens the panel on the live minute, which at 10pm is a campus with

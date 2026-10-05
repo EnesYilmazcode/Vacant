@@ -45,6 +45,16 @@ export function plainText(html) {
     .trim();
 }
 
+const withTimeout = (promise, ms) => {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+};
+
 // The Maps JavaScript API, fetched once and only when something actually asks.
 //
 // Not the REST Routes endpoints, and that is a shipping constraint rather than a
@@ -64,38 +74,41 @@ const CALLBACK = '__vacantMapsReady';
 function loadMaps(key, doc = document) {
   if (!key) return Promise.reject(new Error('no key'));
 
-  loadMaps.pending ??= new Promise((resolve, reject) => {
-    const routes = () => resolve(globalThis.google.maps.importLibrary('routes'));
+  if (loadMaps.pending) return loadMaps.pending;
+
+  let callback;
+  let el;
+  const loading = new Promise((resolve, reject) => {
+    const routes = () => Promise.resolve()
+      .then(() => globalThis.google.maps.importLibrary('routes'))
+      .then(resolve, reject);
     if (globalThis.google?.maps?.importLibrary) return routes();
 
-    globalThis[CALLBACK] = () => {
-      delete globalThis[CALLBACK];
+    callback = () => {
+      if (globalThis[CALLBACK] === callback) delete globalThis[CALLBACK];
       routes();
     };
-    const el = doc.createElement('script');
+    globalThis[CALLBACK] = callback;
+    el = doc.createElement('script');
     el.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&loading=async&callback=${CALLBACK}`;
     el.async = true;
     el.onerror = () => reject(new Error('maps script failed'));
     doc.head.appendChild(el);
-  }).catch((err) => {
-    // A failed load is retried on the next tap rather than remembered forever:
-    // the usual cause is no network, and the usual fix is walking indoors.
+  });
+
+  loadMaps.pending = withTimeout(loading, TIMEOUT_MS).catch((err) => {
+    // A failed or stalled load is retried on the next tap rather than remembered
+    // forever: the usual cause is no network, and the usual fix is walking
+    // indoors. Remove the abandoned callback and script so a late response
+    // cannot satisfy a newer attempt.
+    if (globalThis[CALLBACK] === callback) delete globalThis[CALLBACK];
+    el?.remove();
     loadMaps.pending = null;
     throw err;
   });
 
   return loadMaps.pending;
 }
-
-const withTimeout = (promise, ms) => {
-  let timer;
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error('timeout')), ms);
-    }),
-  ]).finally(() => clearTimeout(timer));
-};
 
 // One provider, built once. `consent` is asked on every call and not once at
 // construction, because the answer is the student's and they can withdraw it:

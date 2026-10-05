@@ -101,7 +101,6 @@ export function daysBetween(fromIso, toIso) {
 // which a Spring index carrying 200 rooms walks straight through, so the app
 // checks per term digit instead.
 const ROOM_FLOOR = { 2: 400, 4: 100, 8: 400 };
-export const TERM_NAMES = { 2: 'Spring', 4: 'Summer', 8: 'Autumn' };
 
 export function floorFor(term) {
   return ROOM_FLOOR[Number(String(term ?? '').slice(-1))] ?? 150;

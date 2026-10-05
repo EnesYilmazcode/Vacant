@@ -138,6 +138,45 @@ test('a successful request clears both timeout timers', async () => {
   }
 });
 
+test('a stalled Maps script is discarded so the next tap can retry', async () => {
+  const realSetTimeout = globalThis.setTimeout;
+  const realGoogle = globalThis.google;
+  const scripts = [];
+  const doc = {
+    createElement() {
+      return {
+        removed: false,
+        remove() {
+          this.removed = true;
+        },
+      };
+    },
+    head: {
+      appendChild(el) {
+        scripts.push(el);
+      },
+    },
+  };
+  globalThis.setTimeout = (fn, _ms, ...args) => realSetTimeout(fn, 0, ...args);
+  delete globalThis.google;
+  try {
+    const d = createDirections({ key: 'k', consent: yes, doc });
+    assert.equal(await d.steps(ORIGIN, BUILDING), null);
+    assert.equal(scripts.length, 1);
+    assert.equal(scripts[0].removed, true);
+    assert.equal(globalThis.__vacantMapsReady, undefined);
+
+    assert.equal(await d.steps(ORIGIN, BUILDING), null);
+    assert.equal(scripts.length, 2);
+    assert.equal(scripts[1].removed, true);
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+    if (realGoogle === undefined) delete globalThis.google;
+    else globalThis.google = realGoogle;
+    delete globalThis.__vacantMapsReady;
+  }
+});
+
 test('a route with no legs is null and not an empty list', async () => {
   const { maps } = fakeMaps({ leg: { steps: [] } });
   const d = createDirections({ key: 'k', consent: yes, maps });

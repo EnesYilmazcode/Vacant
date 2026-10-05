@@ -2618,6 +2618,7 @@ test('the origin bar costs nothing on the screen a phone with a fix sees', () =>
 
 test('a boot that failed stops the line that says it is still looking', () => {
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
   const spinner = css.indexOf('#ask:not(.ready) .loading');
   const failed = css.indexOf('#ask.failed .loading');
   assert.ok(spinner > 0, 'the loading rule is gone');
@@ -2625,6 +2626,11 @@ test('a boot that failed stops the line that says it is still looking', () => {
   // Both are one id and two classes, so source order is the whole of the win.
   assert.ok(failed > spinner, `the failed rule is at ${failed}, above the rule it has to beat`);
   assert.match(css.slice(failed, failed + 60), /opacity: 0/);
+
+  // Opacity does not remove content from the accessibility tree. Both ways the
+  // loading state ends must stop announcing a status that is no longer true.
+  const hidden = /querySelector\('#ask \.loading'\)\.setAttribute\('aria-hidden', 'true'\)/g;
+  assert.equal([...app.matchAll(hidden)].length, 2);
 });
 
 // The X is the undo for a picked origin, so it always goes. The ROW it sits in

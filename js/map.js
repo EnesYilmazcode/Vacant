@@ -624,7 +624,6 @@ const TAP_MS = 300;
 // pinch over the map zooms the whole page on iOS and the two fight.
 export function attachGestures(canvas, { onPan, onZoom, onTap } = {}) {
   const pointers = new Map();
-  const priorTouchAction = canvas.style.touchAction;
   canvas.style.touchAction = 'none';
 
   let rect = null;
@@ -706,15 +705,4 @@ export function attachGestures(canvas, { onPan, onZoom, onTap } = {}) {
   canvas.addEventListener('pointercancel', up);
   canvas.addEventListener('wheel', wheel, { passive: false });
   window.addEventListener('resize', invalidate);
-
-  return () => {
-    canvas.removeEventListener('pointerdown', down);
-    canvas.removeEventListener('pointermove', move);
-    canvas.removeEventListener('pointerup', up);
-    canvas.removeEventListener('pointercancel', up);
-    canvas.removeEventListener('wheel', wheel);
-    window.removeEventListener('resize', invalidate);
-    canvas.style.touchAction = priorTouchAction;
-    pointers.clear();
-  };
 }

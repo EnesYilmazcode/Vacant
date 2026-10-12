@@ -1142,9 +1142,6 @@ export function diagnosticsBlock(d) {
 export function createWatch({ geolocation, visible, onFix, onError, options = {} }) {
   let id = null;
   return {
-    // Read-only on purpose: a caller that can assign the handle can lose it.
-    get id() { return id; },
-    get open() { return id != null; },
     // Returns why it did what it did, so a test can tell "refused" from "opened"
     // without reaching for the handle.
     start(origin) {

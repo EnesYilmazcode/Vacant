@@ -1462,6 +1462,11 @@ function cardParts(r) {
   return { building: n ? name : '', room: n || name || r.id };
 }
 
+function buildingInitials(name) {
+  const words = String(shortName(name) || '').match(/[A-Za-z0-9]+/g) ?? [];
+  return words.slice(0, 3).map((word) => word[0]).join('').toUpperCase() || '?';
+}
+
 // One room. The count and walk cap stay on the list. A missing event snapshot
 // does need a short warning here because the card is a standalone answer.
 //
@@ -1510,6 +1515,7 @@ function paintCard() {
   }
 
   const { building, room } = cardParts(r);
+  const initials = buildingInitials(r.name);
   const photo = photoFor(r.id);
   const win = windowOf(r);
   const short = shortWindow(win);
@@ -1560,6 +1566,7 @@ function paintCard() {
       <article class="c-card${photo ? '' : ' plain'}" id="c-top" tabindex="0"
         role="group" aria-label="${esc(said)}">
         <div class="c-media">
+          <span class="c-fallback" aria-hidden="true">${esc(initials)}</span>
           ${photo ? `<canvas class="c-photo" id="c-img" aria-hidden="true"></canvas>` : ''}
           <span class="c-scrim" aria-hidden="true"></span>
         </div>

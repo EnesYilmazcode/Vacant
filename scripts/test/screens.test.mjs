@@ -1415,7 +1415,10 @@ test('a room with no photograph gets a card, not a broken frame', () => {
   assert.match(src, /state\.photos\?\.has\(id\)/);
   assert.match(src, /: null/);
   const paint = bodyOf('paintCard');
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.match(paint, /photo \? '' : ' plain'/, 'a photoless room stopped getting the plain card');
+  assert.match(paint, /c-fallback/, 'a photoless room lost its building initials');
+  assert.doesNotMatch(html, /\.c-card\.plain \.c-media\s*\{\s*display:\s*none/, 'desktop hides the media slot again');
   // And a file that 404s or decodes to nothing falls back to the same card
   // rather than leaving an empty frame under the plate.
   assert.match(paint, /source\.onerror/);

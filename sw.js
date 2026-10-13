@@ -7,8 +7,9 @@
 // One cache would either re-download the room index on every deploy or pin an
 // installed icon to last month's app.js forever.
 //
-// Measured on 2026-09-16 over the committed blobs, which is the copy Pages serves:
-// `git show HEAD:<file> | gzip -9 -c | wc -c`. Shell 167,466 bytes, data 115,160.
+// Measured on 2026-10-12 over the files prepared for the next commit, which is
+// the copy Pages will serve: `gzip -9 -c < <file> | wc -c`.
+// Shell 169,259 bytes, data 115,160.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these seventeen files, which is most of a percent of
@@ -88,7 +89,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-c09a7c8';
+const SHELL_CACHE = 'vacant-shell-45985c7';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also
@@ -174,7 +175,6 @@ const SHELL_ASSETS = [
   SCOPE + 'js/engine.js',
   SCOPE + 'scripts/lib/club-occupancy.mjs',
   SCOPE + 'js/map.js',
-  SCOPE + 'js/preferences.js',
   SCOPE + 'js/route.js',
   SCOPE + 'js/pwa.js',
   SCOPE + 'js/install.js',

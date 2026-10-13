@@ -31,7 +31,6 @@ import { createDirections } from './directions.js';
 // js/firstrun.js because that is the module holding the rule it comes from.
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
 import { mapsHref } from './install.js';
-import { roomFeatureLabels } from './preferences.js';
 import {
   busyDayOf,
   clock,
@@ -2610,25 +2609,13 @@ function roomHtml(id) {
   // the eleven visible codes went missing from it, and 95 rooms, a conference
   // room and two dozen computer labs among them, rendered as bare untyped rows.
   const type = state.rooms?.types?.[room.type];
-  // Every fact is its own element. Bare strings next to each other in a flex
-  // row become one anonymous flex item, not three, so no gap landed between
-  // them and the row rendered as "113 m28 seatsclassroom".
-  // The metres used to sit beside the minutes. The minutes are computed FROM
-  // the metres, so it was one number rendered twice.
+  // Keep this row to the facts that help someone choose the room at a glance.
+  // The detailed equipment inventory still ships with the data; it just does
+  // not compete with the schedule on this screen.
   const facts = [
     walk == null ? '' : `<span class="w">${WALK_ICON}${walk} min walk</span>`,
     room.cap ? `<span>${room.cap} seats</span>` : '<span>seats unknown</span>',
     type ? `<span>${esc(type)}</span>` : '',
-    ...roomFeatureLabels(room).map((label) => `<span>${esc(label)}</span>`),
-    // The same word the row carries, on the screen a student lands on after
-    // tapping it. A row that is ranked down for a reason has to be able to say
-    // the reason once the reader asks for the room.
-    //
-    // It carries the sentence too. deptOf writes the word out for the list's
-    // spoken name because "departmental" alone next to a seat count is a word
-    // with no sentence around it; that argument does not stop being true one tap
-    // later, and this line read as the bare word while the row it came from read
-    // as the sentence.
     room.ga === false
       ? '<span>departmental<span class="sr">, not a general-assignment room</span></span>'
       : '',
@@ -2664,7 +2651,12 @@ function roomHtml(id) {
         </p>`
       : '';
 
-  return `<h2 id="room-h" tabindex="-1">${esc(bname)} ${esc(room.n ?? '')}</h2>
+  return `<div class="room-head">
+      <button type="button" class="bar-btn room-back" id="room-back">
+        <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg>
+      </button>
+      <h2 id="room-h" tabindex="-1">${esc(bname)} ${esc(room.n ?? '')}</h2>
+    </div>
     <p class="claim">${esc(claim.head)}${claim.sub ? `<span class="sub">${esc(claim.sub)}</span>` : ''}</p>
     <p class="facts">${facts.join('')}</p>
     ${acts}
@@ -2943,16 +2935,18 @@ function showPane(name) {
   // no rounded top, no border and no grip there. index.html hangs those off the
   // body rather than the pane, because the sheet is what has to lose them.
   document.body.classList.toggle('carding', name === 'card');
+  document.body.classList.toggle('rooming', name === 'room');
   document.body.classList.remove('waying');
   for (const id of PANES) $(id).hidden = id !== name;
   $('find').hidden = name !== 'pick';
   $('origin').hidden = !originBarOn(name);
   $('ask').hidden = true;
   $('sheet').hidden = false;
-  // One corner, two controls, never both. The card is a photograph and gets the
-  // menu; everything else is a panel or a map and keeps the arrow.
+  // The card and desktop room screen keep the menu over the map. The room's
+  // back arrow lives in its panel on desktop; CSS keeps this global arrow on
+  // mobile, where the room still fills the sheet.
   $('back').hidden = name === 'card';
-  $('menu').hidden = name !== 'card';
+  $('menu').hidden = name !== 'card' && name !== 'room';
   closeMenu();
   document.body.classList.remove('asking');
   const arrived = state.screen !== name;
@@ -2978,7 +2972,7 @@ function showAsk() {
   $('way').hidden = true;
   $('ask').hidden = false;
   document.body.classList.add('asking');
-  document.body.classList.remove('carding', 'waying');
+  document.body.classList.remove('carding', 'rooming', 'waying');
   $('sheet').hidden = true;
   $('back').hidden = true;
   $('menu').hidden = true;
@@ -3084,6 +3078,8 @@ function showAbout() {
 // heading and re-snaps the sheet to rest, and a sheet that jumps back to rest
 // under a reader is worse than a stale number.
 function wireRoom(id) {
+  $('room-back').setAttribute('aria-label', roomBackLabel());
+  $('room-back').onclick = () => history.back();
   attachBearing(id);
   // A week either way, and no clamp. Past the term's own bounds the grid comes
   // back empty and the sentence over it says the schedule does not reach there.
@@ -3164,16 +3160,7 @@ function showRoom(id, { keepDay = false } = {}) {
   // Back pops to the entry underneath this one, and openRoom wrote down which
   // screen that is. Outside scheduled hours the room screen opens over the
   // buildings screen, and the label promised a room list that is not there.
-  $('back').setAttribute(
-    'aria-label',
-    history.state?.from === 'near'
-      ? 'Back to the nearest buildings'
-      : history.state?.from === 'browse'
-        ? 'Back to browse buildings'
-      : history.state?.from === 'way'
-        ? 'Back to the way'
-        : 'Back to the room list',
-  );
+  $('back').setAttribute('aria-label', roomBackLabel());
 
   // frame() below runs only when the room is one of the ranked rows. Opened
   // from a link or out of hours it is not, and the footprint still has to light.
@@ -3190,6 +3177,16 @@ function showRoom(id, { keepDay = false } = {}) {
     markRows();
     frame(r);
   }
+}
+
+function roomBackLabel() {
+  return history.state?.from === 'near'
+    ? 'Back to the nearest buildings'
+    : history.state?.from === 'browse'
+      ? 'Back to browse buildings'
+      : history.state?.from === 'way'
+        ? 'Back to the way'
+        : 'Back to the room list';
 }
 
 // Where the room is: the map with the footprint lit, an arrow to it, one plate
@@ -3233,7 +3230,7 @@ function showWay(id, view = null) {
   $('menu').hidden = false;
   $('way').hidden = false;
   closeMenu();
-  document.body.classList.remove('asking', 'carding');
+  document.body.classList.remove('asking', 'carding', 'rooming');
   // The menu is this screen's only chrome, and it is the same button it was on
   // the card a tap ago, so it is drawn the same: no disc, 40px in a 60px target.
   document.body.classList.add('waying');
@@ -3414,13 +3411,18 @@ function openWantedRoom() {
   if (!state.ready || state.screen !== 'ask' || !state.rankable) return false;
   const wanted = new URLSearchParams(location.search).get('room');
   if (!wanted || !state.classRooms?.rooms?.[wanted]) return false;
+  // A shared room link arrives with no Vacant history underneath it. Keep the
+  // current entry as the question, then stack the honest landing screen and
+  // the room above it. Back can now unwind room -> card/buildings -> question
+  // without the app's own controls sending someone back to the referring site.
+  history.replaceState({ v: 'ask' }, '', cleanUrl());
   if (state.scheduled) {
     showCard();
     answer();
-    history.replaceState({ v: 'card' }, '', cleanUrl());
+    history.pushState({ v: 'card' }, '', cleanUrl());
   } else {
     showNear();
-    history.replaceState({ v: 'near' }, '', cleanUrl());
+    history.pushState({ v: 'near' }, '', cleanUrl());
   }
   openRoom(wanted);
   return true;

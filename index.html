@@ -537,7 +537,7 @@
      "in the 3rd picture the hamburger icon like the 3 lines is different, make
      image 3 match image 2". The drop shadow is what the disc was for, and it
      works over a photograph and a night map alike. */
-  body.carding #menu, body.waying #menu {
+  body.carding #menu, body.waying #menu, body.rooming #menu {
     border: 0; background: none; padding: 0;
     min-width: 60px; min-height: 60px; width: 60px; height: 60px;
     top: calc(var(--safe-t) + 1.1rem);
@@ -547,14 +547,17 @@
        hamburger sat at x=17 while the 512px column started at x=694. */
     left: max(1.1rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2 + .5rem));
   }
-  body.carding #menu .ico, body.waying #menu .ico {
+  body.carding #menu .ico, body.waying #menu .ico, body.rooming #menu .ico {
     width: 40px; height: 40px; stroke-width: 2.1;
     filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
   }
-  body.carding .m-panel, body.waying .m-panel {
+  body.carding .m-panel, body.waying .m-panel, body.rooming .m-panel {
     top: calc(var(--safe-t) + 4.6rem);
     left: max(1.1rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2 + .5rem));
   }
+  /* The room keeps the established fixed Back arrow on a phone. Its menu and
+     panel-local Back control are the desktop pair below. */
+  body.rooming #menu { display: none; }
 
   /* The way: the map with the room lit on it, one plate naming the room, and the
      ranking peeked underneath. Enes on the schedule, "the list of other classes
@@ -776,7 +779,12 @@
   .browse-nav { margin: 0; padding: .7rem 1.1rem 0; }
 
   /* --- the room screen, a second pane in the same sheet --- */
-  #room h2 { margin: 0; padding: .1rem 1.1rem .45rem; font-size: 1.05rem; letter-spacing: -.01em; }
+  .room-head { position: relative; padding: 0 1.1rem .45rem; }
+  #room .room-head h2 {
+    margin: 0; padding: .1rem 0 0;
+    font-size: 1.05rem; letter-spacing: -.01em;
+  }
+  .room-back { display: none; }
   .claim { margin: 0; padding: 0 1.1rem .35rem; font-weight: 650; }
   .claim .sub { display: block; font-weight: 400; color: var(--dim); font-size: .86rem; }
   .facts {
@@ -787,6 +795,11 @@
   .facts .w { display: flex; align-items: center; gap: .3rem; color: var(--fg); white-space: nowrap; }
   .acts { display: flex; flex-wrap: wrap; gap: .5rem; padding: .7rem 1.1rem 0; }
   .acts a.bar-btn { text-decoration: none; }
+  @container list (max-width: 26rem) {
+    #room .acts > .bar-btn {
+      flex: 1 1 calc(50% - .25rem); min-width: 0; justify-content: center;
+    }
+  }
   .steps { padding: .2rem 1.1rem 0; }
   .steps-ask, .steps-wait, .steps-none, .steps-src { margin: .5rem 0; font-size: .86rem; color: var(--dim); }
   .steps-ask .bar-btn { margin-top: .5rem; }
@@ -1015,12 +1028,33 @@
     }
     body:is(.has-bar) #sheet { bottom: calc(var(--bar-h, 0px) + 1rem); }
     #sheet .handle { display: none; }
-    #back, #menu, body.waying #menu { left: 1.5rem; }
-    .m-panel, body.waying .m-panel { left: 1.5rem; }
+    #back, #menu, body.carding #menu, body.waying #menu, body.rooming #menu { left: 1.5rem; }
+    /* The menu owns a 60px target while Back owns a 44px target. Offset Back
+       by half that 16px difference so their glyphs keep the same corner centre
+       when moving between desktop screens. */
+    #back {
+      left: calc(1.5rem + 8px);
+      top: calc(var(--safe-t) + 1.1rem + 8px);
+    }
+    .m-panel, body.carding .m-panel, body.waying .m-panel, body.rooming .m-panel { left: 1.5rem; }
     #way-plate {
       left: 1.5rem; transform: none;
       width: min(30rem, calc(60vw - 3rem)); max-width: none;
     }
+    body.rooming #back { display: none; }
+    body.rooming #menu { display: flex; }
+    #room .room-head {
+      position: sticky; top: 0; z-index: 2;
+      display: flex; align-items: center; gap: .75rem;
+      padding: 1rem 1.1rem;
+      background: var(--card);
+    }
+    #room .room-head h2 { min-width: 0; }
+    #room .room-back {
+      display: flex; position: static; flex: none;
+      width: 44px; padding: 0; justify-content: center;
+    }
+    #room .claim { padding-top: .75rem; }
 
     body.carding #sheet {
       left: 0; right: 0; top: 1.5rem; bottom: 1.5rem;
@@ -1029,8 +1063,6 @@
       background: var(--bg); border: 1px solid var(--line); border-radius: 24px;
     }
     body.carding:is(.has-bar) #sheet { bottom: calc(var(--bar-h, 0px) + 1rem); }
-    body.carding #menu { left: max(2rem, calc(50% - 36rem + 1rem)); top: 2.5rem; }
-    body.carding .m-panel { left: max(2rem, calc(50% - 36rem + 1rem)); top: 6rem; }
     body.carding .c-card {
       display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(20rem, .8fr);
       grid-template-areas: "photo details"; gap: 2rem;

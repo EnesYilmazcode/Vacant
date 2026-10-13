@@ -1290,6 +1290,14 @@ test('the back button on the room screen names the pane back lands on', () => {
   assert.match(bodyOf('wireRoom'), /\$\('room-back'\)\.onclick = \(\) => history\.back\(\)/);
 });
 
+test('the desktop room header keeps its identity and Back control while the schedule scrolls', () => {
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(
+    css,
+    /#room \.room-head \{\s*position: sticky; top: 0; z-index: 2;[^}]*background: var\(--card\);\s*\}/,
+  );
+});
+
 // ---- the duration, and where the list says it
 
 // #85 took the four-chip radiogroup off the ranked list. It cost 61px of a

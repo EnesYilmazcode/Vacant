@@ -1038,7 +1038,11 @@
     }
     body.rooming #back { display: none; }
     body.rooming #menu { display: flex; }
-    #room .room-head { padding-top: 1.5rem; padding-right: 4.8rem; }
+    #room .room-head {
+      position: sticky; top: 0; z-index: 2;
+      padding-top: 1.5rem; padding-right: 4.8rem;
+      background: var(--card);
+    }
     #room .room-back {
       display: flex; position: absolute; top: 1.5rem; right: 1.1rem;
     }

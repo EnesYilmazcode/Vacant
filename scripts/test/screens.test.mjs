@@ -1283,9 +1283,11 @@ test('the back button on the room screen names the pane back lands on', () => {
   // so separate matches all hold with the arms swapped, which is the reported
   // defect back again. Three arms now: the way opens rooms too, and it is not
   // the room list.
-  const show = bodyOf('showRoom');
-  assert.match(show, /from === 'near'\s*\?\s*'Back to the nearest buildings'/);
-  assert.match(show, /from === 'way'\s*\?\s*'Back to the way'\s*:\s*'Back to the room list'/);
+  const label = bodyOf('roomBackLabel');
+  assert.match(label, /from === 'near'\s*\?\s*'Back to the nearest buildings'/);
+  assert.match(label, /from === 'way'\s*\?\s*'Back to the way'\s*:\s*'Back to the room list'/);
+  assert.match(bodyOf('roomHtml'), /id="room-back"/);
+  assert.match(bodyOf('wireRoom'), /\$\('room-back'\)\.onclick = \(\) => history\.back\(\)/);
 });
 
 // ---- the duration, and where the list says it
@@ -1512,7 +1514,7 @@ test('neither screen without a back arrow is a dead end', () => {
   // the arrow left.
   const pane = bodyOf('showPane');
   assert.match(pane, /\$\('back'\)\.hidden = name === 'card'/);
-  assert.match(pane, /\$\('menu'\)\.hidden = name !== 'card'/);
+  assert.match(pane, /\$\('menu'\)\.hidden = name !== 'card' && name !== 'room'/);
   const way = bodyOf('showWay');
   assert.match(way, /\$\('back'\)\.hidden = true/);
   assert.match(way, /\$\('menu'\)\.hidden = false/);
@@ -1526,6 +1528,10 @@ test('neither screen without a back arrow is a dead end', () => {
   // A disclosure, not a menu: role="menu" promises arrow keys move between the
   // items, and the app does not implement that.
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  // The desktop hamburger has a 60px target and Back has a 44px target. Back
+  // needs half that 16px difference on both axes for the two glyph centres to
+  // occupy the same corner when one screen replaces the other.
+  assert.match(css, /#back \{\s*left:\s*calc\(1\.5rem \+ 8px\);\s*top:\s*calc\(var\(--safe-t\) \+ 1\.1rem \+ 8px\);\s*\}/);
   assert.match(css, /<button id="menu"[^>]*aria-expanded="false"[^>]*aria-controls="menu-pop"/s);
   assert.equal(/role="menu"/.test(css), false, 'the menu claims a keyboard model it does not have');
   // Escape closes it, and so does a press on the backdrop.

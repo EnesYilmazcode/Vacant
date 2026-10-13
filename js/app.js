@@ -2664,7 +2664,12 @@ function roomHtml(id) {
         </p>`
       : '';
 
-  return `<h2 id="room-h" tabindex="-1">${esc(bname)} ${esc(room.n ?? '')}</h2>
+  return `<div class="room-head">
+      <button type="button" class="bar-btn room-back" id="room-back">
+        <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg>
+      </button>
+      <h2 id="room-h" tabindex="-1">${esc(bname)} ${esc(room.n ?? '')}</h2>
+    </div>
     <p class="claim">${esc(claim.head)}${claim.sub ? `<span class="sub">${esc(claim.sub)}</span>` : ''}</p>
     <p class="facts">${facts.join('')}</p>
     ${acts}
@@ -2943,16 +2948,18 @@ function showPane(name) {
   // no rounded top, no border and no grip there. index.html hangs those off the
   // body rather than the pane, because the sheet is what has to lose them.
   document.body.classList.toggle('carding', name === 'card');
+  document.body.classList.toggle('rooming', name === 'room');
   document.body.classList.remove('waying');
   for (const id of PANES) $(id).hidden = id !== name;
   $('find').hidden = name !== 'pick';
   $('origin').hidden = !originBarOn(name);
   $('ask').hidden = true;
   $('sheet').hidden = false;
-  // One corner, two controls, never both. The card is a photograph and gets the
-  // menu; everything else is a panel or a map and keeps the arrow.
+  // The card and desktop room screen keep the menu over the map. The room's
+  // back arrow lives in its panel on desktop; CSS keeps this global arrow on
+  // mobile, where the room still fills the sheet.
   $('back').hidden = name === 'card';
-  $('menu').hidden = name !== 'card';
+  $('menu').hidden = name !== 'card' && name !== 'room';
   closeMenu();
   document.body.classList.remove('asking');
   const arrived = state.screen !== name;
@@ -2978,7 +2985,7 @@ function showAsk() {
   $('way').hidden = true;
   $('ask').hidden = false;
   document.body.classList.add('asking');
-  document.body.classList.remove('carding', 'waying');
+  document.body.classList.remove('carding', 'rooming', 'waying');
   $('sheet').hidden = true;
   $('back').hidden = true;
   $('menu').hidden = true;
@@ -3084,6 +3091,8 @@ function showAbout() {
 // heading and re-snaps the sheet to rest, and a sheet that jumps back to rest
 // under a reader is worse than a stale number.
 function wireRoom(id) {
+  $('room-back').setAttribute('aria-label', roomBackLabel());
+  $('room-back').onclick = () => history.back();
   attachBearing(id);
   // A week either way, and no clamp. Past the term's own bounds the grid comes
   // back empty and the sentence over it says the schedule does not reach there.
@@ -3164,16 +3173,7 @@ function showRoom(id, { keepDay = false } = {}) {
   // Back pops to the entry underneath this one, and openRoom wrote down which
   // screen that is. Outside scheduled hours the room screen opens over the
   // buildings screen, and the label promised a room list that is not there.
-  $('back').setAttribute(
-    'aria-label',
-    history.state?.from === 'near'
-      ? 'Back to the nearest buildings'
-      : history.state?.from === 'browse'
-        ? 'Back to browse buildings'
-      : history.state?.from === 'way'
-        ? 'Back to the way'
-        : 'Back to the room list',
-  );
+  $('back').setAttribute('aria-label', roomBackLabel());
 
   // frame() below runs only when the room is one of the ranked rows. Opened
   // from a link or out of hours it is not, and the footprint still has to light.
@@ -3190,6 +3190,16 @@ function showRoom(id, { keepDay = false } = {}) {
     markRows();
     frame(r);
   }
+}
+
+function roomBackLabel() {
+  return history.state?.from === 'near'
+    ? 'Back to the nearest buildings'
+    : history.state?.from === 'browse'
+      ? 'Back to browse buildings'
+      : history.state?.from === 'way'
+        ? 'Back to the way'
+        : 'Back to the room list';
 }
 
 // Where the room is: the map with the footprint lit, an arrow to it, one plate
@@ -3233,7 +3243,7 @@ function showWay(id, view = null) {
   $('menu').hidden = false;
   $('way').hidden = false;
   closeMenu();
-  document.body.classList.remove('asking', 'carding');
+  document.body.classList.remove('asking', 'carding', 'rooming');
   // The menu is this screen's only chrome, and it is the same button it was on
   // the card a tap ago, so it is drawn the same: no disc, 40px in a 60px target.
   document.body.classList.add('waying');

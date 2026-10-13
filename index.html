@@ -362,6 +362,18 @@
     opacity: 0; transition: opacity .35s ease;
   }
   .c-photo.on { opacity: 1; }
+  /* The media slot never disappears when OSU has no photograph for a room.
+     Initials give the empty frame a building-specific identity, and stay behind
+     the canvas so the same layer is revealed if an image fails to load. */
+  .c-fallback {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    background:
+      radial-gradient(circle at 30% 25%, rgba(255,255,255,.08), transparent 45%),
+      var(--card-hi);
+    color: var(--dim); font-size: clamp(4rem, 10vw, 8rem); font-weight: 750;
+    letter-spacing: -.06em;
+  }
   /* An img is natively draggable, and a pointerdown on one starts a browser
      image-drag that CANCELS the pointer stream. The swipe then saw a
      pointercancel instead of a move and put the card straight back, so a card
@@ -1055,13 +1067,6 @@
     body.carding .c-act .ico { width: 1.35rem; height: 1.35rem; filter: none; }
     body.carding .c-act-label { display: inline; }
     body.carding .c-stamp { display: none; }
-    body.carding .c-card.plain {
-      grid-template-columns: minmax(20rem, 34rem); grid-template-areas: "details";
-      justify-content: center;
-    }
-    body.carding .c-card.plain .c-media { display: none; }
-    body.carding .c-card.plain .c-plate,
-    body.carding .c-card.plain .c-acts { grid-area: details; }
   }
 
   /* The cold card sits above everything, including the note pill, because when

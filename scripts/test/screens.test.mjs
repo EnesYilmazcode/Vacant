@@ -1540,6 +1540,9 @@ test('neither screen without a back arrow is a dead end', () => {
   // needs half that 16px difference on both axes for the two glyph centres to
   // occupy the same corner when one screen replaces the other.
   assert.match(css, /#back \{\s*left:\s*calc\(1\.5rem \+ 8px\);\s*top:\s*calc\(var\(--safe-t\) \+ 1\.1rem \+ 8px\);\s*\}/);
+  assert.match(css, /#back, #menu, body\.carding #menu, body\.waying #menu, body\.rooming #menu \{ left: 1\.5rem; \}/);
+  assert.doesNotMatch(css, /body\.carding #menu \{[^}]*calc\(50% - 36rem/,
+    'the hamburger jumps from the viewport corner to the centred card edge');
   assert.match(css, /<button id="menu"[^>]*aria-expanded="false"[^>]*aria-controls="menu-pop"/s);
   assert.equal(/role="menu"/.test(css), false, 'the menu claims a keyboard model it does not have');
   // Escape closes it, and so does a press on the backdrop.

@@ -1023,7 +1023,7 @@
     }
     body:is(.has-bar) #sheet { bottom: calc(var(--bar-h, 0px) + 1rem); }
     #sheet .handle { display: none; }
-    #back, #menu, body.waying #menu, body.rooming #menu { left: 1.5rem; }
+    #back, #menu, body.carding #menu, body.waying #menu, body.rooming #menu { left: 1.5rem; }
     /* The menu owns a 60px target while Back owns a 44px target. Offset Back
        by half that 16px difference so their glyphs keep the same corner centre
        when moving between desktop screens. */
@@ -1031,7 +1031,7 @@
       left: calc(1.5rem + 8px);
       top: calc(var(--safe-t) + 1.1rem + 8px);
     }
-    .m-panel, body.waying .m-panel, body.rooming .m-panel { left: 1.5rem; }
+    .m-panel, body.carding .m-panel, body.waying .m-panel, body.rooming .m-panel { left: 1.5rem; }
     #way-plate {
       left: 1.5rem; transform: none;
       width: min(30rem, calc(60vw - 3rem)); max-width: none;
@@ -1054,8 +1054,6 @@
       background: var(--bg); border: 1px solid var(--line); border-radius: 24px;
     }
     body.carding:is(.has-bar) #sheet { bottom: calc(var(--bar-h, 0px) + 1rem); }
-    body.carding #menu { left: max(2rem, calc(50% - 36rem + 1rem)); top: 2.5rem; }
-    body.carding .m-panel { left: max(2rem, calc(50% - 36rem + 1rem)); top: 6rem; }
     body.carding .c-card {
       display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(20rem, .8fr);
       grid-template-areas: "photo details"; gap: 2rem;

@@ -1304,12 +1304,17 @@ test('the back button on the room screen names the pane back lands on', () => {
   assert.match(bodyOf('wireRoom'), /\$\('room-back'\)\.onclick = \(\) => history\.back\(\)/);
 });
 
-test('the desktop room header keeps its identity and Back control while the schedule scrolls', () => {
+test('the desktop room header keeps its identity and aligned Back control while the schedule scrolls', () => {
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.match(
     css,
-    /#room \.room-head \{\s*position: sticky; top: 0; z-index: 2;[^}]*background: var\(--card\);\s*\}/,
+    /#room \.room-head \{\s*position: sticky; top: 0; z-index: 2;\s*display: flex; align-items: center; gap: \.75rem;\s*padding: 1rem 1\.1rem;\s*background: var\(--card\);/,
   );
+  assert.match(
+    css,
+    /#room \.room-back \{\s*display: flex; position: static; flex: none;\s*width: 44px; padding: 0; justify-content: center;/,
+  );
+  assert.match(css, /#room \.claim \{ padding-top: \.75rem; \}/);
 });
 
 test('room actions become a balanced two-column grid before one button wraps alone', () => {

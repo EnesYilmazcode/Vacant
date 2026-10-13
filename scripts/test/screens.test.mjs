@@ -1298,6 +1298,14 @@ test('the desktop room header keeps its identity and Back control while the sche
   );
 });
 
+test('room actions become a balanced two-column grid before one button wraps alone', () => {
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(
+    css,
+    /@container list \(max-width: 26rem\) \{\s*#room \.acts > \.bar-btn \{\s*flex: 1 1 calc\(50% - \.25rem\); min-width: 0; justify-content: center;/,
+  );
+});
+
 // ---- the duration, and where the list says it
 
 // #85 took the four-chip radiogroup off the ranked list. It cost 61px of a

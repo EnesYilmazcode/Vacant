@@ -795,6 +795,11 @@
   .facts .w { display: flex; align-items: center; gap: .3rem; color: var(--fg); white-space: nowrap; }
   .acts { display: flex; flex-wrap: wrap; gap: .5rem; padding: .7rem 1.1rem 0; }
   .acts a.bar-btn { text-decoration: none; }
+  @container list (max-width: 26rem) {
+    #room .acts > .bar-btn {
+      flex: 1 1 calc(50% - .25rem); min-width: 0; justify-content: center;
+    }
+  }
   .steps { padding: .2rem 1.1rem 0; }
   .steps-ask, .steps-wait, .steps-none, .steps-src { margin: .5rem 0; font-size: .86rem; color: var(--dim); }
   .steps-ask .bar-btn { margin-top: .5rem; }

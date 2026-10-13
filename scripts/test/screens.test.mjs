@@ -817,6 +817,15 @@ test('the room screen prints no duration when it does not know the walk', () => 
   assert.equal(claim.yours, null);
 });
 
+test('the room detail facts omit equipment without losing decision details', () => {
+  const room = bodyOf('roomHtml');
+  assert.match(room, /WALK_ICON.*min walk/);
+  assert.match(room, /room\.cap \? `<span>\$\{room\.cap\} seats<\/span>`/);
+  assert.match(room, /type \? `<span>\$\{esc\(type\)\}<\/span>`/);
+  assert.match(room, /room\.ga === false[\s\S]*class="sr"[\s\S]*not a general-assignment room/);
+  assert.doesNotMatch(room, /roomFeatureLabels/);
+});
+
 test('a walk that outlasts the window says so instead of printing zero', () => {
   const claim = roomClaim({ ...TIMELINE, now: 925, metres: 4000 });
   assert.ok(claim.yours <= 0, `a 4 km walk cannot leave ${claim.yours} minutes`);
@@ -849,6 +858,20 @@ test('the room deep link is gated on scheduled hours, not only on rankable', () 
   const head = branch.slice(0, 1200);
   assert.match(head, /if \(state\.scheduled\)/);
   assert.match(head, /showNear\(\)/);
+});
+
+test('a room deep link keeps every app Back press inside Vacant', () => {
+  // A direct visit has an external page beneath its first history entry. The
+  // app needs its own question entry under both possible landing screens, or
+  // the second visible Back button sends the reader to that external page.
+  const open = bodyOf('openWantedRoom');
+  const ask = open.indexOf("history.replaceState({ v: 'ask' }");
+  const card = open.indexOf("history.pushState({ v: 'card' }");
+  const near = open.indexOf("history.pushState({ v: 'near' }");
+  const room = open.indexOf('openRoom(wanted)');
+  assert.ok(ask >= 0, 'the direct link has no question entry underneath it');
+  assert.ok(card > ask && near > ask, 'a landing screen is not stacked over the question');
+  assert.ok(room > card && room > near, 'the room is not stacked over its landing screen');
 });
 
 test('dev clock restoration retries a room link refused by the live date', () => {
@@ -1283,9 +1306,32 @@ test('the back button on the room screen names the pane back lands on', () => {
   // so separate matches all hold with the arms swapped, which is the reported
   // defect back again. Three arms now: the way opens rooms too, and it is not
   // the room list.
-  const show = bodyOf('showRoom');
-  assert.match(show, /from === 'near'\s*\?\s*'Back to the nearest buildings'/);
-  assert.match(show, /from === 'way'\s*\?\s*'Back to the way'\s*:\s*'Back to the room list'/);
+  const label = bodyOf('roomBackLabel');
+  assert.match(label, /from === 'near'\s*\?\s*'Back to the nearest buildings'/);
+  assert.match(label, /from === 'way'\s*\?\s*'Back to the way'\s*:\s*'Back to the room list'/);
+  assert.match(bodyOf('roomHtml'), /id="room-back"/);
+  assert.match(bodyOf('wireRoom'), /\$\('room-back'\)\.onclick = \(\) => history\.back\(\)/);
+});
+
+test('the desktop room header keeps its identity and aligned Back control while the schedule scrolls', () => {
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(
+    css,
+    /#room \.room-head \{\s*position: sticky; top: 0; z-index: 2;\s*display: flex; align-items: center; gap: \.75rem;\s*padding: 1rem 1\.1rem;\s*background: var\(--card\);/,
+  );
+  assert.match(
+    css,
+    /#room \.room-back \{\s*display: flex; position: static; flex: none;\s*width: 44px; padding: 0; justify-content: center;/,
+  );
+  assert.match(css, /#room \.claim \{ padding-top: \.75rem; \}/);
+});
+
+test('room actions become a balanced two-column grid before one button wraps alone', () => {
+  const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  assert.match(
+    css,
+    /@container list \(max-width: 26rem\) \{\s*#room \.acts > \.bar-btn \{\s*flex: 1 1 calc\(50% - \.25rem\); min-width: 0; justify-content: center;/,
+  );
 });
 
 // ---- the duration, and where the list says it
@@ -1415,7 +1461,10 @@ test('a room with no photograph gets a card, not a broken frame', () => {
   assert.match(src, /state\.photos\?\.has\(id\)/);
   assert.match(src, /: null/);
   const paint = bodyOf('paintCard');
+  const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.match(paint, /photo \? '' : ' plain'/, 'a photoless room stopped getting the plain card');
+  assert.match(paint, /c-fallback/, 'a photoless room lost its building initials');
+  assert.doesNotMatch(html, /\.c-card\.plain \.c-media\s*\{\s*display:\s*none/, 'desktop hides the media slot again');
   // And a file that 404s or decodes to nothing falls back to the same card
   // rather than leaving an empty frame under the plate.
   assert.match(paint, /source\.onerror/);
@@ -1509,7 +1558,7 @@ test('neither screen without a back arrow is a dead end', () => {
   // the arrow left.
   const pane = bodyOf('showPane');
   assert.match(pane, /\$\('back'\)\.hidden = name === 'card'/);
-  assert.match(pane, /\$\('menu'\)\.hidden = name !== 'card'/);
+  assert.match(pane, /\$\('menu'\)\.hidden = name !== 'card' && name !== 'room'/);
   const way = bodyOf('showWay');
   assert.match(way, /\$\('back'\)\.hidden = true/);
   assert.match(way, /\$\('menu'\)\.hidden = false/);
@@ -1523,6 +1572,13 @@ test('neither screen without a back arrow is a dead end', () => {
   // A disclosure, not a menu: role="menu" promises arrow keys move between the
   // items, and the app does not implement that.
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
+  // The desktop hamburger has a 60px target and Back has a 44px target. Back
+  // needs half that 16px difference on both axes for the two glyph centres to
+  // occupy the same corner when one screen replaces the other.
+  assert.match(css, /#back \{\s*left:\s*calc\(1\.5rem \+ 8px\);\s*top:\s*calc\(var\(--safe-t\) \+ 1\.1rem \+ 8px\);\s*\}/);
+  assert.match(css, /#back, #menu, body\.carding #menu, body\.waying #menu, body\.rooming #menu \{ left: 1\.5rem; \}/);
+  assert.doesNotMatch(css, /body\.carding #menu \{[^}]*calc\(50% - 36rem/,
+    'the hamburger jumps from the viewport corner to the centred card edge');
   assert.match(css, /<button id="menu"[^>]*aria-expanded="false"[^>]*aria-controls="menu-pop"/s);
   assert.equal(/role="menu"/.test(css), false, 'the menu claims a keyboard model it does not have');
   // Escape closes it, and so does a press on the backdrop.
@@ -2976,16 +3032,6 @@ test('the departmental label is a caveat, not the loudest thing on the row', () 
   // Spoken, because "departmental" next to a seat count is a word with no
   // sentence around it. deptOf says so in as many words.
   assert.match(dept, /not a general-assignment room/, 'the row stopped writing the label out');
-});
-
-test('the room screen says the label as fully as the row it came from', () => {
-  // The row's spoken name expands the word; landing on the room is not a reason
-  // for a reader to hear less than the list already told them.
-  const at = APP.indexOf("room.ga === false");
-  assert.ok(at > 0, 'the room screen no longer carries the label');
-  const line = APP.slice(at, at + 220);
-  assert.match(line, /class="sr"/, 'the room screen prints the bare word with no sentence around it');
-  assert.match(line, /not a general-assignment room/, 'and the sentence is not the one the row uses');
 });
 
 test('the one-question screen has no room-needs control', () => {

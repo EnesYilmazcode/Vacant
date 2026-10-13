@@ -103,7 +103,10 @@ fi
 if [ "$quiet_hours" -gt 0 ]; then
   last=$(gh issue view "$keep" --repo "$repo" --json createdAt,comments \
     --jq '[.createdAt] + [.comments[].createdAt] | max')
-  age_h=$(( ( $(date -u +%s) - $(date -u -d "$last" +%s) ) / 3600 ))
+  # BSD date (the one on macOS) has no -d flag. The repository already requires
+  # Node, and Date.parse reads the ISO timestamp GitHub returns on every runner.
+  last_s=$(node -e 'const n = Date.parse(process.argv[1]); if (!Number.isFinite(n)) process.exit(1); process.stdout.write(String(Math.floor(n / 1000)))' "$last")
+  age_h=$(( ( $(date -u +%s) - last_s ) / 3600 ))
   if [ "$age_h" -lt "$quiet_hours" ]; then
     echo "Issue #${keep} was last touched ${age_h}h ago, inside the ${quiet_hours}h quiet window."
     echo "Still broken, still open, not commenting again yet."

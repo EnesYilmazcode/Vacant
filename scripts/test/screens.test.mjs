@@ -817,6 +817,15 @@ test('the room screen prints no duration when it does not know the walk', () => 
   assert.equal(claim.yours, null);
 });
 
+test('the room detail facts omit equipment without losing decision details', () => {
+  const room = bodyOf('roomHtml');
+  assert.match(room, /WALK_ICON.*min walk/);
+  assert.match(room, /room\.cap \? `<span>\$\{room\.cap\} seats<\/span>`/);
+  assert.match(room, /type \? `<span>\$\{esc\(type\)\}<\/span>`/);
+  assert.match(room, /room\.ga === false[\s\S]*class="sr"[\s\S]*not a general-assignment room/);
+  assert.doesNotMatch(room, /roomFeatureLabels/);
+});
+
 test('a walk that outlasts the window says so instead of printing zero', () => {
   const claim = roomClaim({ ...TIMELINE, now: 925, metres: 4000 });
   assert.ok(claim.yours <= 0, `a 4 km walk cannot leave ${claim.yours} minutes`);
@@ -3023,16 +3032,6 @@ test('the departmental label is a caveat, not the loudest thing on the row', () 
   // Spoken, because "departmental" next to a seat count is a word with no
   // sentence around it. deptOf says so in as many words.
   assert.match(dept, /not a general-assignment room/, 'the row stopped writing the label out');
-});
-
-test('the room screen says the label as fully as the row it came from', () => {
-  // The row's spoken name expands the word; landing on the room is not a reason
-  // for a reader to hear less than the list already told them.
-  const at = APP.indexOf("room.ga === false");
-  assert.ok(at > 0, 'the room screen no longer carries the label');
-  const line = APP.slice(at, at + 220);
-  assert.match(line, /class="sr"/, 'the room screen prints the bare word with no sentence around it');
-  assert.match(line, /not a general-assignment room/, 'and the sentence is not the one the row uses');
 });
 
 test('the one-question screen has no room-needs control', () => {

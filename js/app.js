@@ -31,7 +31,6 @@ import { createDirections } from './directions.js';
 // js/firstrun.js because that is the module holding the rule it comes from.
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
 import { mapsHref } from './install.js';
-import { roomFeatureLabels } from './preferences.js';
 import {
   busyDayOf,
   clock,
@@ -2610,25 +2609,13 @@ function roomHtml(id) {
   // the eleven visible codes went missing from it, and 95 rooms, a conference
   // room and two dozen computer labs among them, rendered as bare untyped rows.
   const type = state.rooms?.types?.[room.type];
-  // Every fact is its own element. Bare strings next to each other in a flex
-  // row become one anonymous flex item, not three, so no gap landed between
-  // them and the row rendered as "113 m28 seatsclassroom".
-  // The metres used to sit beside the minutes. The minutes are computed FROM
-  // the metres, so it was one number rendered twice.
+  // Keep this row to the facts that help someone choose the room at a glance.
+  // The detailed equipment inventory still ships with the data; it just does
+  // not compete with the schedule on this screen.
   const facts = [
     walk == null ? '' : `<span class="w">${WALK_ICON}${walk} min walk</span>`,
     room.cap ? `<span>${room.cap} seats</span>` : '<span>seats unknown</span>',
     type ? `<span>${esc(type)}</span>` : '',
-    ...roomFeatureLabels(room).map((label) => `<span>${esc(label)}</span>`),
-    // The same word the row carries, on the screen a student lands on after
-    // tapping it. A row that is ranked down for a reason has to be able to say
-    // the reason once the reader asks for the room.
-    //
-    // It carries the sentence too. deptOf writes the word out for the list's
-    // spoken name because "departmental" alone next to a seat count is a word
-    // with no sentence around it; that argument does not stop being true one tap
-    // later, and this line read as the bare word while the row it came from read
-    // as the sentence.
     room.ga === false
       ? '<span>departmental<span class="sr">, not a general-assignment room</span></span>'
       : '',

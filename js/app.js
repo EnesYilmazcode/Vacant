@@ -3424,13 +3424,18 @@ function openWantedRoom() {
   if (!state.ready || state.screen !== 'ask' || !state.rankable) return false;
   const wanted = new URLSearchParams(location.search).get('room');
   if (!wanted || !state.classRooms?.rooms?.[wanted]) return false;
+  // A shared room link arrives with no Vacant history underneath it. Keep the
+  // current entry as the question, then stack the honest landing screen and
+  // the room above it. Back can now unwind room -> card/buildings -> question
+  // without the app's own controls sending someone back to the referring site.
+  history.replaceState({ v: 'ask' }, '', cleanUrl());
   if (state.scheduled) {
     showCard();
     answer();
-    history.replaceState({ v: 'card' }, '', cleanUrl());
+    history.pushState({ v: 'card' }, '', cleanUrl());
   } else {
     showNear();
-    history.replaceState({ v: 'near' }, '', cleanUrl());
+    history.pushState({ v: 'near' }, '', cleanUrl());
   }
   openRoom(wanted);
   return true;

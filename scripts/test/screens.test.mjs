@@ -851,6 +851,20 @@ test('the room deep link is gated on scheduled hours, not only on rankable', () 
   assert.match(head, /showNear\(\)/);
 });
 
+test('a room deep link keeps every app Back press inside Vacant', () => {
+  // A direct visit has an external page beneath its first history entry. The
+  // app needs its own question entry under both possible landing screens, or
+  // the second visible Back button sends the reader to that external page.
+  const open = bodyOf('openWantedRoom');
+  const ask = open.indexOf("history.replaceState({ v: 'ask' }");
+  const card = open.indexOf("history.pushState({ v: 'card' }");
+  const near = open.indexOf("history.pushState({ v: 'near' }");
+  const room = open.indexOf('openRoom(wanted)');
+  assert.ok(ask >= 0, 'the direct link has no question entry underneath it');
+  assert.ok(card > ask && near > ask, 'a landing screen is not stacked over the question');
+  assert.ok(room > card && room > near, 'the room is not stacked over its landing screen');
+});
+
 test('dev clock restoration retries a room link refused by the live date', () => {
   // Dev mode restores its saved clock after boot. When the live date is a
   // holiday, boot has to leave the link pending and devApply must retry it

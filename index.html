@@ -565,6 +565,17 @@
      pointer through: the map is meant to be panned, and the plate is a label
      rather than a control. */
   #way { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+  /* The plate is a label and lets the map have the pointer; its Back is the one
+     control on it. Inset at both ends so the name stays centred on the plate. */
+  #way-plate { padding-inline: 3rem; }
+  #way-back {
+    position: absolute; top: 50%; left: .35rem; transform: translateY(-50%);
+    pointer-events: auto; appearance: none; border: 0; background: none;
+    color: var(--fg); width: 44px; height: 44px; padding: 0; border-radius: 999px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  #way-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #way-back .ico { width: 26px; height: 26px; stroke-width: 2.1; }
 
   /* --- the answer --- */
   /* The sheet carries the column width itself, rather than running the full
@@ -1164,6 +1175,12 @@
      plate over it. -->
 <section id="way" hidden>
   <div class="c-plate" id="way-plate">
+    <!-- The way is a step down from the card it was taken from, and its one
+         visible way back. It was Back inside the menu, under a grip only a
+         phone has. -->
+    <button type="button" id="way-back" hidden>
+      <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg>
+    </button>
     <h2 class="c-b" id="way-name"></h2>
     <p class="c-facts" id="way-facts"></p>
   </div>

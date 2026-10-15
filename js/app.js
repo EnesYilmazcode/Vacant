@@ -3168,7 +3168,10 @@ function showRoom(id, { keepDay = false } = {}) {
 // well, the four drifted: two mechanisms for one fact is how they do.
 function chromeFor(screen, desk = splitQuery?.matches === true) {
   if (screen === 'ask') return { corner: null, panel: false };
-  if (screen === 'card' || screen === 'way') return { corner: 'menu', panel: false };
+  if (screen === 'card') return { corner: 'menu', panel: false };
+  // The way keeps the menu, for the list, the picker and Check again, and its
+  // Back is on the plate naming the room it leaves.
+  if (screen === 'way') return { corner: 'menu', panel: true };
   // On a desktop the corner is over the map and the panel is across the
   // window from it, so the corner keeps the menu on every screen and Back goes
   // in the panel, beside what it leaves. On a phone the sheet is under the
@@ -3183,10 +3186,18 @@ function paintChrome() {
   $('back').hidden = corner !== 'back';
   $('menu').hidden = corner !== 'menu';
   $('back').setAttribute('aria-label', label);
-  // The room has its own, in its sticky header beside the room's name.
+  // The room has its own, in its sticky header beside the room's name, and the
+  // way has its own on its plate.
   const room = state.screen === 'room';
-  $('sheet-head').hidden = !panel || room;
+  const way = state.screen === 'way';
+  $('sheet-head').hidden = !panel || room || way;
   $('sheet-back').setAttribute('aria-label', label);
+  $('way-back').hidden = !(panel && way);
+  $('way-back').setAttribute('aria-label', label);
+  // The menu's Back is for the screens with no other, and names where it goes
+  // like every other Back does.
+  $('m-back').hidden = panel || corner === 'back';
+  $('m-back').textContent = label;
   const own = $('room-back');
   if (own) {
     own.hidden = !(panel && room);
@@ -3935,6 +3946,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   $('back').onclick = () => history.back();
   $('sheet-back').onclick = () => history.back();
+  $('way-back').onclick = () => history.back();
   $('gate-go').onclick = () => openNear();
   $('ask-pick').onclick = () => openPick();
   $('note-pick').onclick = () => openPick();

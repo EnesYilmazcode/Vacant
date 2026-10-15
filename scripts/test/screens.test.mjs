@@ -1543,7 +1543,7 @@ test('the swipe is not the only way to answer the card', () => {
   // the corner belongs to the menu now. Decided in chromeFor and nowhere else:
   // a CSS rule hiding it while showPane un-hid it is two mechanisms for one
   // fact, which is how they drift.
-  assert.match(bodyOf('chromeFor'), /screen === 'card' \|\| screen === 'way'\) return \{ corner: 'menu'/);
+  assert.match(bodyOf('chromeFor'), /screen === 'card'\) return \{ corner: 'menu', panel: false \}/);
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.equal(/body\.carding #back \{/.test(css), false, 'the CSS hides #back as well');
 
@@ -1566,6 +1566,15 @@ test('neither screen without a back arrow is a dead end', () => {
   // Which means the way needs a history entry of its own for back to land on.
   assert.match(bodyOf('openWay'), /const view = \{ v: 'way'/);
   assert.match(bodyOf('openWay'), /history\.pushState\(view/);
+
+  // The way's Back is on its plate, not only in the menu, and the menu's own
+  // Back names where it goes and stands down wherever another Back shows.
+  assert.match(bodyOf('chromeFor'), /screen === 'way'\) return \{ corner: 'menu', panel: true \}/);
+  assert.match(bodyOf('paintChrome'), /\$\('way-back'\)\.hidden = !\(panel && way\)/);
+  assert.match(bodyOf('paintChrome'), /\$\('m-back'\)\.hidden = panel \|\| corner === 'back'/);
+  assert.match(bodyOf('paintChrome'), /\$\('m-back'\)\.textContent = label/);
+  assert.match(APP, /\$\('way-back'\)\.onclick = \(\) => history\.back\(\)/);
+  assert.match(readFileSync(join(ROOT, 'index.html'), 'utf8'), /#way-back \{[^}]*pointer-events: auto/);
 
   // One corner, two controls, never both, decided in one function that every
   // way onto a screen calls, and re-decided when the breakpoint is crossed.

@@ -282,6 +282,20 @@ function focusHeading(el) {
   el.focus({ preventScroll: true, focusVisible: false });
 }
 
+// The first thing on the screen showing now, for focus to land on when it was
+// reached from somewhere that took focus with it.
+function landFocus() {
+  const s = state.screen;
+  const el =
+    s === 'ask' ? document.querySelector('#ask .opt[aria-pressed="true"]')
+    : s === 'way' ? $('way-name')
+    : s === 'card' ? $('card-h') ?? $('c-top')
+    : s === 'list' ? $('list-h') ?? $('list').querySelector('.row.on, .row')
+    : $(`${s}-h`);
+  if (el?.matches('h1, h2')) focusHeading(el);
+  else el?.focus({ preventScroll: true });
+}
+
 // ---------------------------------------------------------------- rendering
 
 let flyoverStart = 0;
@@ -574,16 +588,24 @@ function attachMenu() {
     show(false);
   });
 
+  // Closing hands focus back to the menu button, and a choice that changes the
+  // screen then hides that button on a phone, which dropped a keyboard or
+  // screen reader user on the body. Where the choice lands, focus lands.
   const act = (id, go) => {
     $(id).onclick = () => {
+      const from = state.screen;
       show(false);
       go();
+      if (state.screen !== from) landFocus();
     };
   };
-  // Back first, because it is the one Enes named and the one both screens lack.
-  // history.back() rather than a screen: from the card it is the question, from
-  // the way it is the card that was taken, and both are the entry underneath.
-  act('m-back', () => history.back());
+  // Back first, because it is the one Enes named. history.back() rather than a
+  // screen: from the card it is the question, and that is the entry underneath.
+  // It arrives a task later, through popstate, so focus waits for it.
+  act('m-back', () => {
+    window.addEventListener('popstate', landFocus, { once: true });
+    history.back();
+  });
   act('m-list', () => openList());
   act('m-browse', () => openBrowse());
   act('m-pick', () => openPick());

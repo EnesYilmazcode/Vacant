@@ -1561,7 +1561,11 @@ test('neither screen without a back arrow is a dead end', () => {
   // is no browser chrome behind them either, so each needs its own way out.
   // The card has the downward throw and the way has the sheet's grip, and both
   // have the menu, whose first item is the one Enes asked for by name.
-  assert.match(bodyOf('attachMenu'), /act\('m-back', \(\) => history\.back\(\)\)/);
+  assert.match(bodyOf('attachMenu'), /act\('m-back', \(\) => \{[\s\S]*?history\.back\(\);\n  \}\);/);
+  // And a choice that moves the screen moves focus with it, rather than to a
+  // menu button that screen hides.
+  assert.match(bodyOf('attachMenu'), /if \(state\.screen !== from\) landFocus\(\);/);
+  assert.match(bodyOf('attachMenu'), /addEventListener\('popstate', landFocus, \{ once: true \}\)/);
   assert.match(APP, /attachMenu\(\);/);
   // Which means the way needs a history entry of its own for back to land on.
   assert.match(bodyOf('openWay'), /const view = \{ v: 'way'/);

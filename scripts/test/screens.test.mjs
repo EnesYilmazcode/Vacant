@@ -1566,6 +1566,12 @@ test('neither screen without a back arrow is a dead end', () => {
   // menu button that screen hides.
   assert.match(bodyOf('attachMenu'), /if \(state\.screen !== from\) landFocus\(\);/);
   assert.match(bodyOf('attachMenu'), /addEventListener\('popstate', landFocus, \{ once: true \}\)/);
+  // A choice naming the screen underneath goes back to it, not a copy on top.
+  const choices = bodyOf('attachMenu');
+  assert.match(choices, /if \(history\.state\?\.from !== screen\) return open\(\);/);
+  for (const [id, screen, open] of [['m-list', 'list', 'openList'], ['m-browse', 'browse', 'openBrowse'], ['m-pick', 'pick', 'openPick'], ['m-about', 'about', 'openAbout']]) {
+    assert.match(choices, new RegExp(`act\\('${id}', reach\\('${screen}', ${open}\\)\\)`), `${id} stacks a copy again`);
+  }
   assert.match(APP, /attachMenu\(\);/);
   // Which means the way needs a history entry of its own for back to land on.
   assert.match(bodyOf('openWay'), /const view = \{ v: 'way'/);

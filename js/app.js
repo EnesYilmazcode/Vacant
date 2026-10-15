@@ -606,11 +606,20 @@ function attachMenu() {
     window.addEventListener('popstate', landFocus, { once: true });
     history.back();
   });
-  act('m-list', () => openList());
-  act('m-browse', () => openBrowse());
-  act('m-pick', () => openPick());
+  // A choice naming the screen directly underneath goes back to it rather than
+  // stacking a copy on top. On a desktop room opened from the list, See all
+  // rooms pushed a second list, and list, room, list, room was a loop Back had
+  // to walk one step at a time. Going back also keeps the row and the scroll.
+  const reach = (screen, open) => () => {
+    if (history.state?.from !== screen) return open();
+    window.addEventListener('popstate', landFocus, { once: true });
+    history.back();
+  };
+  act('m-list', reach('list', openList));
+  act('m-browse', reach('browse', openBrowse));
+  act('m-pick', reach('pick', openPick));
   act('m-recheck', () => refresh());
-  act('m-about', () => openAbout());
+  act('m-about', reach('about', openAbout));
 }
 
 function attachSheet() {

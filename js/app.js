@@ -2652,7 +2652,7 @@ function roomHtml(id) {
       : '';
 
   return `<div class="room-head">
-      <button type="button" class="bar-btn room-back" id="room-back">
+      <button type="button" class="bar-btn room-back" id="room-back" hidden>
         <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg>
       </button>
       <h2 id="room-h" tabindex="-1">${esc(bname)} ${esc(room.n ?? '')}</h2>
@@ -2942,16 +2942,11 @@ function showPane(name) {
   $('origin').hidden = !originBarOn(name);
   $('ask').hidden = true;
   $('sheet').hidden = false;
-  // The card and desktop room screen keep the menu over the map. The room's
-  // back arrow lives in its panel on desktop; CSS keeps this global arrow on
-  // mobile, where the room still fills the sheet.
-  $('back').hidden = name === 'card';
-  $('menu').hidden = name !== 'card' && name !== 'room';
-  $('back').setAttribute('aria-label', backLabel());
   closeMenu();
   document.body.classList.remove('asking');
   const arrived = state.screen !== name;
   state.screen = name;
+  paintChrome();
   syncPaneTouch();
   // Arriving re-composes the camera for the strip THIS screen leaves. Without
   // it the view stays fitted for the screen behind: leaving a room slid the walk
@@ -2970,13 +2965,12 @@ function reframe() {
 
 function showAsk() {
   state.screen = 'ask';
+  paintChrome();
   $('way').hidden = true;
   $('ask').hidden = false;
   document.body.classList.add('asking');
   document.body.classList.remove('carding', 'rooming', 'waying');
   $('sheet').hidden = true;
-  $('back').hidden = true;
-  $('menu').hidden = true;
   closeMenu();
   for (const id of PANES) $(id).hidden = id !== 'list';
   state.settled = false;
@@ -3068,8 +3062,10 @@ function showAbout() {
 // heading and re-snaps the sheet to rest, and a sheet that jumps back to rest
 // under a reader is worse than a stale number.
 function wireRoom(id) {
-  $('room-back').setAttribute('aria-label', backLabel());
   $('room-back').onclick = () => history.back();
+  // A repaint writes the button back unhidden, and only this knows whether the
+  // room shows it.
+  paintChrome();
   attachBearing(id);
   // A week either way, and no clamp. Past the term's own bounds the grid comes
   // back empty and the sentence over it says the schedule does not reach there.
@@ -3164,6 +3160,32 @@ function showRoom(id, { keepDay = false } = {}) {
   }
 }
 
+// Which controls lead out of a screen, decided here and nowhere else. There are
+// two places a way out can sit: the corner over the map, which holds the menu
+// or the Back arrow and never both, and the panel, which holds a Back of its
+// own on the screens whose corner the menu keeps. Decided in showPane, showAsk
+// and showWay, with CSS hiding and showing the room's pair per breakpoint as
+// well, the four drifted: two mechanisms for one fact is how they do.
+function chromeFor(screen, desk = splitQuery?.matches === true) {
+  if (screen === 'ask') return { corner: null, panel: false };
+  if (screen === 'card' || screen === 'way') return { corner: 'menu', panel: false };
+  if (screen === 'room' && desk) return { corner: 'menu', panel: true };
+  return { corner: 'back', panel: false };
+}
+
+function paintChrome() {
+  const { corner, panel } = chromeFor(state.screen);
+  const label = backLabel();
+  $('back').hidden = corner !== 'back';
+  $('menu').hidden = corner !== 'menu';
+  $('back').setAttribute('aria-label', label);
+  const own = $('room-back');
+  if (own) {
+    own.hidden = !(panel && state.screen === 'room');
+    own.setAttribute('aria-label', label);
+  }
+}
+
 // What Back reaches, in words, for every control that goes there. The entry
 // underneath is the one Back lands on, and every entry records which screen
 // that is, so the label is read off the entry rather than written once per
@@ -3222,8 +3244,6 @@ function showWay(id, view = null) {
   $('origin').hidden = true;
   $('ask').hidden = true;
   $('sheet').hidden = false;
-  $('back').hidden = true;
-  $('menu').hidden = false;
   $('way').hidden = false;
   closeMenu();
   document.body.classList.remove('asking', 'carding', 'rooming');
@@ -3232,6 +3252,7 @@ function showWay(id, view = null) {
   document.body.classList.add('waying');
   const arrived = state.screen !== 'way';
   state.screen = 'way';
+  paintChrome();
   syncPaneTouch();
   paintWay(selectedId, r);
   markRows();
@@ -3947,6 +3968,9 @@ window.addEventListener('DOMContentLoaded', () => {
     // The root font size can change with the zoom level, and the side panel's
     // width is in rem.
     remPx = 0;
+    // Crossing the desktop breakpoint moves Back between the corner and the
+    // panel without a screen change to re-decide it.
+    paintChrome();
     if (state.screen !== 'ask') sheetHeight();
     // surface() reallocates the backing store on the next frame and the band
     // moves with the height, so a resize that does not reach the loop leaves a

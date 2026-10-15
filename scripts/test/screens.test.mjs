@@ -1307,7 +1307,7 @@ test('the back button on the room screen names the pane back lands on', () => {
   assert.match(APP, /near: 'Back to the nearest buildings'/);
   assert.match(APP, /list: 'Back to the room list'/);
   assert.match(APP, /way: 'Back to the way'/);
-  assert.match(bodyOf('wireRoom'), /\$\('room-back'\)\.setAttribute\('aria-label', backLabel\(\)\)/);
+  assert.match(bodyOf('paintChrome'), /own\.setAttribute\('aria-label', label\)/);
   assert.match(bodyOf('roomHtml'), /id="room-back"/);
   assert.match(bodyOf('wireRoom'), /\$\('room-back'\)\.onclick = \(\) => history\.back\(\)/);
 });
@@ -1540,10 +1540,10 @@ test('the swipe is not the only way to answer the card', () => {
   assert.match(swipe, /toAsk\(\)/);
   assert.match(bodyOf('paintCard'), /Swipe down to start over/);
   // No back arrow either. It was a third piece of chrome on a photograph, and
-  // the corner belongs to the menu now. Decided in showPane and nowhere else:
+  // the corner belongs to the menu now. Decided in chromeFor and nowhere else:
   // a CSS rule hiding it while showPane un-hid it is two mechanisms for one
   // fact, which is how they drift.
-  assert.match(bodyOf('showPane'), /\$\('back'\)\.hidden = name === 'card'/);
+  assert.match(bodyOf('chromeFor'), /screen === 'card' \|\| screen === 'way'\) return \{ corner: 'menu'/);
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.equal(/body\.carding #back \{/.test(css), false, 'the CSS hides #back as well');
 
@@ -1567,14 +1567,18 @@ test('neither screen without a back arrow is a dead end', () => {
   assert.match(bodyOf('openWay'), /const view = \{ v: 'way'/);
   assert.match(bodyOf('openWay'), /history\.pushState\(view/);
 
-  // One corner, two controls, never both, and the menu is on the two screens
-  // the arrow left.
-  const pane = bodyOf('showPane');
-  assert.match(pane, /\$\('back'\)\.hidden = name === 'card'/);
-  assert.match(pane, /\$\('menu'\)\.hidden = name !== 'card' && name !== 'room'/);
-  const way = bodyOf('showWay');
-  assert.match(way, /\$\('back'\)\.hidden = true/);
-  assert.match(way, /\$\('menu'\)\.hidden = false/);
+  // One corner, two controls, never both, decided in one function that every
+  // way onto a screen calls, and re-decided when the breakpoint is crossed.
+  const paint = bodyOf('paintChrome');
+  assert.match(paint, /\$\('back'\)\.hidden = corner !== 'back'/);
+  assert.match(paint, /\$\('menu'\)\.hidden = corner !== 'menu'/);
+  for (const fn of ['showPane', 'showAsk', 'showWay', 'wireRoom']) {
+    assert.match(bodyOf(fn), /paintChrome\(\)/, `${fn} decides its own corner again`);
+    assert.doesNotMatch(bodyOf(fn), /\$\('(back|menu)'\)\.hidden =/, `${fn} decides its own corner again`);
+  }
+  assert.match(APP, /remPx = 0;\n\s*\/\/ Crossing the desktop breakpoint[^\n]*\n[^\n]*\n\s*paintChrome\(\);/);
+  assert.doesNotMatch(readFileSync(join(ROOT, 'index.html'), 'utf8'), /body\.rooming #(back|menu) \{ display/,
+    'the CSS decides the room\'s corner as well');
 
   // A panel that outlives the screen it was opened on is a set of choices about
   // somewhere the reader has left.
@@ -1814,7 +1818,7 @@ test('back names the screen it lands on, at every step of the answer', () => {
   assert.match(APP, /card: 'Back to the card'/);
   assert.match(bodyOf('backLabel'), /BACK_TO\[entry\?\.from\]/);
   assert.match(bodyOf('backLabel'), /entry\?\.v === 'pick'\) return 'Back without picking a building'/);
-  assert.match(bodyOf('showPane'), /\$\('back'\)\.setAttribute\('aria-label', backLabel\(\)\)/);
+  assert.match(bodyOf('paintChrome'), /\$\('back'\)\.setAttribute\('aria-label', label\)/);
   for (const fn of ['showCard', 'showList', 'showNear', 'showPick', 'showBrowse', 'showAbout', 'showRoom']) {
     assert.doesNotMatch(bodyOf(fn), /\$\('back'\)\.setAttribute/, `${fn} writes its own Back label again`);
   }

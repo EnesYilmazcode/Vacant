@@ -527,7 +527,7 @@
      cannot see the card move.
 
      Which of the two corner controls a screen gets is decided once, in
-     showPane(), rather than here as well: this rule used to hide #back on the
+     chromeFor(), rather than here as well: this rule used to hide #back on the
      card while showPane un-hid it, and two mechanisms for one fact is how they
      drift. */
   /* On the two screens the menu owns, it loses its disc and grows to the size of
@@ -542,7 +542,7 @@
     min-width: 60px; min-height: 60px; width: 60px; height: 60px;
     top: calc(var(--safe-t) + 1.1rem);
     /* The column rule below is (1,0,0) and this is (1,1,1), so writing a bare
-       1.1rem here beat it on every window -- and these are the only two screens
+       1.1rem here beat it on every window -- and these are the screens
        the menu appears on, which made that rule dead. Measured at 1900px: the
        hamburger sat at x=17 while the 512px column started at x=694. */
     left: max(1.1rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2 + .5rem));
@@ -555,9 +555,6 @@
     top: calc(var(--safe-t) + 4.6rem);
     left: max(1.1rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2 + .5rem));
   }
-  /* The room keeps the established fixed Back arrow on a phone. Its menu and
-     panel-local Back control are the desktop pair below. */
-  body.rooming #menu { display: none; }
 
   /* The way: the map with the room lit on it, one plate naming the room, and the
      ranking peeked underneath. Enes on the schedule, "the list of other classes
@@ -784,7 +781,6 @@
     margin: 0; padding: .1rem 0 0;
     font-size: 1.05rem; letter-spacing: -.01em;
   }
-  .room-back { display: none; }
   .claim { margin: 0; padding: 0 1.1rem .35rem; font-weight: 650; }
   .claim .sub { display: block; font-weight: 400; color: var(--dim); font-size: .86rem; }
   .facts {
@@ -1041,8 +1037,6 @@
       left: 1.5rem; transform: none;
       width: min(30rem, calc(60vw - 3rem)); max-width: none;
     }
-    body.rooming #back { display: none; }
-    body.rooming #menu { display: flex; }
     #room .room-head {
       position: sticky; top: 0; z-index: 2;
       display: flex; align-items: center; gap: .75rem;
@@ -1145,7 +1139,7 @@
 <button id="back" hidden aria-label="Back to the question">
   <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg>
 </button>
-<!-- The menu, on the two screens that have no back arrow. Enes: "the top left
+<!-- The menu, on the screens whose corner has no back arrow (chromeFor()). Enes: "the top left
      should have the 3 lines thing, and when pressed it should have choices like
      to go back or other stuff". A disclosure and not a menu ROLE: that role
      promises arrow-key navigation between the items, and announcing a keyboard

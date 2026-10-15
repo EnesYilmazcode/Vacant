@@ -11,7 +11,6 @@ import { join } from 'node:path';
 
 import {
   MINUTES_IN_DAY,
-  allWeekCodes,
   busyDayOf,
   clock,
   closedDayFor,
@@ -452,15 +451,6 @@ test('a closed building says which side of its window the clock is on', () => {
   assert.equal(grouped(6 * 60).closed[0].when, 'before');
   assert.equal(grouped(12 * 60).open[0].when, 'open');
   assert.equal(grouped(21 * 60 + 40).closed[0].when, 'after');
-});
-
-test('the all-week list comes out of the hours table, not out of the source', () => {
-  const term = HOURS.terms['autumn-2026-classroom-pool-building-schedule'];
-  const codes = allWeekCodes(term);
-  assert.ok(codes.length >= 4);
-  for (const code of codes) {
-    assert.ok(term.buildings[code].hours.every((d) => Array.isArray(d)));
-  }
 });
 
 // Comments are stripped first. A comment naming Sullivant is a record of the

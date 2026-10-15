@@ -536,8 +536,11 @@
      button two sizes on two consecutive screens reads as two buttons: Enes,
      "in the 3rd picture the hamburger icon like the 3 lines is different, make
      image 3 match image 2". The drop shadow is what the disc was for, and it
-     works over a photograph and a night map alike. */
-  body #menu {
+     works over a photograph and a night map alike.
+     The arrow that takes the same corner on a phone is drawn the same way. As
+     a 44px disc at .6rem it sat 16px off the menu's centre, so going from the
+     card to a room moved the corner control and changed what it was. */
+  body #back, body #menu {
     border: 0; background: none; padding: 0;
     min-width: 60px; min-height: 60px; width: 60px; height: 60px;
     top: calc(var(--safe-t) + 1.1rem);
@@ -547,7 +550,7 @@
        column started at x=694. */
     left: max(1.1rem, env(safe-area-inset-left, 0px), calc(50% - var(--col) / 2 + .5rem));
   }
-  #menu .ico {
+  #back .ico, #menu .ico {
     width: 40px; height: 40px; stroke-width: 2.1;
     filter: drop-shadow(0 1px 3px rgba(0,0,0,.9)) drop-shadow(0 0 10px rgba(0,0,0,.55));
   }
@@ -955,9 +958,9 @@
     .b-row:hover, .pick-row:hover { background: rgba(255,255,255,.05); }
     .bar-btn:hover { background: var(--card-hi); border-color: var(--line-hi); }
     .dstep:hover { color: var(--fg); }
-    /* The arrow is already a translucent pill over the map. Hovering makes it
-       opaque rather than lighter, so it does not read as a second state. */
-    #back:hover { background: var(--bg); border-color: var(--line-hi); }
+    /* The arrow is a bare glyph like the menu beside it, so hovering dims the
+       glyph rather than growing a disc it does not otherwise have. */
+    #back:hover .ico, #menu:hover .ico { opacity: .75; }
   }
 
   /* --- the display cutout, in landscape --- */
@@ -1035,7 +1038,7 @@
     }
     body:is(.has-bar) #sheet { bottom: calc(var(--bar-h, 0px) + 1rem); }
     #sheet .handle { display: none; }
-    body #menu { left: 1.5rem; }
+    body #back, body #menu { left: 1.5rem; }
     body .m-panel { left: 1.5rem; }
     #way-plate {
       left: 1.5rem; transform: none;

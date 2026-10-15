@@ -1615,7 +1615,11 @@ test('neither screen without a back arrow is a dead end', () => {
   assert.match(bodyOf('paintChrome'), /\$\('sheet-head'\)\.hidden = !panel \|\| room/);
   assert.match(css, /<div id="sheet-head" hidden>\s*<button type="button" class="bar-btn room-back" id="sheet-back">/);
   assert.match(APP, /\$\('sheet-back'\)\.onclick = \(\) => history\.back\(\)/);
-  assert.match(css, /body #menu \{ left: 1\.5rem; \}/);
+  assert.match(css, /body #back, body #menu \{ left: 1\.5rem; \}/);
+  // On a phone the arrow takes the menu's corner, size and drawing, so the
+  // corner control stays put when one screen hands it to the other.
+  assert.match(css, /body #back, body #menu \{\s*border: 0; background: none; padding: 0;\s*min-width: 60px;/);
+  assert.match(css, /#back \.ico, #menu \.ico \{\s*width: 40px; height: 40px;/);
   assert.doesNotMatch(css, /body\.carding #menu \{[^}]*calc\(50% - 36rem/,
     'the hamburger jumps from the viewport corner to the centred card edge');
   assert.match(css, /<button id="menu"[^>]*aria-expanded="false"[^>]*aria-controls="menu-pop"/s);

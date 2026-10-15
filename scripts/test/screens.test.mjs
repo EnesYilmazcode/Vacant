@@ -866,8 +866,8 @@ test('a room deep link keeps every app Back press inside Vacant', () => {
   // the second visible Back button sends the reader to that external page.
   const open = bodyOf('openWantedRoom');
   const ask = open.indexOf("history.replaceState({ v: 'ask' }");
-  const card = open.indexOf("history.pushState({ v: 'card' }");
-  const near = open.indexOf("history.pushState({ v: 'near' }");
+  const card = open.indexOf("history.pushState({ v: 'card', from: 'ask' }");
+  const near = open.indexOf("history.pushState({ v: 'near', from: 'ask' }");
   const room = open.indexOf('openRoom(wanted)');
   assert.ok(ask >= 0, 'the direct link has no question entry underneath it');
   assert.ok(card > ask && near > ask, 'a landing screen is not stacked over the question');
@@ -1302,15 +1302,28 @@ test('the back button on the room screen names the pane back lands on', () => {
   const open = bodyOf('openRoom');
   assert.match(open, /pushState\(\{[^}]*from: state\.screen/);
 
-  // The pairing, not the presence. Every string is in this function either way,
-  // so separate matches all hold with the arms swapped, which is the reported
-  // defect back again. Three arms now: the way opens rooms too, and it is not
-  // the room list.
-  const label = bodyOf('roomBackLabel');
-  assert.match(label, /from === 'near'\s*\?\s*'Back to the nearest buildings'/);
-  assert.match(label, /from === 'way'\s*\?\s*'Back to the way'\s*:\s*'Back to the room list'/);
+  // The pairing, not the presence: a table keyed by the screen underneath, so
+  // the near and list arms cannot be swapped back the way they once were.
+  assert.match(APP, /near: 'Back to the nearest buildings'/);
+  assert.match(APP, /list: 'Back to the room list'/);
+  assert.match(APP, /way: 'Back to the way'/);
+  assert.match(bodyOf('paintChrome'), /own\.setAttribute\('aria-label', label\)/);
   assert.match(bodyOf('roomHtml'), /id="room-back"/);
   assert.match(bodyOf('wireRoom'), /\$\('room-back'\)\.onclick = \(\) => history\.back\(\)/);
+});
+
+test('every history entry says which screen it was opened from', () => {
+  // Back lands on the entry underneath, and every label, guard and menu choice
+  // that needs to know where that is reads it off this entry. An entry without
+  // it is a screen whose way out has to be guessed.
+  for (const fn of ['openRoom', 'openList', 'openPick', 'openBrowse', 'openAbout', 'openNear', 'openWay']) {
+    assert.match(bodyOf(fn), /from: state\.screen/, `${fn} pushes an entry with no from`);
+  }
+  // From the question, the two screens a duration opens.
+  assert.match(bodyOf('choose'), /\{ v: 'near', from: 'ask' \}/);
+  assert.match(bodyOf('choose'), /\{ v: 'card', from: 'ask' \}/);
+  // The picker replaces itself, and keeps saying where it was opened from.
+  assert.match(bodyOf('commitPickedOrigin'), /replaceState\(\{ v: view, from: history\.state\?\.from \}/);
 });
 
 test('the desktop room header keeps its identity and aligned Back control while the schedule scrolls', () => {
@@ -1423,7 +1436,7 @@ test('a duration opens one room, not the ranking', () => {
   const choose = bodyOf('choose');
   assert.match(choose, /showCard\(\)/);
   assert.doesNotMatch(choose, /showList\(\)/, 'a duration still opens the list');
-  assert.match(choose, /history\.pushState\(\{ v: 'card' \}/);
+  assert.match(choose, /history\.pushState\(\{ v: 'card', from: 'ask' \}/);
   // And the card is a pane of the same sheet, so it inherits the drag, the
   // dismiss and the covered map rather than reimplementing them.
   assert.match(APP, /const PANES = \['card', 'list'/);
@@ -1527,10 +1540,10 @@ test('the swipe is not the only way to answer the card', () => {
   assert.match(swipe, /toAsk\(\)/);
   assert.match(bodyOf('paintCard'), /Swipe down to start over/);
   // No back arrow either. It was a third piece of chrome on a photograph, and
-  // the corner belongs to the menu now. Decided in showPane and nowhere else:
+  // the corner belongs to the menu now. Decided in chromeFor and nowhere else:
   // a CSS rule hiding it while showPane un-hid it is two mechanisms for one
   // fact, which is how they drift.
-  assert.match(bodyOf('showPane'), /\$\('back'\)\.hidden = name === 'card'/);
+  assert.match(bodyOf('chromeFor'), /screen === 'card'\) return \{ corner: 'menu', panel: false \}/);
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.equal(/body\.carding #back \{/.test(css), false, 'the CSS hides #back as well');
 
@@ -1548,20 +1561,43 @@ test('neither screen without a back arrow is a dead end', () => {
   // is no browser chrome behind them either, so each needs its own way out.
   // The card has the downward throw and the way has the sheet's grip, and both
   // have the menu, whose first item is the one Enes asked for by name.
-  assert.match(bodyOf('attachMenu'), /act\('m-back', \(\) => history\.back\(\)\)/);
+  assert.match(bodyOf('attachMenu'), /act\('m-back', \(\) => \{[\s\S]*?history\.back\(\);\n  \}\);/);
+  // And a choice that moves the screen moves focus with it, rather than to a
+  // menu button that screen hides.
+  assert.match(bodyOf('attachMenu'), /if \(state\.screen !== from\) landFocus\(\);/);
+  assert.match(bodyOf('attachMenu'), /addEventListener\('popstate', landFocus, \{ once: true \}\)/);
+  // A choice naming the screen underneath goes back to it, not a copy on top.
+  const choices = bodyOf('attachMenu');
+  assert.match(choices, /if \(history\.state\?\.from !== screen\) return open\(\);/);
+  for (const [id, screen, open] of [['m-list', 'list', 'openList'], ['m-browse', 'browse', 'openBrowse'], ['m-pick', 'pick', 'openPick'], ['m-about', 'about', 'openAbout']]) {
+    assert.match(choices, new RegExp(`act\\('${id}', reach\\('${screen}', ${open}\\)\\)`), `${id} stacks a copy again`);
+  }
   assert.match(APP, /attachMenu\(\);/);
   // Which means the way needs a history entry of its own for back to land on.
   assert.match(bodyOf('openWay'), /const view = \{ v: 'way'/);
   assert.match(bodyOf('openWay'), /history\.pushState\(view/);
 
-  // One corner, two controls, never both, and the menu is on the two screens
-  // the arrow left.
-  const pane = bodyOf('showPane');
-  assert.match(pane, /\$\('back'\)\.hidden = name === 'card'/);
-  assert.match(pane, /\$\('menu'\)\.hidden = name !== 'card' && name !== 'room'/);
-  const way = bodyOf('showWay');
-  assert.match(way, /\$\('back'\)\.hidden = true/);
-  assert.match(way, /\$\('menu'\)\.hidden = false/);
+  // The way's Back is on its plate, not only in the menu, and the menu's own
+  // Back names where it goes and stands down wherever another Back shows.
+  assert.match(bodyOf('chromeFor'), /screen === 'way'\) return \{ corner: 'menu', panel: true \}/);
+  assert.match(bodyOf('paintChrome'), /\$\('way-back'\)\.hidden = !\(panel && way\)/);
+  assert.match(bodyOf('paintChrome'), /\$\('m-back'\)\.hidden = panel \|\| corner === 'back'/);
+  assert.match(bodyOf('paintChrome'), /\$\('m-back'\)\.textContent = label/);
+  assert.match(APP, /\$\('way-back'\)\.onclick = \(\) => history\.back\(\)/);
+  assert.match(readFileSync(join(ROOT, 'index.html'), 'utf8'), /#way-back \{[^}]*pointer-events: auto/);
+
+  // One corner, two controls, never both, decided in one function that every
+  // way onto a screen calls, and re-decided when the breakpoint is crossed.
+  const paint = bodyOf('paintChrome');
+  assert.match(paint, /\$\('back'\)\.hidden = corner !== 'back'/);
+  assert.match(paint, /\$\('menu'\)\.hidden = corner !== 'menu'/);
+  for (const fn of ['showPane', 'showAsk', 'showWay', 'wireRoom']) {
+    assert.match(bodyOf(fn), /paintChrome\(\)/, `${fn} decides its own corner again`);
+    assert.doesNotMatch(bodyOf(fn), /\$\('(back|menu)'\)\.hidden =/, `${fn} decides its own corner again`);
+  }
+  assert.match(APP, /remPx = 0;\n\s*\/\/ Crossing the desktop breakpoint[^\n]*\n[^\n]*\n\s*paintChrome\(\);/);
+  assert.doesNotMatch(readFileSync(join(ROOT, 'index.html'), 'utf8'), /body\.rooming #(back|menu) \{ display/,
+    'the CSS decides the room\'s corner as well');
 
   // A panel that outlives the screen it was opened on is a set of choices about
   // somewhere the reader has left.
@@ -1572,11 +1608,18 @@ test('neither screen without a back arrow is a dead end', () => {
   // A disclosure, not a menu: role="menu" promises arrow keys move between the
   // items, and the app does not implement that.
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
-  // The desktop hamburger has a 60px target and Back has a 44px target. Back
-  // needs half that 16px difference on both axes for the two glyph centres to
-  // occupy the same corner when one screen replaces the other.
-  assert.match(css, /#back \{\s*left:\s*calc\(1\.5rem \+ 8px\);\s*top:\s*calc\(var\(--safe-t\) \+ 1\.1rem \+ 8px\);\s*\}/);
-  assert.match(css, /#back, #menu, body\.carding #menu, body\.waying #menu, body\.rooming #menu \{ left: 1\.5rem; \}/);
+  // On a desktop the corner never changes hands: it keeps the menu on every
+  // screen, so a second click on it cannot land on Back, and every pane's Back
+  // is in the panel, beside what it leaves.
+  assert.match(bodyOf('chromeFor'), /if \(desk\) return \{ corner: 'menu', panel: true \}/);
+  assert.match(bodyOf('paintChrome'), /\$\('sheet-head'\)\.hidden = !panel \|\| room/);
+  assert.match(css, /<div id="sheet-head" hidden>\s*<button type="button" class="bar-btn room-back" id="sheet-back">/);
+  assert.match(APP, /\$\('sheet-back'\)\.onclick = \(\) => history\.back\(\)/);
+  assert.match(css, /body #back, body #menu \{ left: 1\.5rem; \}/);
+  // On a phone the arrow takes the menu's corner, size and drawing, so the
+  // corner control stays put when one screen hands it to the other.
+  assert.match(css, /body #back, body #menu \{\s*border: 0; background: none; padding: 0;\s*min-width: 60px;/);
+  assert.match(css, /#back \.ico, #menu \.ico \{\s*width: 40px; height: 40px;/);
   assert.doesNotMatch(css, /body\.carding #menu \{[^}]*calc\(50% - 36rem/,
     'the hamburger jumps from the viewport corner to the centred card edge');
   assert.match(css, /<button id="menu"[^>]*aria-expanded="false"[^>]*aria-controls="menu-pop"/s);
@@ -1672,7 +1715,10 @@ test('checking again on the way does not switch the map off under the plate', ()
   // Back to the same room if it survived the re-rank, and to the card if a
   // class has taken it.
   assert.match(refresh, /state\.results\.some\(\(r\) => r\.id === held\)\) showWay\(held\)/);
-  assert.match(refresh, /history\.replaceState\(\{ v: 'card' \}/);
+  // The card the way was taken from is the entry underneath, so it steps back
+  // onto it rather than rewriting the way into a second card on top of it.
+  assert.match(refresh, /else if \(history\.state\?\.from === 'card'\) \{[^}]*history\.back\(\);/);
+  assert.match(refresh, /history\.replaceState\(\{ v: 'card', from: history\.state\?\.from \}/);
 });
 
 test('the menu holds the keyboard as well as the screen', () => {
@@ -1795,18 +1841,19 @@ test('back names the screen it lands on, at every step of the answer', () => {
   // Its accessible name has to name the screen it reaches rather than reading
   // "Back", and there are three steps now: the card is what a duration opens,
   // the list is one tap behind the card, and a room is behind either.
-  assert.match(
-    bodyOf('showCard'),
-    /\$\('back'\)\.setAttribute\('aria-label', 'Back to the question'\)/,
-  );
-  // The list is reached from the card and, through the menu, from the way, so
-  // its label is a pair rather than a string.
+  // One label for every screen, read off the entry Back lands on, and set
+  // where the screen is shown rather than once per screen.
+  assert.match(APP, /ask: 'Back to the question'/);
+  assert.match(APP, /card: 'Back to the card'/);
+  assert.match(bodyOf('backLabel'), /BACK_TO\[entry\?\.from\]/);
+  assert.match(bodyOf('backLabel'), /entry\?\.v === 'pick'\) return 'Back without picking a building'/);
+  assert.match(bodyOf('paintChrome'), /\$\('back'\)\.setAttribute\('aria-label', label\)/);
+  for (const fn of ['showCard', 'showList', 'showNear', 'showPick', 'showBrowse', 'showAbout', 'showRoom']) {
+    assert.doesNotMatch(bodyOf(fn), /\$\('back'\)\.setAttribute/, `${fn} writes its own Back label again`);
+  }
+  // The list is reached from the card and, through the menu, from the way.
   assert.match(bodyOf('openList'), /from: state\.screen/);
   assert.match(bodyOf('openList'), /pushState\(view/);
-  assert.match(
-    bodyOf('showList'),
-    /from === 'way'\s*\?\s*'Back to the way'\s*:\s*'Back to the card'/,
-  );
   const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.match(html, /id="back"[^>]*aria-label="Back to the question"/);
   // The four .opt buttons are what back lands on, and they are the four the

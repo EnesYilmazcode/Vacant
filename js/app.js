@@ -282,6 +282,20 @@ function focusHeading(el) {
   el.focus({ preventScroll: true, focusVisible: false });
 }
 
+// The first thing on the screen showing now, for focus to land on when it was
+// reached from somewhere that took focus with it.
+function landFocus() {
+  const s = state.screen;
+  const el =
+    s === 'ask' ? document.querySelector('#ask .opt[aria-pressed="true"]')
+    : s === 'way' ? $('way-name')
+    : s === 'card' ? $('card-h') ?? $('c-top')
+    : s === 'list' ? $('list-h') ?? $('list').querySelector('.row.on, .row')
+    : $(`${s}-h`);
+  if (el?.matches('h1, h2')) focusHeading(el);
+  else el?.focus({ preventScroll: true });
+}
+
 // ---------------------------------------------------------------- rendering
 
 let flyoverStart = 0;
@@ -574,21 +588,38 @@ function attachMenu() {
     show(false);
   });
 
+  // Closing hands focus back to the menu button, and a choice that changes the
+  // screen then hides that button on a phone, which dropped a keyboard or
+  // screen reader user on the body. Where the choice lands, focus lands.
   const act = (id, go) => {
     $(id).onclick = () => {
+      const from = state.screen;
       show(false);
       go();
+      if (state.screen !== from) landFocus();
     };
   };
-  // Back first, because it is the one Enes named and the one both screens lack.
-  // history.back() rather than a screen: from the card it is the question, from
-  // the way it is the card that was taken, and both are the entry underneath.
-  act('m-back', () => history.back());
-  act('m-list', () => openList());
-  act('m-browse', () => openBrowse());
-  act('m-pick', () => openPick());
+  // Back first, because it is the one Enes named. history.back() rather than a
+  // screen: from the card it is the question, and that is the entry underneath.
+  // It arrives a task later, through popstate, so focus waits for it.
+  act('m-back', () => {
+    window.addEventListener('popstate', landFocus, { once: true });
+    history.back();
+  });
+  // A choice naming the screen directly underneath goes back to it rather than
+  // stacking a copy on top. On a desktop room opened from the list, See all
+  // rooms pushed a second list, and list, room, list, room was a loop Back had
+  // to walk one step at a time. Going back also keeps the row and the scroll.
+  const reach = (screen, open) => () => {
+    if (history.state?.from !== screen) return open();
+    window.addEventListener('popstate', landFocus, { once: true });
+    history.back();
+  };
+  act('m-list', reach('list', openList));
+  act('m-browse', reach('browse', openBrowse));
+  act('m-pick', reach('pick', openPick));
   act('m-recheck', () => refresh());
-  act('m-about', () => openAbout());
+  act('m-about', reach('about', openAbout));
 }
 
 function attachSheet() {
@@ -2132,9 +2163,9 @@ function commitPickedOrigin(origin) {
   state.query = '';
   $('find-q').value = '';
   // The picker replaces itself in history rather than stacking, so back still
-  // goes wherever the picker was opened from.
+  // goes wherever the picker was opened from, and the entry keeps saying where.
   const view = state.scheduled && state.rankable ? 'list' : 'near';
-  history.replaceState({ v: view }, '', cleanUrl());
+  history.replaceState({ v: view, from: history.state?.from }, '', cleanUrl());
   if (view === 'list') {
     showList();
     answer();
@@ -2652,7 +2683,7 @@ function roomHtml(id) {
       : '';
 
   return `<div class="room-head">
-      <button type="button" class="bar-btn room-back" id="room-back">
+      <button type="button" class="bar-btn room-back" id="room-back" hidden>
         <svg class="ico ico-mirror" aria-hidden="true"><use href="#i-back"/></svg>
       </button>
       <h2 id="room-h" tabindex="-1">${esc(bname)} ${esc(room.n ?? '')}</h2>
@@ -2942,15 +2973,11 @@ function showPane(name) {
   $('origin').hidden = !originBarOn(name);
   $('ask').hidden = true;
   $('sheet').hidden = false;
-  // The card and desktop room screen keep the menu over the map. The room's
-  // back arrow lives in its panel on desktop; CSS keeps this global arrow on
-  // mobile, where the room still fills the sheet.
-  $('back').hidden = name === 'card';
-  $('menu').hidden = name !== 'card' && name !== 'room';
   closeMenu();
   document.body.classList.remove('asking');
   const arrived = state.screen !== name;
   state.screen = name;
+  paintChrome();
   syncPaneTouch();
   // Arriving re-composes the camera for the strip THIS screen leaves. Without
   // it the view stays fitted for the screen behind: leaving a room slid the walk
@@ -2969,13 +2996,12 @@ function reframe() {
 
 function showAsk() {
   state.screen = 'ask';
+  paintChrome();
   $('way').hidden = true;
   $('ask').hidden = false;
   document.body.classList.add('asking');
   document.body.classList.remove('carding', 'rooming', 'waying');
   $('sheet').hidden = true;
-  $('back').hidden = true;
-  $('menu').hidden = true;
   closeMenu();
   for (const id of PANES) $(id).hidden = id !== 'list';
   state.settled = false;
@@ -3006,7 +3032,6 @@ function showCard() {
   // until you have said yes to a room.
   state.selected = null;
   showPane('card');
-  $('back').setAttribute('aria-label', 'Back to the question');
   $('card').scrollTop = 0;
   paintCard();
   sheetHeight();
@@ -3022,12 +3047,6 @@ function showList(view = null) {
   state.selected = remembered;
   state.listScroll = Number.isFinite(view?.scroll) ? Math.max(0, view.scroll) : 0;
   showPane('list');
-  // openList() pushes over whatever was showing, and the menu can open the list
-  // from the way as well as from the card.
-  $('back').setAttribute(
-    'aria-label',
-    history.state?.from === 'way' ? 'Back to the way' : 'Back to the card',
-  );
   $('list').scrollTop = state.listScroll;
   markRows();
   sheetHeight();
@@ -3036,7 +3055,6 @@ function showList(view = null) {
 function showNear() {
   state.listScroll = 0;
   showPane('near');
-  $('back').setAttribute('aria-label', 'Back to the question');
   paintNear(nearReason());
   $('near').scrollTop = 0;
   sheetHeight();
@@ -3048,7 +3066,6 @@ function showPick() {
   loadShorts();
   state.pickPoint = null;
   showPane('pick');
-  $('back').setAttribute('aria-label', 'Back without picking a building');
   paintPick();
   $('pick').scrollTop = 0;
   setSheet(restNow(), true);
@@ -3059,7 +3076,6 @@ function showBrowse(view = null) {
   state.browseBuilding = view?.building ?? null;
   state.browseQuery = view?.query ?? state.browseQuery;
   showPane('browse');
-  $('back').setAttribute('aria-label', 'Back');
   paintBrowse();
   $('browse').scrollTop = Number.isFinite(view?.scroll) ? Math.max(0, view.scroll) : 0;
   sheetHeight();
@@ -3067,7 +3083,6 @@ function showBrowse(view = null) {
 
 function showAbout() {
   showPane('about');
-  $('back').setAttribute('aria-label', 'Back');
   setSheet(restNow(), true);
   paintAbout();
 }
@@ -3078,8 +3093,10 @@ function showAbout() {
 // heading and re-snaps the sheet to rest, and a sheet that jumps back to rest
 // under a reader is worse than a stale number.
 function wireRoom(id) {
-  $('room-back').setAttribute('aria-label', roomBackLabel());
   $('room-back').onclick = () => history.back();
+  // A repaint writes the button back unhidden, and only this knows whether the
+  // room shows it.
+  paintChrome();
   attachBearing(id);
   // A week either way, and no clamp. Past the term's own bounds the grid comes
   // back empty and the sentence over it says the schedule does not reach there.
@@ -3157,11 +3174,6 @@ function showRoom(id, { keepDay = false } = {}) {
   // mechanism: #list keeps its scrollTop because it was never destroyed.
   showPane('room');
   $('room').scrollTop = 0;
-  // Back pops to the entry underneath this one, and openRoom wrote down which
-  // screen that is. Outside scheduled hours the room screen opens over the
-  // buildings screen, and the label promised a room list that is not there.
-  $('back').setAttribute('aria-label', roomBackLabel());
-
   // frame() below runs only when the room is one of the ranked rows. Opened
   // from a link or out of hours it is not, and the footprint still has to light.
   frames.wake();
@@ -3179,14 +3191,70 @@ function showRoom(id, { keepDay = false } = {}) {
   }
 }
 
-function roomBackLabel() {
-  return history.state?.from === 'near'
-    ? 'Back to the nearest buildings'
-    : history.state?.from === 'browse'
-      ? 'Back to browse buildings'
-      : history.state?.from === 'way'
-        ? 'Back to the way'
-        : 'Back to the room list';
+// Which controls lead out of a screen, decided here and nowhere else. There are
+// two places a way out can sit: the corner over the map, which holds the menu
+// or the Back arrow and never both, and the panel, which holds a Back of its
+// own on the screens whose corner the menu keeps. Decided in showPane, showAsk
+// and showWay, with CSS hiding and showing the room's pair per breakpoint as
+// well, the four drifted: two mechanisms for one fact is how they do.
+function chromeFor(screen, desk = splitQuery?.matches === true) {
+  if (screen === 'ask') return { corner: null, panel: false };
+  if (screen === 'card') return { corner: 'menu', panel: false };
+  // The way keeps the menu, for the list, the picker and Check again, and its
+  // Back is on the plate naming the room it leaves.
+  if (screen === 'way') return { corner: 'menu', panel: true };
+  // On a desktop the corner is over the map and the panel is across the
+  // window from it, so the corner keeps the menu on every screen and Back goes
+  // in the panel, beside what it leaves. On a phone the sheet is under the
+  // corner, and a screen that is a step down from another gets the arrow.
+  if (desk) return { corner: 'menu', panel: true };
+  return { corner: 'back', panel: false };
+}
+
+function paintChrome() {
+  const { corner, panel } = chromeFor(state.screen);
+  const label = backLabel();
+  $('back').hidden = corner !== 'back';
+  $('menu').hidden = corner !== 'menu';
+  $('back').setAttribute('aria-label', label);
+  // The room has its own, in its sticky header beside the room's name, and the
+  // way has its own on its plate.
+  const room = state.screen === 'room';
+  const way = state.screen === 'way';
+  $('sheet-head').hidden = !panel || room || way;
+  $('sheet-back').setAttribute('aria-label', label);
+  $('way-back').hidden = !(panel && way);
+  $('way-back').setAttribute('aria-label', label);
+  // The menu's Back is for the screens with no other, and names where it goes
+  // like every other Back does.
+  $('m-back').hidden = panel || corner === 'back';
+  $('m-back').textContent = label;
+  const own = $('room-back');
+  if (own) {
+    own.hidden = !(panel && room);
+    own.setAttribute('aria-label', label);
+  }
+}
+
+// What Back reaches, in words, for every control that goes there. The entry
+// underneath is the one Back lands on, and every entry records which screen
+// that is, so the label is read off the entry rather than written once per
+// screen: written per screen, the list said "Back to the card" when the menu
+// had opened it from a room, and a picked origin said it over the way.
+const BACK_TO = {
+  ask: 'Back to the question',
+  card: 'Back to the card',
+  list: 'Back to the room list',
+  way: 'Back to the way',
+  room: 'Back to the room',
+  near: 'Back to the nearest buildings',
+  browse: 'Back to browse buildings',
+  about: 'Back to what Vacant knows',
+};
+
+function backLabel(entry = history.state) {
+  if (entry?.v === 'pick') return 'Back without picking a building';
+  return BACK_TO[entry?.from] ?? 'Back';
 }
 
 // Where the room is: the map with the footprint lit, an arrow to it, one plate
@@ -3226,8 +3294,6 @@ function showWay(id, view = null) {
   $('origin').hidden = true;
   $('ask').hidden = true;
   $('sheet').hidden = false;
-  $('back').hidden = true;
-  $('menu').hidden = false;
   $('way').hidden = false;
   closeMenu();
   document.body.classList.remove('asking', 'carding', 'rooming');
@@ -3236,6 +3302,7 @@ function showWay(id, view = null) {
   document.body.classList.add('waying');
   const arrived = state.screen !== 'way';
   state.screen = 'way';
+  paintChrome();
   syncPaneTouch();
   paintWay(selectedId, r);
   markRows();
@@ -3292,7 +3359,7 @@ function paintWay(id, r) {
 // dismiss travel is the sheet's own, unchanged: it calls toAsk(), which is
 // history.back(), and from here that is one step.
 function openWay(id) {
-  const view = { v: 'way', room: id, selected: id, scroll: $('list').scrollTop };
+  const view = { v: 'way', from: state.screen, room: id, selected: id, scroll: $('list').scrollTop };
   history.pushState(view, '', `?room=${encodeURIComponent(id)}`);
   showWay(id, view);
 }
@@ -3314,12 +3381,12 @@ function choose(min) {
   if (!state.rankable) return;
   if (!state.scheduled) {
     if (state.screen !== 'near') {
-      history.pushState({ v: 'near' }, '', cleanUrl());
+      history.pushState({ v: 'near', from: 'ask' }, '', cleanUrl());
       showNear();
     }
     return;
   }
-  if (state.screen === 'ask') history.pushState({ v: 'card' }, '', cleanUrl());
+  if (state.screen === 'ask') history.pushState({ v: 'card', from: 'ask' }, '', cleanUrl());
   // Ranked BEFORE the screen is shown. The other way round, paintCard() ran once
   // against the previous answer -- on the first duration of a session that is no
   // rows at all, so the reader got "That is all of them. You went through 0
@@ -3379,7 +3446,7 @@ function openList() {
 }
 
 function openPick() {
-  history.pushState({ v: 'pick' }, '', cleanUrl());
+  history.pushState({ v: 'pick', from: state.screen }, '', cleanUrl());
   showPick();
 }
 
@@ -3387,18 +3454,18 @@ function openBrowse() {
   state.browseBuilding = null;
   state.browseQuery = '';
   state.selected = null;
-  const view = { v: 'browse', building: null, query: '', scroll: 0 };
+  const view = { v: 'browse', from: state.screen, building: null, query: '', scroll: 0 };
   history.pushState(view, '', cleanUrl());
   showBrowse(view);
 }
 
 function openAbout() {
-  history.pushState({ v: 'about' }, '', cleanUrl());
+  history.pushState({ v: 'about', from: state.screen }, '', cleanUrl());
   showAbout();
 }
 
 function openNear() {
-  history.pushState({ v: 'near' }, '', cleanUrl());
+  history.pushState({ v: 'near', from: state.screen }, '', cleanUrl());
   showNear();
 }
 
@@ -3417,12 +3484,12 @@ function openWantedRoom() {
   // without the app's own controls sending someone back to the referring site.
   history.replaceState({ v: 'ask' }, '', cleanUrl());
   if (state.scheduled) {
+    history.pushState({ v: 'card', from: 'ask' }, '', cleanUrl());
     showCard();
     answer();
-    history.pushState({ v: 'card' }, '', cleanUrl());
   } else {
+    history.pushState({ v: 'near', from: 'ask' }, '', cleanUrl());
     showNear();
-    history.pushState({ v: 'near' }, '', cleanUrl());
   }
   openRoom(wanted);
   return true;
@@ -3464,8 +3531,13 @@ function refresh() {
   answer();
   if (!held) return;
   if (state.results.some((r) => r.id === held)) showWay(held);
-  else {
-    history.replaceState({ v: 'card' }, '', cleanUrl());
+  else if (history.state?.from === 'card') {
+    // The card is already the entry underneath. Rewriting the way's own entry
+    // into a second card left two in a row, and the next Back looked like it
+    // did nothing. popstate paints the card answer() has just rebuilt.
+    history.back();
+  } else {
+    history.replaceState({ v: 'card', from: history.state?.from }, '', cleanUrl());
     showCard();
   }
 }
@@ -3909,6 +3981,8 @@ window.addEventListener('DOMContentLoaded', () => {
     b.onclick = () => choose(b.dataset.min);
   }
   $('back').onclick = () => history.back();
+  $('sheet-back').onclick = () => history.back();
+  $('way-back').onclick = () => history.back();
   $('gate-go').onclick = () => openNear();
   $('ask-pick').onclick = () => openPick();
   $('note-pick').onclick = () => openPick();
@@ -3951,6 +4025,9 @@ window.addEventListener('DOMContentLoaded', () => {
     // The root font size can change with the zoom level, and the side panel's
     // width is in rem.
     remPx = 0;
+    // Crossing the desktop breakpoint moves Back between the corner and the
+    // panel without a screen change to re-decide it.
+    paintChrome();
     if (state.screen !== 'ask') sheetHeight();
     // surface() reallocates the backing store on the next frame and the band
     // moves with the height, so a resize that does not reach the loop leaves a

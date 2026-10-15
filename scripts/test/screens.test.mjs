@@ -1302,13 +1302,12 @@ test('the back button on the room screen names the pane back lands on', () => {
   const open = bodyOf('openRoom');
   assert.match(open, /pushState\(\{[^}]*from: state\.screen/);
 
-  // The pairing, not the presence. Every string is in this function either way,
-  // so separate matches all hold with the arms swapped, which is the reported
-  // defect back again. Three arms now: the way opens rooms too, and it is not
-  // the room list.
-  const label = bodyOf('roomBackLabel');
-  assert.match(label, /from === 'near'\s*\?\s*'Back to the nearest buildings'/);
-  assert.match(label, /from === 'way'\s*\?\s*'Back to the way'\s*:\s*'Back to the room list'/);
+  // The pairing, not the presence: a table keyed by the screen underneath, so
+  // the near and list arms cannot be swapped back the way they once were.
+  assert.match(APP, /near: 'Back to the nearest buildings'/);
+  assert.match(APP, /list: 'Back to the room list'/);
+  assert.match(APP, /way: 'Back to the way'/);
+  assert.match(bodyOf('wireRoom'), /\$\('room-back'\)\.setAttribute\('aria-label', backLabel\(\)\)/);
   assert.match(bodyOf('roomHtml'), /id="room-back"/);
   assert.match(bodyOf('wireRoom'), /\$\('room-back'\)\.onclick = \(\) => history\.back\(\)/);
 });
@@ -1809,18 +1808,19 @@ test('back names the screen it lands on, at every step of the answer', () => {
   // Its accessible name has to name the screen it reaches rather than reading
   // "Back", and there are three steps now: the card is what a duration opens,
   // the list is one tap behind the card, and a room is behind either.
-  assert.match(
-    bodyOf('showCard'),
-    /\$\('back'\)\.setAttribute\('aria-label', 'Back to the question'\)/,
-  );
-  // The list is reached from the card and, through the menu, from the way, so
-  // its label is a pair rather than a string.
+  // One label for every screen, read off the entry Back lands on, and set
+  // where the screen is shown rather than once per screen.
+  assert.match(APP, /ask: 'Back to the question'/);
+  assert.match(APP, /card: 'Back to the card'/);
+  assert.match(bodyOf('backLabel'), /BACK_TO\[entry\?\.from\]/);
+  assert.match(bodyOf('backLabel'), /entry\?\.v === 'pick'\) return 'Back without picking a building'/);
+  assert.match(bodyOf('showPane'), /\$\('back'\)\.setAttribute\('aria-label', backLabel\(\)\)/);
+  for (const fn of ['showCard', 'showList', 'showNear', 'showPick', 'showBrowse', 'showAbout', 'showRoom']) {
+    assert.doesNotMatch(bodyOf(fn), /\$\('back'\)\.setAttribute/, `${fn} writes its own Back label again`);
+  }
+  // The list is reached from the card and, through the menu, from the way.
   assert.match(bodyOf('openList'), /from: state\.screen/);
   assert.match(bodyOf('openList'), /pushState\(view/);
-  assert.match(
-    bodyOf('showList'),
-    /from === 'way'\s*\?\s*'Back to the way'\s*:\s*'Back to the card'/,
-  );
   const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.match(html, /id="back"[^>]*aria-label="Back to the question"/);
   // The four .opt buttons are what back lands on, and they are the four the

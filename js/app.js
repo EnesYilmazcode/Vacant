@@ -2947,6 +2947,7 @@ function showPane(name) {
   // mobile, where the room still fills the sheet.
   $('back').hidden = name === 'card';
   $('menu').hidden = name !== 'card' && name !== 'room';
+  $('back').setAttribute('aria-label', backLabel());
   closeMenu();
   document.body.classList.remove('asking');
   const arrived = state.screen !== name;
@@ -3006,7 +3007,6 @@ function showCard() {
   // until you have said yes to a room.
   state.selected = null;
   showPane('card');
-  $('back').setAttribute('aria-label', 'Back to the question');
   $('card').scrollTop = 0;
   paintCard();
   sheetHeight();
@@ -3022,12 +3022,6 @@ function showList(view = null) {
   state.selected = remembered;
   state.listScroll = Number.isFinite(view?.scroll) ? Math.max(0, view.scroll) : 0;
   showPane('list');
-  // openList() pushes over whatever was showing, and the menu can open the list
-  // from the way as well as from the card.
-  $('back').setAttribute(
-    'aria-label',
-    history.state?.from === 'way' ? 'Back to the way' : 'Back to the card',
-  );
   $('list').scrollTop = state.listScroll;
   markRows();
   sheetHeight();
@@ -3036,7 +3030,6 @@ function showList(view = null) {
 function showNear() {
   state.listScroll = 0;
   showPane('near');
-  $('back').setAttribute('aria-label', 'Back to the question');
   paintNear(nearReason());
   $('near').scrollTop = 0;
   sheetHeight();
@@ -3048,7 +3041,6 @@ function showPick() {
   loadShorts();
   state.pickPoint = null;
   showPane('pick');
-  $('back').setAttribute('aria-label', 'Back without picking a building');
   paintPick();
   $('pick').scrollTop = 0;
   setSheet(restNow(), true);
@@ -3059,7 +3051,6 @@ function showBrowse(view = null) {
   state.browseBuilding = view?.building ?? null;
   state.browseQuery = view?.query ?? state.browseQuery;
   showPane('browse');
-  $('back').setAttribute('aria-label', 'Back');
   paintBrowse();
   $('browse').scrollTop = Number.isFinite(view?.scroll) ? Math.max(0, view.scroll) : 0;
   sheetHeight();
@@ -3067,7 +3058,6 @@ function showBrowse(view = null) {
 
 function showAbout() {
   showPane('about');
-  $('back').setAttribute('aria-label', 'Back');
   setSheet(restNow(), true);
   paintAbout();
 }
@@ -3078,7 +3068,7 @@ function showAbout() {
 // heading and re-snaps the sheet to rest, and a sheet that jumps back to rest
 // under a reader is worse than a stale number.
 function wireRoom(id) {
-  $('room-back').setAttribute('aria-label', roomBackLabel());
+  $('room-back').setAttribute('aria-label', backLabel());
   $('room-back').onclick = () => history.back();
   attachBearing(id);
   // A week either way, and no clamp. Past the term's own bounds the grid comes
@@ -3157,11 +3147,6 @@ function showRoom(id, { keepDay = false } = {}) {
   // mechanism: #list keeps its scrollTop because it was never destroyed.
   showPane('room');
   $('room').scrollTop = 0;
-  // Back pops to the entry underneath this one, and openRoom wrote down which
-  // screen that is. Outside scheduled hours the room screen opens over the
-  // buildings screen, and the label promised a room list that is not there.
-  $('back').setAttribute('aria-label', roomBackLabel());
-
   // frame() below runs only when the room is one of the ranked rows. Opened
   // from a link or out of hours it is not, and the footprint still has to light.
   frames.wake();
@@ -3179,14 +3164,25 @@ function showRoom(id, { keepDay = false } = {}) {
   }
 }
 
-function roomBackLabel() {
-  return history.state?.from === 'near'
-    ? 'Back to the nearest buildings'
-    : history.state?.from === 'browse'
-      ? 'Back to browse buildings'
-      : history.state?.from === 'way'
-        ? 'Back to the way'
-        : 'Back to the room list';
+// What Back reaches, in words, for every control that goes there. The entry
+// underneath is the one Back lands on, and every entry records which screen
+// that is, so the label is read off the entry rather than written once per
+// screen: written per screen, the list said "Back to the card" when the menu
+// had opened it from a room, and a picked origin said it over the way.
+const BACK_TO = {
+  ask: 'Back to the question',
+  card: 'Back to the card',
+  list: 'Back to the room list',
+  way: 'Back to the way',
+  room: 'Back to the room',
+  near: 'Back to the nearest buildings',
+  browse: 'Back to browse buildings',
+  about: 'Back to what Vacant knows',
+};
+
+function backLabel(entry = history.state) {
+  if (entry?.v === 'pick') return 'Back without picking a building';
+  return BACK_TO[entry?.from] ?? 'Back';
 }
 
 // Where the room is: the map with the footprint lit, an arrow to it, one plate
@@ -3417,12 +3413,12 @@ function openWantedRoom() {
   // without the app's own controls sending someone back to the referring site.
   history.replaceState({ v: 'ask' }, '', cleanUrl());
   if (state.scheduled) {
+    history.pushState({ v: 'card', from: 'ask' }, '', cleanUrl());
     showCard();
     answer();
-    history.pushState({ v: 'card', from: 'ask' }, '', cleanUrl());
   } else {
-    showNear();
     history.pushState({ v: 'near', from: 'ask' }, '', cleanUrl());
+    showNear();
   }
   openRoom(wanted);
   return true;

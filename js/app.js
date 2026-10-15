@@ -2132,9 +2132,9 @@ function commitPickedOrigin(origin) {
   state.query = '';
   $('find-q').value = '';
   // The picker replaces itself in history rather than stacking, so back still
-  // goes wherever the picker was opened from.
+  // goes wherever the picker was opened from, and the entry keeps saying where.
   const view = state.scheduled && state.rankable ? 'list' : 'near';
-  history.replaceState({ v: view }, '', cleanUrl());
+  history.replaceState({ v: view, from: history.state?.from }, '', cleanUrl());
   if (view === 'list') {
     showList();
     answer();
@@ -3292,7 +3292,7 @@ function paintWay(id, r) {
 // dismiss travel is the sheet's own, unchanged: it calls toAsk(), which is
 // history.back(), and from here that is one step.
 function openWay(id) {
-  const view = { v: 'way', room: id, selected: id, scroll: $('list').scrollTop };
+  const view = { v: 'way', from: state.screen, room: id, selected: id, scroll: $('list').scrollTop };
   history.pushState(view, '', `?room=${encodeURIComponent(id)}`);
   showWay(id, view);
 }
@@ -3314,12 +3314,12 @@ function choose(min) {
   if (!state.rankable) return;
   if (!state.scheduled) {
     if (state.screen !== 'near') {
-      history.pushState({ v: 'near' }, '', cleanUrl());
+      history.pushState({ v: 'near', from: 'ask' }, '', cleanUrl());
       showNear();
     }
     return;
   }
-  if (state.screen === 'ask') history.pushState({ v: 'card' }, '', cleanUrl());
+  if (state.screen === 'ask') history.pushState({ v: 'card', from: 'ask' }, '', cleanUrl());
   // Ranked BEFORE the screen is shown. The other way round, paintCard() ran once
   // against the previous answer -- on the first duration of a session that is no
   // rows at all, so the reader got "That is all of them. You went through 0
@@ -3379,7 +3379,7 @@ function openList() {
 }
 
 function openPick() {
-  history.pushState({ v: 'pick' }, '', cleanUrl());
+  history.pushState({ v: 'pick', from: state.screen }, '', cleanUrl());
   showPick();
 }
 
@@ -3387,18 +3387,18 @@ function openBrowse() {
   state.browseBuilding = null;
   state.browseQuery = '';
   state.selected = null;
-  const view = { v: 'browse', building: null, query: '', scroll: 0 };
+  const view = { v: 'browse', from: state.screen, building: null, query: '', scroll: 0 };
   history.pushState(view, '', cleanUrl());
   showBrowse(view);
 }
 
 function openAbout() {
-  history.pushState({ v: 'about' }, '', cleanUrl());
+  history.pushState({ v: 'about', from: state.screen }, '', cleanUrl());
   showAbout();
 }
 
 function openNear() {
-  history.pushState({ v: 'near' }, '', cleanUrl());
+  history.pushState({ v: 'near', from: state.screen }, '', cleanUrl());
   showNear();
 }
 
@@ -3419,10 +3419,10 @@ function openWantedRoom() {
   if (state.scheduled) {
     showCard();
     answer();
-    history.pushState({ v: 'card' }, '', cleanUrl());
+    history.pushState({ v: 'card', from: 'ask' }, '', cleanUrl());
   } else {
     showNear();
-    history.pushState({ v: 'near' }, '', cleanUrl());
+    history.pushState({ v: 'near', from: 'ask' }, '', cleanUrl());
   }
   openRoom(wanted);
   return true;

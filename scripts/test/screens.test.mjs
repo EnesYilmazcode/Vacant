@@ -866,8 +866,8 @@ test('a room deep link keeps every app Back press inside Vacant', () => {
   // the second visible Back button sends the reader to that external page.
   const open = bodyOf('openWantedRoom');
   const ask = open.indexOf("history.replaceState({ v: 'ask' }");
-  const card = open.indexOf("history.pushState({ v: 'card' }");
-  const near = open.indexOf("history.pushState({ v: 'near' }");
+  const card = open.indexOf("history.pushState({ v: 'card', from: 'ask' }");
+  const near = open.indexOf("history.pushState({ v: 'near', from: 'ask' }");
   const room = open.indexOf('openRoom(wanted)');
   assert.ok(ask >= 0, 'the direct link has no question entry underneath it');
   assert.ok(card > ask && near > ask, 'a landing screen is not stacked over the question');
@@ -1313,6 +1313,20 @@ test('the back button on the room screen names the pane back lands on', () => {
   assert.match(bodyOf('wireRoom'), /\$\('room-back'\)\.onclick = \(\) => history\.back\(\)/);
 });
 
+test('every history entry says which screen it was opened from', () => {
+  // Back lands on the entry underneath, and every label, guard and menu choice
+  // that needs to know where that is reads it off this entry. An entry without
+  // it is a screen whose way out has to be guessed.
+  for (const fn of ['openRoom', 'openList', 'openPick', 'openBrowse', 'openAbout', 'openNear', 'openWay']) {
+    assert.match(bodyOf(fn), /from: state\.screen/, `${fn} pushes an entry with no from`);
+  }
+  // From the question, the two screens a duration opens.
+  assert.match(bodyOf('choose'), /\{ v: 'near', from: 'ask' \}/);
+  assert.match(bodyOf('choose'), /\{ v: 'card', from: 'ask' \}/);
+  // The picker replaces itself, and keeps saying where it was opened from.
+  assert.match(bodyOf('commitPickedOrigin'), /replaceState\(\{ v: view, from: history\.state\?\.from \}/);
+});
+
 test('the desktop room header keeps its identity and aligned Back control while the schedule scrolls', () => {
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.match(
@@ -1423,7 +1437,7 @@ test('a duration opens one room, not the ranking', () => {
   const choose = bodyOf('choose');
   assert.match(choose, /showCard\(\)/);
   assert.doesNotMatch(choose, /showList\(\)/, 'a duration still opens the list');
-  assert.match(choose, /history\.pushState\(\{ v: 'card' \}/);
+  assert.match(choose, /history\.pushState\(\{ v: 'card', from: 'ask' \}/);
   // And the card is a pane of the same sheet, so it inherits the drag, the
   // dismiss and the covered map rather than reimplementing them.
   assert.match(APP, /const PANES = \['card', 'list'/);

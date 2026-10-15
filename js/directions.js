@@ -13,15 +13,6 @@
 // about buildings, and it answers null rather than throwing. Null is the
 // caller's signal to keep the routed number it already has, which is the whole
 // point -- the graph is the floor this sits on, not the thing it replaces.
-//
-// docs/research/walking-routes-115.md is why the ranking half is opt-in and not
-// the default: measured against OSU's own service, Google disagreed with it more
-// than the bundled graph does, so a live matrix is not obviously more accurate.
-// It is here because #115's successor asks for steps, and a matrix is nearly
-// free once the script is loaded.
-
-// Google's own ceiling on destinations per DistanceMatrix request.
-export const MATRIX_MAX = 25;
 
 // Long enough for a cold script fetch on campus wifi, short enough that a
 // student does not watch a spinner instead of reading the walk they already
@@ -145,43 +136,6 @@ export function createDirections({ key, consent = () => false, maps = loadMaps, 
             seconds: s.duration?.value ?? null,
           })),
         };
-      } catch {
-        return null;
-      }
-    },
-
-    // Walking seconds to many buildings in one request, for ranking. Returns a
-    // Map of code to seconds, or null.
-    //
-    // Buildings and not rooms: 425 rooms share 50 buildings, and the ranking
-    // only ever needs the building. Over MATRIX_MAX destinations it returns
-    // null rather than paging, because a half-filled matrix would sort one list
-    // on two models -- the failure mode #115 names.
-    async matrix(origin, buildings) {
-      const at = generation;
-      const codes = Object.keys(buildings ?? {});
-      if (!codes.length || codes.length > MATRIX_MAX) return null;
-      try {
-        const g = await withTimeout(ready(), TIMEOUT_MS);
-        const service = new g.DistanceMatrixService();
-        const res = await withTimeout(
-          service.getDistanceMatrix({
-            origins: [{ lat: origin.lat, lng: origin.lon }],
-            destinations: codes.map((c) => ({ lat: buildings[c].lat, lng: buildings[c].lon })),
-            travelMode: 'WALKING',
-          }),
-          TIMEOUT_MS,
-        );
-        if (at !== generation) return null;
-        const row = res?.rows?.[0]?.elements;
-        if (!row || row.length !== codes.length) return null;
-        const out = new Map();
-        row.forEach((el, i) => {
-          if (el?.status === 'OK' && Number.isFinite(el.duration?.value)) out.set(codes[i], el.duration.value);
-        });
-        // All or nothing, for the same reason the graph's fallback is per origin
-        // and never per building.
-        return out.size === codes.length ? out : null;
       } catch {
         return null;
       }

@@ -1701,7 +1701,10 @@ test('checking again on the way does not switch the map off under the plate', ()
   // Back to the same room if it survived the re-rank, and to the card if a
   // class has taken it.
   assert.match(refresh, /state\.results\.some\(\(r\) => r\.id === held\)\) showWay\(held\)/);
-  assert.match(refresh, /history\.replaceState\(\{ v: 'card' \}/);
+  // The card the way was taken from is the entry underneath, so it steps back
+  // onto it rather than rewriting the way into a second card on top of it.
+  assert.match(refresh, /else if \(history\.state\?\.from === 'card'\) \{[^}]*history\.back\(\);/);
+  assert.match(refresh, /history\.replaceState\(\{ v: 'card', from: history\.state\?\.from \}/);
 });
 
 test('the menu holds the keyboard as well as the screen', () => {

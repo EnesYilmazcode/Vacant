@@ -3500,8 +3500,13 @@ function refresh() {
   answer();
   if (!held) return;
   if (state.results.some((r) => r.id === held)) showWay(held);
-  else {
-    history.replaceState({ v: 'card' }, '', cleanUrl());
+  else if (history.state?.from === 'card') {
+    // The card is already the entry underneath. Rewriting the way's own entry
+    // into a second card left two in a row, and the next Back looked like it
+    // did nothing. popstate paints the card answer() has just rebuilt.
+    history.back();
+  } else {
+    history.replaceState({ v: 'card', from: history.state?.from }, '', cleanUrl());
     showCard();
   }
 }

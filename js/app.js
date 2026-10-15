@@ -3169,7 +3169,11 @@ function showRoom(id, { keepDay = false } = {}) {
 function chromeFor(screen, desk = splitQuery?.matches === true) {
   if (screen === 'ask') return { corner: null, panel: false };
   if (screen === 'card' || screen === 'way') return { corner: 'menu', panel: false };
-  if (screen === 'room' && desk) return { corner: 'menu', panel: true };
+  // On a desktop the corner is over the map and the panel is across the
+  // window from it, so the corner keeps the menu on every screen and Back goes
+  // in the panel, beside what it leaves. On a phone the sheet is under the
+  // corner, and a screen that is a step down from another gets the arrow.
+  if (desk) return { corner: 'menu', panel: true };
   return { corner: 'back', panel: false };
 }
 
@@ -3179,9 +3183,13 @@ function paintChrome() {
   $('back').hidden = corner !== 'back';
   $('menu').hidden = corner !== 'menu';
   $('back').setAttribute('aria-label', label);
+  // The room has its own, in its sticky header beside the room's name.
+  const room = state.screen === 'room';
+  $('sheet-head').hidden = !panel || room;
+  $('sheet-back').setAttribute('aria-label', label);
   const own = $('room-back');
   if (own) {
-    own.hidden = !(panel && state.screen === 'room');
+    own.hidden = !(panel && room);
     own.setAttribute('aria-label', label);
   }
 }
@@ -3926,6 +3934,7 @@ window.addEventListener('DOMContentLoaded', () => {
     b.onclick = () => choose(b.dataset.min);
   }
   $('back').onclick = () => history.back();
+  $('sheet-back').onclick = () => history.back();
   $('gate-go').onclick = () => openNear();
   $('ask-pick').onclick = () => openPick();
   $('note-pick').onclick = () => openPick();

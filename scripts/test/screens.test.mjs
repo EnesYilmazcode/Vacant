@@ -1589,11 +1589,14 @@ test('neither screen without a back arrow is a dead end', () => {
   // A disclosure, not a menu: role="menu" promises arrow keys move between the
   // items, and the app does not implement that.
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
-  // The desktop hamburger has a 60px target and Back has a 44px target. Back
-  // needs half that 16px difference on both axes for the two glyph centres to
-  // occupy the same corner when one screen replaces the other.
-  assert.match(css, /#back \{\s*left:\s*calc\(1\.5rem \+ 8px\);\s*top:\s*calc\(var\(--safe-t\) \+ 1\.1rem \+ 8px\);\s*\}/);
-  assert.match(css, /#back, #menu, body\.carding #menu, body\.waying #menu, body\.rooming #menu \{ left: 1\.5rem; \}/);
+  // On a desktop the corner never changes hands: it keeps the menu on every
+  // screen, so a second click on it cannot land on Back, and every pane's Back
+  // is in the panel, beside what it leaves.
+  assert.match(bodyOf('chromeFor'), /if \(desk\) return \{ corner: 'menu', panel: true \}/);
+  assert.match(bodyOf('paintChrome'), /\$\('sheet-head'\)\.hidden = !panel \|\| room/);
+  assert.match(css, /<div id="sheet-head" hidden>\s*<button type="button" class="bar-btn room-back" id="sheet-back">/);
+  assert.match(APP, /\$\('sheet-back'\)\.onclick = \(\) => history\.back\(\)/);
+  assert.match(css, /body #menu \{ left: 1\.5rem; \}/);
   assert.doesNotMatch(css, /body\.carding #menu \{[^}]*calc\(50% - 36rem/,
     'the hamburger jumps from the viewport corner to the centred card edge');
   assert.match(css, /<button id="menu"[^>]*aria-expanded="false"[^>]*aria-controls="menu-pop"/s);

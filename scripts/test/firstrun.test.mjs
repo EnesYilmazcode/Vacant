@@ -9,6 +9,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { CACHED, FETCHING, NETWORK_TIMEOUT_MS, OFFLINE, pickTier } from '../../js/firstrun.js';
+import { answered, fetchJson, parsedIndex } from '../../js/data-loader.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const source = readFileSync(join(ROOT, 'js', 'firstrun.js'), 'utf8');
@@ -209,22 +210,23 @@ test('geolocation starts before any data fetch resolves, and only one module ask
 // added to boot() without the signal is a fetch that can still hang forever.
 test('every fetch on the path to a first answer carries the boot deadline', () => {
   const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const loader = readFileSync(join(ROOT, 'js', 'data-loader.js'), 'utf8');
   const boot = app.slice(app.indexOf('async function boot()'), app.indexOf('function bootFailed()'));
   assert.match(boot, /const signal = AbortSignal\.timeout\(NETWORK_TIMEOUT_MS\)/);
-  const calls = boot.match(/fetch\([^)]*\)/g) ?? [];
-  assert.ok(calls.length >= 2, `boot() has ${calls.length} fetches, the scan is wrong`);
+  assert.match(boot, /const json = \(f\) => fetchJson\([^;]+, signal\)/);
+  const calls = boot.match(/fetchJson\([^)]*\)/g) ?? [];
+  assert.ok(calls.length >= 3, `boot() has ${calls.length} direct JSON loads, the scan is wrong`);
   for (const call of calls) assert.match(call, /signal/, `${call} has no deadline on it`);
 
   // The one fetch on that path boot() does not make itself.
-  const parsed = app.slice(app.indexOf('async function parsedIndex('), app.indexOf('async function boot()'));
-  assert.match(parsed, /fetch\(url, \{ signal \}\)/);
+  assert.match(loader, /fetcher\(url, \{ signal \}\)/);
 
   // And the deadline needs somewhere to land, or it swaps a hang for a silence.
   assert.match(app, /boot\(\)\.catch\(bootFailed\)/);
 
   // Not on the picker's building table. That one is fetched when the picker
   // opens, which can be long after boot(), and the boot deadline would abort it.
-  const shorts = app.slice(app.indexOf('function loadShorts()'), app.indexOf('async function parsedIndex('));
+  const shorts = app.slice(app.indexOf('function loadShorts()'), app.indexOf('async function boot()'));
   assert.equal(shorts.includes('signal'), false, 'the picker fetch is on the boot deadline');
 
   // The other half of the same rule. A deadline covers a request that never
@@ -232,15 +234,30 @@ test('every fetch on the path to a first answer carries the boot deadline', () =
   // so without the check a 503 body reaches JSON.parse as the schedule and the
   // app blames its own weekly build for someone else's server. The guard is
   // lifted out and run rather than matched, because it is the throw that matters.
-  const guard = app.slice(app.indexOf('function answered(r)'), app.indexOf('async function boot()'));
-  const answered = new Function(`${guard}\nreturn answered;`)();
   assert.throws(() => answered({ ok: false, status: 503, url: '/data/rooms-1268.json' }), /503/);
   assert.equal(answered({ ok: true }).ok, true, 'a good response no longer passes through');
 
-  // And every fetch on the path to a first answer goes through it. Two in
-  // boot(), the json() helper and the buildings table, plus the room index.
-  assert.match(parsed, /\.then\(answered\)/, 'a 503 body reaches JSON.parse as the schedule');
-  assert.equal((boot.match(/\.then\(answered\)/g) ?? []).length, 3, 'a boot fetch skips the status check');
+  // Both loader paths share the same status guard.
+  assert.equal((loader.match(/\.then\(answered\)/g) ?? []).length, 2, 'a loader path skips the status check');
+});
+
+test('the data loader rejects bad JSON responses and measures the room parse', async () => {
+  const bad = () => Promise.resolve({ ok: false, status: 503, url: '/rooms', json: () => 503 });
+  await assert.rejects(fetchJson('/rooms', null, bad), /503 for \/rooms/);
+
+  const events = [];
+  const fetcher = async () => ({ ok: true, text: async () => '{"rooms":{}}' });
+  const parsed = await parsedIndex('/rooms', {}, {
+    fetcher,
+    markFn: (name) => events.push(name),
+    measureFn: (...names) => events.push(names.join(':')),
+  });
+  assert.deepEqual(parsed, { rooms: {} });
+  assert.deepEqual(events, [
+    'vacant:parse:start',
+    'vacant:parse:end',
+    'vacant:parse:vacant:parse:start:vacant:parse:end',
+  ]);
 });
 
 // The number, not just its name. A deadline shorter than the load it is

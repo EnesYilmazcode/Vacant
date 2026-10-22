@@ -24,7 +24,7 @@ import { overlayForDate } from '../scripts/lib/club-occupancy.mjs';
 import { blocksOn, classesOn, dayClaim } from './day.js';
 // `query` arrives as `ladder` because js/app.js already holds a `state.query`,
 // which is the buildings search box and has nothing to do with the engine.
-import { MAX_WALK, activeSessions, calendarOn, distanceMetres, mark, measure, query as ladder, rank, shape, tally, walkMetres, walkMinutes } from './engine.js';
+import { MAX_WALK, activeSessions, calendarOn, distanceMetres, query as ladder, rank, shape, tally, walkMetres, walkMinutes } from './engine.js';
 import { createRouter, decodeWalkGraph } from './route.js';
 import { createDirections } from './directions.js';
 // The deadline every request on the path to a first answer shares. It lives in
@@ -34,6 +34,7 @@ import { mapsHref } from './install.js';
 import { drawCardPhoto } from './card-photo.js';
 import { safeDel, safeGet, safeSet } from './storage.js';
 import { KEY_ORIGIN, NO_WALK, NO_WALK_OVAL, locate, offCampus, ovalOrigin } from './location.js';
+import { fetchJson, parsedIndex } from './data-loader.js';
 import {
   busyDayOf,
   clock,
@@ -3585,8 +3586,7 @@ function follow(origin) {
 let shortsPending = null;
 function loadShorts() {
   if (state.shorts || shortsPending) return shortsPending;
-  shortsPending = fetch(`${BASE}data/buildings.json`)
-    .then((r) => r.json())
+  shortsPending = fetchJson(`${BASE}data/buildings.json`)
     .then((d) => {
       state.shorts = Object.fromEntries(Object.entries(d.buildings).map(([code, b]) => [code, b.short]));
       if (state.screen === 'pick') paintPick();
@@ -3597,34 +3597,12 @@ function loadShorts() {
   return shortsPending;
 }
 
-// The room index is 191 KB of the 241 KB of JSON the first answer waits on, so
-// it is the parse worth naming. `r.json()` hides it inside the fetch, and a
-// cold phone spends real time in there. The engine marks the answer and the
-// session mask with the same two calls.
-async function parsedIndex(url, signal) {
-  const text = await fetch(url, { signal }).then(answered).then((r) => r.text());
-  mark('vacant:parse:start');
-  const out = JSON.parse(text);
-  mark('vacant:parse:end');
-  measure('vacant:parse', 'vacant:parse:start', 'vacant:parse:end');
-  return out;
-}
-
-// fetch resolves on a 5xx, so an error page reaches JSON.parse as if it were the
-// schedule. Measured against a server answering 503 with the body "503": that is
-// valid JSON, state.rooms became the number 503, and the app went on to blame
-// its own weekly build for reading too few rooms.
-function answered(r) {
-  if (!r.ok) throw new Error(`${r.status} for ${r.url}`);
-  return r;
-}
-
 async function boot() {
   // A network that stalls does not fail. Nothing rejects, so every step below
   // sits on it forever. One deadline covers the whole path to a first answer and
   // rejects into the same catch a 503 does. The position carries its own.
   const signal = AbortSignal.timeout(NETWORK_TIMEOUT_MS);
-  const json = (f) => fetch(`${BASE}data/${f}`, { signal }).then(answered).then((r) => r.json());
+  const json = (f) => fetchJson(`${BASE}data/${f}`, signal);
 
   flyoverStart = performance.now();
   frames.wake();
@@ -3682,8 +3660,8 @@ async function boot() {
 
   const [rooms, roomEvents, buildings, hours, walkGraph, located] = await Promise.all([
     parsedIndex(`${BASE}${current.rooms}`, signal),
-    fetch(`${BASE}${current.events}`, { signal }).then(answered).then((r) => r.json()),
-    fetch(`${BASE}${current.buildings}`, { signal }).then(answered).then((r) => r.json()).then((d) => d.buildings),
+    fetchJson(`${BASE}${current.events}`, signal),
+    fetchJson(`${BASE}${current.buildings}`, signal).then((d) => d.buildings),
     json('buildings-hours.json').catch(() => null),
     // AWAITED, unlike the photo manifest below, and that is the whole reason
     // the walk model cannot flip under a reader. A graph that arrived after the

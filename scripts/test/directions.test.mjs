@@ -139,10 +139,8 @@ test('an answer against an old generation is dropped', async () => {
 test('invalidate counts up so a caller can tell generations apart', () => {
   const { maps } = fakeMaps({ leg: LEG });
   const d = createDirections({ key: 'k', consent: yes, maps });
-  assert.equal(d.generation, 0);
   assert.equal(d.invalidate(), 1);
   assert.equal(d.invalidate(), 2);
-  assert.equal(d.generation, 2);
 });
 
 // --- the matrix, all or nothing

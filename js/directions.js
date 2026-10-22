@@ -105,13 +105,12 @@ export function createDirections({ key, consent = () => false, maps = loadMaps, 
   const ready = () => (consent() && globalThis.navigator?.onLine !== false ? maps(key, doc) : Promise.reject(new Error('unavailable')));
 
   return {
-    // Bumped by the caller whenever the origin or the date moves. A response
-    // that comes back against an old generation is dropped rather than
-    // rendered, which is the rule docs/research/walking-routes-115.md sets: a
-    // stale answer must never reorder or relabel a list already on screen.
-    get generation() {
-      return generation;
-    },
+    // Bumped by the caller whenever the origin or the date moves, and handed
+    // back so the caller can tell generations apart without this object
+    // keeping a second, readable copy of the count. A response that comes
+    // back against an old generation is dropped rather than rendered, which
+    // is the rule docs/research/walking-routes-115.md sets: a stale answer
+    // must never reorder or relabel a list already on screen.
     invalidate() {
       generation += 1;
       return generation;

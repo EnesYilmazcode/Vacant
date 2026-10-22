@@ -18,9 +18,11 @@ import { fileURLToPath } from 'node:url';
 
 import { WALK_MPM } from '../../js/engine.js';
 import { FOLLOW_M, FOLLOW_MS, createWatch, followAction, followFix } from '../../js/state.js';
+import { OVAL, offCampus } from '../../js/location.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const APP = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8').replace(/\r\n/g, '\n');
+const LOCATION = readFileSync(join(ROOT, 'js', 'location.js'), 'utf8').replace(/\r\n/g, '\n');
 const STATE = readFileSync(join(ROOT, 'js', 'state.js'), 'utf8').replace(/\r\n/g, '\n');
 
 // A phone on the list screen with nothing under a thumb. Every gate test below
@@ -185,7 +187,7 @@ test('the watch stays coarse and refuses a cached fix', () => {
   assert.match(start, /maximumAge: 0/);
   // And 60 s kept on the boot fix, where a cached position buys a first answer
   // sooner and the student has not walked anywhere yet.
-  const boot = APP.slice(APP.indexOf('function locate()'), APP.indexOf('const watch = createWatch({'));
+  const boot = LOCATION.slice(LOCATION.indexOf('export function locate('));
   assert.match(boot, /enableHighAccuracy: false, timeout: FIX_TIMEOUT_MS, maximumAge: 60000/);
 });
 
@@ -219,8 +221,8 @@ test('the off-campus circle runs on every accepted position, not only the first'
   // #87 names this: a student who walks out of OFF_CAMPUS_KM with the app open
   // used to keep a ranking measured from the last point inside it, and never
   // saw the note. One function, called from both paths.
-  assert.match(APP, /const offCampus = \(here\) =>/);
-  const boot = APP.slice(APP.indexOf('function locate()'), APP.indexOf('function startWatch()'));
+  assert.match(LOCATION, /export const offCampus = \(here\) =>/);
+  const boot = LOCATION.slice(LOCATION.indexOf('export function locate('));
   assert.match(boot, /if \(offCampus\(here\)\) return finish\(oval, NO_WALK_OVAL\);/);
   const fix = APP.slice(APP.indexOf('function onFix(p)'), APP.indexOf('function follow(origin)'));
   assert.match(fix, /const far = offCampus\(here\);/);
@@ -229,23 +231,12 @@ test('the off-campus circle runs on every accepted position, not only the first'
 });
 
 test('the circle it draws is the one the constant is documented against', () => {
-  // The rule is lifted out of js/app.js and run, the way the origin bar's is:
-  // the expression is pure, so it can be pulled out of the source and handed
-  // its own constants.
-  const km = APP.match(/const OFF_CAMPUS_KM = ([\d.]+);/);
-  const oval = APP.match(/const OVAL = \{ lat: ([-\d.]+), lon: ([-\d.]+) \};/);
-  const line = APP.match(/const offCampus = \(here\) => .*;/);
-  assert.ok(km && oval && line, 'the off-campus circle moved');
-  const test = new Function(
-    `const OFF_CAMPUS_KM = ${km[1]}; const OVAL = { lat: ${oval[1]}, lon: ${oval[2]} }; ${line[0]} return offCampus;`,
-  )();
-  const OVAL = { lat: Number(oval[1]), lon: Number(oval[2]) };
-  assert.equal(test(OVAL), false, 'the Oval itself is off campus');
+  assert.equal(offCampus(OVAL), false, 'the Oval itself is off campus');
   // A tenth of a degree of latitude is 11.1 km, which is Cleveland by the
   // standards of this circle. The 2.2 km constant is measured in js/app.js
   // against Animal Science at 1.410 km, so a point inside that stays inside.
-  assert.equal(test({ lat: OVAL.lat + 0.1, lon: OVAL.lon }), true);
-  assert.equal(test({ lat: OVAL.lat + 0.01, lon: OVAL.lon }), false, '1.11 km out is off campus');
+  assert.equal(offCampus({ lat: OVAL.lat + 0.1, lon: OVAL.lon }), true);
+  assert.equal(offCampus({ lat: OVAL.lat + 0.01, lon: OVAL.lon }), false, '1.11 km out is off campus');
 });
 
 test('the watch starts after the first fix and stops with the page', () => {
@@ -276,8 +267,9 @@ test('a picked origin is never followed and never overwritten', () => {
   assert.match(pick, /stopWatch\(\);\n  useOrigin\(origin, null\);/, 'a mid-session pick leaves the watch running');
   // pickedOrigin() still short-circuits before geolocation is asked at all,
   // which is the same rule one layer up.
-  const locate = APP.slice(APP.indexOf('function locate()'), APP.indexOf('const watch = createWatch({'));
-  assert.match(locate, /const picked = pickedOrigin\(\);\n  if \(picked\) return Promise\.resolve/);
+  const locate = LOCATION.slice(LOCATION.indexOf('export function locate('));
+  assert.match(locate, /picked = pickedOrigin\(\)/);
+  assert.match(locate, /if \(picked\) return Promise\.resolve/);
 });
 
 test('a denied permission closes the watch rather than leaving it open', () => {

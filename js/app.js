@@ -33,6 +33,7 @@ import { NETWORK_TIMEOUT_MS } from './firstrun.js';
 import { mapsHref } from './install.js';
 import { drawCardPhoto } from './card-photo.js';
 import { safeDel, safeGet, safeSet } from './storage.js';
+import { KEY_ORIGIN, NO_WALK, NO_WALK_OVAL, locate, offCampus, ovalOrigin } from './location.js';
 import {
   busyDayOf,
   clock,
@@ -85,7 +86,6 @@ const BASE = new URL('.', import.meta.url).pathname.replace(/js\/$/, '');
 
 // Finder shares this origin, so the prefix is not optional.
 const KEY_DURATION = 'vacant.duration';
-const KEY_ORIGIN = 'vacant.origin';
 const KEY_PICK = 'vacant.lastPick';
 
 // Off-campus is a real state, not an error. Beyond this from the map centre the
@@ -115,21 +115,6 @@ const KEY_PICK = 'vacant.lastPick';
 // changed; what changed is that the slice stopped being a sample of OSU
 // property and became a list of classroom buildings, so the full index is the
 // only honest place to read this off now.
-const OFF_CAMPUS_KM = 2.2;
-
-// The fallback origin, and the sentence both screens that reach for it print:
-// the gate below when the fix lands too far out, answer() when the ranking
-// comes back with nothing walkable.
-const OVAL = { lat: 39.9995, lon: -83.013 };
-const ovalOrigin = () => ({ ...OVAL, accuracy: null, source: 'oval', label: 'the Oval', at: Date.now() });
-const NO_WALK = 'No classroom close enough to walk to';
-const NO_WALK_OVAL = `${NO_WALK}, showing from the Oval`;
-
-// iOS documents its own geolocation timeout as unreliable in a standalone
-// window, so a wall-clock watchdog runs beside it. Without this a bare await
-// can hang forever with the user staring at a drifting map.
-const FIX_TIMEOUT_MS = 8000;
-
 // A room that frees up soon is a real fallback, which is what the README's
 // ladder asks for. A room that frees up in seven hours is not an answer, it is
 // a timetable. Past this wait the app says nothing is open rather than filling
@@ -3481,78 +3466,6 @@ function paintGate() {
 }
 
 // ---------------------------------------------------------------- geolocation
-
-// A deliberate choice does not expire the way a sensor reading does, so a
-// picked building is read back before geolocation is ever asked.
-function pickedOrigin() {
-  try {
-    const raw = JSON.parse(safeGet(KEY_ORIGIN) ?? 'null');
-    if (raw && Number.isFinite(raw.lat) && Number.isFinite(raw.lon)) {
-      return { accuracy: PICKED_ACCURACY_M, source: 'picked', ...raw };
-    }
-  } catch {
-    /* a corrupt key is the same as no key */
-  }
-  return null;
-}
-
-// The circle OFF_CAMPUS_KM draws, in the flat conversion that constant is
-// documented against. It is a function rather than a line inside locate()
-// because it has to run on EVERY accepted position and not only the first: a
-// student who walks out of the circle with the app open used to keep a ranking
-// measured from the last point inside it, and never saw the note.
-const offCampus = (here) => Math.hypot((here.lon - OVAL.lon) * 85, (here.lat - OVAL.lat) * 111) > OFF_CAMPUS_KM;
-
-function locate() {
-  const picked = pickedOrigin();
-  if (picked) return Promise.resolve({ origin: picked, note: null });
-
-  const oval = ovalOrigin();
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (origin, note) => {
-      if (done) return;
-      done = true;
-      resolve({ origin, note });
-    };
-    // The wall-clock watchdog. iOS documents its own timeout option as
-    // unreliable in a standalone window.
-    const watchdog = setTimeout(() => finish(oval, 'Location timed out, showing from the Oval'), FIX_TIMEOUT_MS);
-    if (!navigator.geolocation) {
-      clearTimeout(watchdog);
-      return finish(oval, 'No location on this device, showing from the Oval');
-    }
-    const fail = (why) => {
-      clearTimeout(watchdog);
-      finish(oval, `${why}, showing from the Oval`);
-    };
-    try {
-      navigator.geolocation.getCurrentPosition(
-        (p) => {
-          clearTimeout(watchdog);
-          const here = { lon: p.coords.longitude, lat: p.coords.latitude };
-          if (offCampus(here)) return finish(oval, NO_WALK_OVAL);
-          finish(
-            { ...here, accuracy: p.coords.accuracy, source: 'gps', label: null, at: Date.now() },
-            null,
-          );
-        },
-        (err) =>
-          fail(err.code === 1 ? 'Location is off' : err.code === 2 ? 'Location unavailable' : 'Location timed out'),
-        // A minute-old fix is accepted HERE and nowhere else. This call is on
-        // the path to the first answer, the student has not walked anywhere
-        // yet, and a cached position saves them the cold-start wait. The watch
-        // below takes maximumAge 0 for the opposite reason.
-        { enableHighAccuracy: false, timeout: FIX_TIMEOUT_MS, maximumAge: 60000 },
-      );
-    } catch {
-      // A position source that throws on call is not a state the spec allows,
-      // and it happens anyway inside locked-down webviews.
-      fail('Location is unavailable');
-    }
-  });
-}
-
 
 // ---------------------------------------------------------------- the watch
 //

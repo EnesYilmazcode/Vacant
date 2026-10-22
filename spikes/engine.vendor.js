@@ -495,7 +495,7 @@ export function freeGaps(busy, day, open, close, active) {
 // skips the gap you could walk into so it can offer the later one that is
 // actually long enough. Both come out of the same gap list, so the ladder never
 // touches the busy intervals twice.
-function pickGap(gaps, opts) {
+export function pickGap(gaps, opts) {
   const { now, arrival, need = 0, packup = PACKUP, dst, mode = 'fit', lookahead = Infinity } = opts;
   const floor = Math.max(need, 1);
   const horizon = now + lookahead;
@@ -532,18 +532,6 @@ function pickGap(gaps, opts) {
     wait: Math.max(0, gapStart - arrival),
     meetsNeed: usable >= need,
   };
-}
-
-// The gap you would actually get in this room. Returns null when the room gives
-// you nothing. The single-room entry point; `query` reuses the same sweep
-// across the whole campus without going through it.
-export function bestGap(room, opts) {
-  const { now, day, open, close, metres, needed = 0, packup = PACKUP, active, dst, mode, lookahead } = opts;
-  const arrival = now + walkMinutes(metres);
-  const gaps = freeGaps(room.busy ?? [], day, open, close, active);
-  const picked = pickGap(gaps, { now, arrival, need: needed, packup, dst, mode, lookahead });
-  if (!picked) return null;
-  return { ...picked, malformed: gaps.malformed };
 }
 
 // ------------------------------------------------------------------ ranking

@@ -23,11 +23,11 @@ import {
   activeMask,
   activeSessions,
   approachMetres,
-  bestGap,
   calendarOn,
   distanceMetres,
   freeGaps,
   leaveBy,
+  pickGap,
   query,
   rank,
   refusalFor,
@@ -48,6 +48,22 @@ import { rungPhrase } from '../../js/state.js';
 import { haversineMetres } from '../lib/geo.mjs';
 
 const at = (h, m = 0) => h * 60 + m;
+
+// engine.js used to export a `bestGap(room, opts)` convenience wrapper over
+// exactly these two calls -- the single-room entry point nothing in production
+// actually called (the ranking sweep in `rank`/`query` inlines the same two
+// calls itself, at the point `rowFrom` calls `pickGap`). Removed as dead code
+// by the 2026-09-23 sweep; this helper keeps the tests below exercising the
+// same two production functions, wired the same way, without the unused
+// wrapper.
+function gapFor(room, opts) {
+  const { now, day, open, close, metres, needed = 0, packup = PACKUP, active, dst, mode, lookahead } = opts;
+  const arrival = now + walkMinutes(metres);
+  const gaps = freeGaps(room.busy ?? [], day, open, close, active);
+  const picked = pickGap(gaps, { now, arrival, need: needed, packup, dst, mode, lookahead });
+  if (!picked) return null;
+  return { ...picked, malformed: gaps.malformed };
+}
 
 test('the usable-minutes formula does not count corridor waiting as study time', () => {
   // The case that decides the whole differentiator. Gap 14:00-16:00, now 13:50,
@@ -199,39 +215,39 @@ test('a gap you can walk straight into beats a longer one you must wait for', ()
   // someone on a walk to a room that has a class in it, because that room's
   // afternoon gap is longer than the one free right now.
   const room = { busy: [[1, at(9), at(10)], [1, at(11), at(12)]] };
-  const gap = bestGap(room, { now: at(8), day: 1, open: at(8), close: at(18), metres: 0 });
+  const gap = gapFor(room, { now: at(8), day: 1, open: at(8), close: at(18), metres: 0 });
   assert.equal(gap.gapStart, at(8), 'the 8-9 window is open now');
   assert.equal(gap.wait, 0);
 });
 
 test('when nothing is open on arrival, the best later gap is offered with its wait', () => {
   const room = { busy: [[1, at(8), at(13)]] };
-  const gap = bestGap(room, { now: at(9), day: 1, open: at(8), close: at(18), metres: 0 });
+  const gap = gapFor(room, { now: at(9), day: 1, open: at(8), close: at(18), metres: 0 });
   assert.equal(gap.gapStart, at(13));
   assert.equal(gap.wait, at(13) - at(9), 'four hours of waiting, reported not hidden');
 });
 
 test('among gaps open on arrival, the one that meets the need wins, then length', () => {
   const room = { busy: [[1, at(9), at(10)], [1, at(14), at(15)]] };
-  const gap = bestGap(room, {
+  const gap = gapFor(room, {
     now: at(8), day: 1, open: at(8), close: at(18), metres: 0, needed: 30,
   });
   assert.equal(gap.wait, 0);
   assert.equal(gap.meetsNeed, true);
 });
 
-test('bestGap ignores gaps that have already passed', () => {
+test('a picked gap ignores ones that have already passed', () => {
   const room = { busy: [] };
-  const gap = bestGap(room, { now: at(17), day: 1, open: at(8), close: at(18), metres: 0 });
+  const gap = gapFor(room, { now: at(17), day: 1, open: at(8), close: at(18), metres: 0 });
   assert.equal(gap.usable, 60 - PACKUP);
-  assert.equal(bestGap(room, { now: at(18), day: 1, open: at(8), close: at(18), metres: 0 }), null);
+  assert.equal(gapFor(room, { now: at(18), day: 1, open: at(8), close: at(18), metres: 0 }), null);
 });
 
 test('meetsNeed reflects the requested duration without filtering the room out', () => {
   const room = { busy: [] };
   const opts = { now: at(8), day: 1, open: at(8), close: at(9), metres: 0 };
-  assert.equal(bestGap(room, { ...opts, needed: 30 }).meetsNeed, true);
-  assert.equal(bestGap(room, { ...opts, needed: 120 }).meetsNeed, false, 'still returned, just flagged');
+  assert.equal(gapFor(room, { ...opts, needed: 30 }).meetsNeed, true);
+  assert.equal(gapFor(room, { ...opts, needed: 120 }).meetsNeed, false, 'still returned, just flagged');
 });
 
 const BUILDINGS = {
@@ -568,7 +584,7 @@ test('cap 0 means unknown and must not render as a confident zero', () => {
 const TUE = 2;
 const NOON = at(12);
 const standingAt = (busy, opts = {}) =>
-  bestGap(
+  gapFor(
     { busy },
     { now: NOON, day: TUE, open: DAY_START, close: DAY_END, metres: 0, needed: 1, ...opts },
   );
@@ -660,7 +676,7 @@ test('a room that frees in 5 minutes and is a 6 minute walk away is free when yo
   const metres = 6 * WALK_MPM; // exactly a 6 minute walk, in metres WALKED
   const now = at(10);
   const room = { busy: [[TUE, DAY_START, now + 5]] };
-  const gap = bestGap(room, {
+  const gap = gapFor(room, {
     now, day: TUE, open: DAY_START, close: at(16), metres, needed: 60,
   });
   assert.equal(gap.wait, 0, 'the wait is spent walking, so there is no wait');
@@ -726,7 +742,7 @@ test('no arrangement of blocks ever produces a zero-length gap', () => {
 
 test('a gap that would run past the building close is cut off at the door, not the class', () => {
   const room = { busy: [[1, at(9), at(14)]] };
-  const gap = bestGap(room, { now: at(14), day: 1, open: at(8), close: at(17), metres: 0 });
+  const gap = gapFor(room, { now: at(14), day: 1, open: at(8), close: at(17), metres: 0 });
   assert.equal(gap.gapEnd, at(17), 'the window ends when the building locks');
   assert.equal(gap.usable, at(17) - PACKUP - at(14));
 });
@@ -735,7 +751,7 @@ test('a class running past the close time does not leave a phantom gap behind it
   // The building publishes a 17:00 close and a class runs 16:00 to 19:00. The
   // room is busy until the door locks and there is nothing left to offer.
   const room = { busy: [[1, at(16), at(19)]] };
-  assert.equal(bestGap(room, { now: at(16, 30), day: 1, open: at(8), close: at(17), metres: 0 }), null);
+  assert.equal(gapFor(room, { now: at(16, 30), day: 1, open: at(8), close: at(17), metres: 0 }), null);
 });
 
 test('an hours pair that does not run forwards is refused, not inverted', () => {
@@ -869,8 +885,8 @@ test('the engine takes wall-clock minutes, which is what DST cannot break', () =
 
   const room = { busy: [[0, at(8, 30), at(10)]] };
   const opts = { day: 0, open: DAY_START, close: DAY_END, metres: 0 };
-  const wall = bestGap(room, { ...opts, now: at(8) });
-  const epoch = bestGap(room, { ...opts, now: epochElapsed });
+  const wall = gapFor(room, { ...opts, now: at(8) });
+  const epoch = gapFor(room, { ...opts, now: epochElapsed });
   assert.equal(wall.gapEnd, at(8, 30), 'half an hour before the class starts');
   assert.equal(epoch.gapStart, at(10), 'the epoch clock has already walked past it');
 });

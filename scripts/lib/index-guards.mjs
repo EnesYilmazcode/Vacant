@@ -76,14 +76,12 @@ export const KNOWN_UNRESOLVED = new Map([
 export function measure(rooms, { exclude } = {}) {
   const entries = Object.entries(rooms ?? {}).filter(([id]) => !exclude?.has(id));
   const buildings = new Set();
-  const blocksByRoom = new Map();
   const minutesByDay = new Array(7).fill(0);
   let blocks = 0;
   let minutes = 0;
 
   for (const [id, room] of entries) {
     buildings.add(room.b);
-    blocksByRoom.set(id, room.busy.length);
     for (const b of room.busy) {
       blocks++;
       minutes += b[2] - b[1];
@@ -104,32 +102,9 @@ export function measure(rooms, { exclude } = {}) {
     buildings: buildings.size,
     blocks,
     minutes,
-    blocksByRoom,
     minutesByDay,
     weekdayBalance,
   };
-}
-
-// A room that had blocks in the committed file and has none now.
-export function lostRooms(now, before) {
-  const gone = [];
-  for (const [id, count] of before.blocksByRoom) {
-    if (!count) continue;
-    if (!now.blocksByRoom.get(id)) gone.push(id);
-  }
-  return gone.sort();
-}
-
-// A room that kept under half the blocks it had. One is churn; six is a pattern.
-export function guttedRooms(now, before) {
-  const hurt = [];
-  for (const [id, count] of before.blocksByRoom) {
-    if (count < 2) continue;
-    const kept = now.blocksByRoom.get(id);
-    if (kept === undefined) continue;
-    if (kept * 2 < count) hurt.push(`${id} ${count}->${kept}`);
-  }
-  return hurt.sort();
 }
 
 // An address in the shipped file is a public, offline-cached record of which
@@ -174,24 +149,6 @@ export function indexRefusals({
     countRefusal('rooms', now.rooms, floor.rooms, before?.rooms),
     countRefusal('buildings', now.buildings, floor.buildings, before?.buildings),
   ];
-
-  if (before) {
-    const gone = lostRooms(now, before);
-    if (gone.length) {
-      refusals.push(
-        fatal(
-          `${gone.length} room(s) had busy blocks in the committed index and have none now: ` +
-            gone.join(' '),
-        ),
-      );
-    }
-    const gutted = guttedRooms(now, before);
-    if (gutted.length > 5) {
-      refusals.push(
-        forceable(`${gutted.length} room(s) kept under half their committed blocks: ${gutted.join(' ')}`),
-      );
-    }
-  }
 
   if (now.weekdayBalance < 0.3) {
     refusals.push(

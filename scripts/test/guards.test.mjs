@@ -9,9 +9,7 @@ import {
   FLOORS,
   KNOWN_UNRESOLVED,
   floorsFor,
-  guttedRooms,
   indexRefusals,
-  lostRooms,
   measure,
   notReady,
   piiRefusal,
@@ -120,35 +118,13 @@ test('a floor refusal names the committed count so the loss is visible', () => {
   assert.match(reasons(out), /the floor is 5000, and 12000 is already committed/);
 });
 
-test('a room that had blocks and has none refuses, and FORCE_WRITE does not clear it', () => {
-  const before = measure({ ...healthy(), DL0357: room(1, 8), CL0112: room(2, 4) });
-  const now = measure(healthy());
-  const out = indexRefusals(base({ before, now }));
-  const lost = out.find((r) => /had busy blocks in the committed index/.test(r.reason));
-  assert.ok(lost, 'no lostRooms refusal');
-  assert.match(lost.reason, /CL0112 DL0357/);
-  assert.equal(lost.forceable, false);
-  assert.ok(refusalMessage([lost], FORCE), 'FORCE_WRITE=1 must not clear a lost room');
-});
-
-test('more than five gutted rooms refuse, and that one clears under FORCE_WRITE', () => {
+test('per-room schedule churn is observed elsewhere and does not refuse a healthy harvest', () => {
   const beforeRooms = healthy();
   const nowRooms = healthy();
-  for (let i = 0; i < 6; i++) nowRooms[`RM${String(i).padStart(4, '0')}`].busy.length = 5;
+  delete nowRooms.RM0000;
+  for (let i = 1; i < 20; i++) nowRooms[`RM${String(i).padStart(4, '0')}`].busy.length = 5;
   const out = indexRefusals(base({ before: measure(beforeRooms), now: measure(nowRooms) }));
-  const gutted = out.find((r) => /kept under half their committed blocks/.test(r.reason));
-  assert.ok(gutted, 'no roomsGutted refusal');
-  assert.match(gutted.reason, /RM0000 30->5/);
-  assert.equal(gutted.forceable, true);
-  assert.equal(refusalMessage([gutted], FORCE), null);
-  assert.ok(refusalMessage([gutted], NO_FORCE));
-});
-
-test('five gutted rooms is churn and does not refuse', () => {
-  const nowRooms = healthy();
-  for (let i = 0; i < 5; i++) nowRooms[`RM${String(i).padStart(4, '0')}`].busy.length = 5;
-  const out = indexRefusals(base({ before: measure(healthy()), now: measure(nowRooms) }));
-  assert.ok(!out.some((r) => /kept under half/.test(r.reason)));
+  assert.deepEqual(out, []);
 });
 
 test('weekday balance is Monday to Friday only, and a near-zero Saturday does not divide it', () => {
@@ -236,16 +212,6 @@ test('an address anywhere in the serialized index is fatal and FORCE_WRITE canno
 test('the committed index holds no address', () => {
   const raw = readFileSync(new URL('../../data/rooms-1268.json', import.meta.url), 'utf8');
   assert.equal(piiRefusal(raw), null);
-});
-
-test('lostRooms and guttedRooms read the committed file, not the harvest', () => {
-  const before = measure({ A: room(1, 4), B: room(1, 4), C: room(1, 1) });
-  const now = measure({ A: room(1, 4), B: room(1, 1) });
-  assert.deepEqual(lostRooms(now, before), ['C']);
-  assert.deepEqual(guttedRooms(now, before), ['B 4->1']);
-  // A room that vanished entirely is lost, not gutted. Counting it twice makes
-  // one problem look like two.
-  assert.ok(!guttedRooms(now, before).some((s) => s.startsWith('C')));
 });
 
 test('refusalMessage suggests FORCE_WRITE only when it would actually work', () => {

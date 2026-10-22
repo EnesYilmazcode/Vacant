@@ -30,7 +30,7 @@ import { createDirections } from './directions.js';
 // js/firstrun.js because that is the module holding the rule it comes from.
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
 import { mapsHref } from './install.js';
-import { drawCardPhoto } from './card-photo.js';
+import { desktopCardMode, drawCardPhoto } from './card-photo.js';
 import { safeDel, safeGet, safeSet } from './storage.js';
 import { KEY_ORIGIN, NO_WALK, NO_WALK_OVAL, locate, offCampus, ovalOrigin } from './location.js';
 import { fetchJson, parsedIndex } from './data-loader.js';

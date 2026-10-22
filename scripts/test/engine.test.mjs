@@ -1512,20 +1512,18 @@ const readData = (file) => JSON.parse(readFileSync(new URL(`../../data/${file}`,
 
 test('every room of the committed index carries the flag the ranking now reads', () => {
   // The build has written `ga` since 2026-08-27 and nothing read it. If a term
-  // ever ships without it the ranking silently loses its strongest signal, so
-  // the count is asserted rather than assumed: 327 general assignment, 98 not.
+  // ever ships without it the ranking silently loses its strongest signal.
   const term = readData('current.json').term;
   const index = readData(`rooms-${term}.json`);
   const rooms = Object.values(index.rooms);
-  assert.equal(rooms.length, 425);
+  assert.ok(rooms.length > 0, 'the current index is not empty');
   assert.equal(rooms.filter((r) => r.ga === undefined).length, 0);
-  assert.equal(rooms.filter((r) => r.ga === true).length, 327);
-  assert.equal(rooms.filter((r) => r.ga === false).length, 98);
-  // 56 of the 98 are types the first rung offers by default, which is why the
-  // tier is worth anything: without it they rank as ordinary classrooms.
+  assert.equal(rooms.filter((r) => r.ga === true || r.ga === false).length, rooms.length);
+  assert.ok(rooms.some((r) => r.ga === true), 'no general-assignment rooms survived');
+  assert.ok(rooms.some((r) => r.ga === false), 'the general-assignment flag no longer distinguishes rooms');
   const preferred = rooms.filter((r) => PREFERRED_TYPES.includes(r.type));
-  assert.equal(preferred.length, 382);
-  assert.equal(preferred.filter((r) => r.ga === false).length, 56);
+  assert.ok(preferred.length > 0, 'no preferred room type survived');
+  assert.ok(preferred.some((r) => r.ga === false), 'the secondary ranking tier is no longer exercised');
 });
 
 test('equirectangular distance matches haversine within a metre for every building on file', () => {

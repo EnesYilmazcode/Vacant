@@ -366,11 +366,13 @@ const records = Object.values(shipped.rooms).flat();
 
 test('the shipped file is a full sweep of the shipped index, not a subset', () => {
   // --rooms writes room-events-<term>.subset.json for exactly this reason: a
-  // three-room spot check used to land on this path and replace all 425.
+  // three-room spot check used to land on this path and replace the full sweep.
+  const roomCount = Object.keys(index.rooms).length;
   assert.equal(shipped._meta.partial, false);
   assert.equal(shipped._meta.term, '1268');
-  assert.equal(shipped._meta.counts.roomsRequested, 425);
-  assert.equal(shipped._meta.counts.roomsParsed, 425);
+  assert.ok(roomCount > 0, 'the index has rooms to sweep');
+  assert.equal(shipped._meta.counts.roomsRequested, roomCount);
+  assert.equal(shipped._meta.counts.roomsParsed, roomCount);
   assert.deepEqual(Object.keys(shipped.rooms).sort(), Object.keys(index.rooms).sort(),
     'every room in the index was swept, and nothing that is not in it');
 });
@@ -396,8 +398,9 @@ test('the headline counts are the ones the sweep measured', () => {
   if (shipped._meta.cacheReplay) {
     assert.equal(shipped._meta.requests, 0, 'cache replay makes no source requests');
   } else {
-    assert.ok(shipped._meta.requests >= 427 && shipped._meta.requests <= 600,
-      '1 GET, 1 redirect hop and 425 POSTs, plus only bounded retries');
+    const roomCount = Object.keys(index.rooms).length;
+    assert.ok(shipped._meta.requests >= roomCount + 2 && shipped._meta.requests <= roomCount + 175,
+      '1 GET, 1 redirect hop and one POST per room, plus only bounded retries');
   }
   // Recounted from the records rather than trusted from the header.
   const events = records.filter((r) => r.kind === 'event');

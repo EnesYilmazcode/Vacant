@@ -31,6 +31,8 @@ import { createDirections } from './directions.js';
 // js/firstrun.js because that is the module holding the rule it comes from.
 import { NETWORK_TIMEOUT_MS } from './firstrun.js';
 import { mapsHref } from './install.js';
+import { drawCardPhoto } from './card-photo.js';
+import { safeDel, safeGet, safeSet } from './storage.js';
 import {
   busyDayOf,
   clock,
@@ -243,28 +245,6 @@ const state = {
   screen: 'ask',
   listScroll: 0,
 };
-
-function safeGet(k) {
-  try {
-    return localStorage.getItem(k);
-  } catch {
-    return null;
-  }
-}
-function safeSet(k, v) {
-  try {
-    localStorage.setItem(k, v);
-  } catch {
-    /* private mode; a remembered duration is not worth an error */
-  }
-}
-function safeDel(k) {
-  try {
-    localStorage.removeItem(k);
-  } catch {
-    /* same */
-  }
-}
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => `&${{ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' }[c]};`);
 
@@ -1368,111 +1348,6 @@ function select(i) {
 // gesture arrives in, so nothing here has to know the screen size.
 const SWIPE_PX = 84;
 const SWIPE_V = 0.45;
-const DESKTOP_CARD = '(min-width: 900px) and (hover: hover) and (pointer: fine)';
-
-const desktopCardMode = () => globalThis.matchMedia?.(DESKTOP_CARD).matches === true;
-
-// The warp, in two numbers that are both about what a READER sees.
-//
-// A photograph in this screen is a 3-ish times aspect gap and something has to
-// give. Cover gives the width away: 31% of it, and half of what is left is the
-// carpet these are all shot across. This gives the CEILING away instead, which
-// is flat and sits under the plate.
-//
-// WARP_WIDTH is how much of the source width the card keeps, centred.
-// WARP_BOTTOM is how much taller than natural the BOTTOM of the picture may be
-// drawn -- the part of the room you are actually looking at.
-//
-// The exponent is NOT a constant, because these are not all the same shape: 219
-// of the 306 are 3:2, and the rest run from 4:3 to 16:9. A fixed exponent
-// leaves a 16:9 room visibly more stretched at the bottom than a 4:3 one, so it
-// is derived per photograph from the two numbers above and the aspect it
-// actually has.
-//
-// 0.55 and 1.10 are Enes's, off dev/warp.html, picked over Orton Hall 110. They
-// are a tighter crop and a straighter bottom than the first guess of 0.72 and
-// 1.23: less of the room across, but what is there stands up rather than
-// leaning, and the extra height all goes into ceiling nobody reads.
-const WARP_WIDTH = 0.55;
-const WARP_BOTTOM = 1.10;
-
-// Horizontal bands the warp is drawn in. Each is a straight drawImage, so this
-// is a piecewise approximation of the curve: at 240 the seams are under a
-// device pixel at 393x852 and the whole draw is under 3ms.
-const WARP_BANDS = 240;
-
-// The exponent that puts the whole aspect gap into the TOP of the frame while
-// leaving the bottom edge at WARP_BOTTOM times its natural height.
-//
-// The curve is source = sh * t ** p, so the local vertical scale at t is
-// h / (sh * p * t ** (p - 1)), which at the bottom edge is h / (sh * p). Divide
-// that by the horizontal scale w / sw and the ratio is h * sw / (sh * p * w),
-// so p falls out of setting the ratio to WARP_BOTTOM. Floored at 1, which is a
-// straight stretch: a picture already tall enough for the screen needs no warp
-// and must not get a backwards one.
-function warpPower(w, h, sw, sh) {
-  return Math.max(1, (h * sw) / (sh * WARP_BOTTOM * w));
-}
-
-// Draw `img` into `canvas`, stretched so the room fills the screen.
-//
-// Every band takes a slice of the source and paints it into a taller slice of
-// the destination, and the curve decides how much taller. Bands are drawn one
-// pixel past their own bottom edge, because a fractional destination height
-// otherwise leaves a hairline of background between them.
-function drawWarp(canvas, img) {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-  if (!w || !h || !img.naturalWidth) return false;
-  canvas.width = Math.round(w * dpr);
-  canvas.height = Math.round(h * dpr);
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-
-  const sw = img.naturalWidth * WARP_WIDTH;
-  const sx = (img.naturalWidth - sw) / 2;
-  const sh = img.naturalHeight;
-  const at = (t) => sh * t ** warpPower(w, h, sw, sh);
-
-  for (let i = 0; i < WARP_BANDS; i++) {
-    const t0 = i / WARP_BANDS;
-    const t1 = (i + 1) / WARP_BANDS;
-    const sy = at(t0);
-    const sy1 = at(t1);
-    // A band whose source slice rounds to nothing still has to paint, or the
-    // stretched top of the frame comes out as gaps.
-    ctx.drawImage(img, sx, sy, sw, Math.max(sy1 - sy, 0.5), 0, h * t0, w, h * (t1 - t0) + 1);
-  }
-  return true;
-}
-
-// A desktop card has room for the photograph at its own shape. Draw the whole
-// source there instead of applying the portrait-only ceiling warp.
-function drawContained(canvas, img) {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-  if (!w || !h || !img.naturalWidth) return false;
-  canvas.width = Math.round(w * dpr);
-  canvas.height = Math.round(h * dpr);
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  const scale = Math.min(w / img.naturalWidth, h / img.naturalHeight);
-  const dw = img.naturalWidth * scale;
-  const dh = img.naturalHeight * scale;
-  ctx.clearRect(0, 0, w, h);
-  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
-  return true;
-}
-
-const drawCardPhoto = (canvas, img) =>
-  desktopCardMode() ? drawContained(canvas, img) : drawWarp(canvas, img);
-
 // The plate is one line of three facts on a photograph, so the window gets its
 // short form there. "no class rest of today" is the list's wording, where a row
 // has the width for it and the rest of the day is the thing being promised; on

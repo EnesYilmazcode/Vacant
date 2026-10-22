@@ -20,7 +20,7 @@
 
 import { toGrid, toLonLat } from './campus.js';
 import { overlayForDate } from '../scripts/lib/club-occupancy.mjs';
-import { blocksOn, classesOn, dayClaim } from './day.js';
+import { blocksOn, dayClaim } from './day.js';
 // `query` arrives as `ladder` because js/app.js already holds a `state.query`,
 // which is the buildings search box and has nothing to do with the engine.
 import { MAX_WALK, activeSessions, calendarOn, distanceMetres, query as ladder, rank, shape, tally, walkMetres, walkMinutes } from './engine.js';
@@ -35,7 +35,8 @@ import { safeDel, safeGet, safeSet } from './storage.js';
 import { KEY_ORIGIN, NO_WALK, NO_WALK_OVAL, locate, offCampus, ovalOrigin } from './location.js';
 import { fetchJson, parsedIndex } from './data-loader.js';
 import { availableBuildings, hoursFor as buildingHoursFor, pickHoursTerm, shortName } from './buildings.js';
-import { bearingTo, claimFor as roomClaimFor, hourLabel, timelineRows as roomTimelineRows } from './room-timeline.js';
+import { bearingTo, claimFor as roomClaimFor, timelineRows as roomTimelineRows } from './room-timeline.js';
+import { dayGridHtml as roomDayGridHtml } from './room-calendar.js';
 import {
   busyDayOf,
   clock,
@@ -2174,89 +2175,12 @@ const dayShown = () => {
   return d;
 };
 
-// One hour of the grid, in CSS pixels. 46 is the smallest that fits a course
-// code and a time range on two lines inside a 55 minute class, which is the
-// most common length on campus.
-const HOUR_PX = 46;
-
-const SHORT_DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const SHORT_MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-// The day as a calendar column, which is the shape a student already reads a
-// timetable in.
-//
-// It replaced a list of rows that said "7:00am free 7h00 / 2:00pm in use". That
-// list was accurate and nobody could see the shape of the day in it: the whole
-// point of an empty-room app is that the empty parts are the answer, and on a
-// grid the empty parts are simply the gaps. Every word the list spent saying
-// "free" is now white space.
-//
-// Hours are always published for a shipped room, because a building with no
-// published hours no longer ships at all, so there is exactly one unknown left
-// to draw: a day the building is published as closed.
-function dayGridHtml(room, bname, date, schedule) {
-  const hours = hoursFor(room.b, date.getDay());
-  const label = `${SHORT_DAY[date.getDay()]}, ${SHORT_MONTH[date.getMonth()]} ${date.getDate()}`;
-  const head = `<div class="dnav">
-      <button type="button" class="dstep" data-day="-1" aria-label="Previous day">
-        <svg class="ico flip" aria-hidden="true"><use href="#i-chev"/></svg></button>
-      <span>${esc(label)}</span>
-      <button type="button" class="dstep" data-day="1" aria-label="Next day">
-        <svg class="ico" aria-hidden="true"><use href="#i-chev"/></svg></button>
-    </div>`;
-
-  if (hours === null) return `${head}<p class="unknown">${esc(bname)} is closed.</p>`;
-
-  const classes = classesOn(room, date, schedule.sessions, schedule.courses);
-  // A shipped room's building always publishes hours, because one that does not
-  // no longer reaches the index. `undefined` still has to be survivable: the
-  // hours table is refetched on its own schedule and can drop a building while
-  // a built index still names it. The grid then runs the classes it can see and
-  // says so, rather than reading undefined[0] and rendering NaN.
-  const doors = Array.isArray(hours);
-  if (!doors && !classes.length) {
-    return `${head}<p class="unknown">No class today, and no published hours.</p>`;
-  }
-  // The grid runs the building's own hours, snapped out to whole hours so the
-  // labels land on the lines. A class that starts before the door officially
-  // opens widens the window rather than being clipped: it happened, and hiding
-  // it would draw the room as free during a class.
-  const first = Math.min(...(doors ? [hours[0]] : []), ...classes.map((c) => c.from));
-  const last = Math.max(...(doors ? [hours[1]] : []), ...classes.map((c) => c.to));
-  const top = Math.floor(first / 60) * 60;
-  const end = Math.ceil(last / 60) * 60;
-  const span = Math.max(60, end - top);
-  const pc = (m) => ((m - top) / span) * 100;
-
-  const marks = [];
-  for (let m = top; m <= end; m += 60) {
-    marks.push(`<li style="top:${pc(m).toFixed(3)}%"><span>${esc(hourLabel(m))}</span></li>`);
-  }
-
-  const blocks = classes.map((c) => {
-    const h = pc(c.to) - pc(c.from);
-    const name = c.course ?? 'In use';
-    const when = `${clock(c.from)} - ${clock(c.to)}`;
-    return `<div class="blk${h < 4.5 ? ' tight' : ''}" style="top:${pc(c.from).toFixed(3)}%;height:${h.toFixed(3)}%"
-      aria-label="${esc(`${name}, ${when}`)}"><b>${esc(name)}</b><span>${esc(when)}</span></div>`;
+function dayGridHtml(room, buildingName, date, schedule) {
+  return roomDayGridHtml(room, buildingName, date, schedule, {
+    hours: hoursFor(room.b, date.getDay()),
+    nowMin: nowMinutes(clockNow()),
+    isToday: roomDayOffset === 0,
   });
-
-  // The now line only means anything on the day it is on.
-  const nowMin = nowMinutes(clockNow());
-  const isToday = roomDayOffset === 0;
-  const nowLine =
-    isToday && nowMin >= top && nowMin <= end
-      ? `<div class="nowline" style="top:${pc(nowMin).toFixed(3)}%" aria-hidden="true"></div>`
-      : '';
-
-  // A fixed height per hour, not a percentage of the sheet. A calendar whose
-  // hour is 6px on a short screen and 30px on a tall one is two different
-  // pictures of the same day; the pane scrolls instead.
-  const px = Math.round((span / 60) * HOUR_PX);
-  return `${head}<div class="day" style="height:${px}px;--hours:${span / 60}">
-      <ul class="hrs">${marks.join('')}</ul>
-      <div class="cols">${blocks.join('')}${nowLine}</div>
-    </div>`;
 }
 
 function timelineRows(room, buildingName, nowMin, date, schedule) {

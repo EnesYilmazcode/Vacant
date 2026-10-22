@@ -38,6 +38,7 @@ import { blocksOn, classesOn, dayClaim } from '../../js/day.js';
 import { NO_WALK, NO_WALK_OVAL, OFF_CAMPUS_KM } from '../../js/location.js';
 import { availableBuildings, hoursFor as buildingHoursFor, pickHoursTerm, shortName } from '../../js/buildings.js';
 import { bearingTo, claimFor as roomClaimFor, hourLabel, timelineRows as roomTimelineRows } from '../../js/room-timeline.js';
+import { HOUR_PX, dayGridHtml as roomDayGridHtml } from '../../js/room-calendar.js';
 import {
   BACK_PX,
   COVER,
@@ -816,6 +817,25 @@ test('the room timeline model segments gaps and formats its verdict', () => {
   });
   assert.equal(hourLabel(720), 'noon');
   assert.ok(bearingTo({ lat: 40, lon: -83 }, { lat: 41, lon: -83 }) < 1);
+});
+
+test('the room calendar renders from explicit hours and clock state', () => {
+  const date = at('2026-09-03');
+  const room = { busy: [[4, 930, 1020, 1, 0]] };
+  const html = roomDayGridHtml(
+    room,
+    'Nowhere Hall',
+    date,
+    { sessions: INDEX.sessions, courses: ['TEST 1000'] },
+    { hours: [420, 1170], nowMin: 735, isToday: true },
+  );
+  assert.match(html, /Thu, Sep 3/);
+  assert.match(html, /TEST 1000, 3:30pm - 5:00pm/);
+  assert.match(html, /class="nowline"/);
+  assert.match(html, new RegExp(`height:${Math.round(13 * HOUR_PX)}px`));
+
+  const closed = roomDayGridHtml(room, '<Hall>', date, {}, { hours: null, nowMin: 0, isToday: false });
+  assert.match(closed, /&lt;Hall&gt; is closed/);
 });
 
 test('the room screen subtracts the walk, the way the engine says to', () => {

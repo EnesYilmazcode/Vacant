@@ -19,7 +19,6 @@
 // the highlight and the line stay on screen while you read.
 
 import { toGrid, toLonLat } from './campus.js';
-import { roomClaim } from './claim.js';
 import { overlayForDate } from '../scripts/lib/club-occupancy.mjs';
 import { blocksOn, classesOn, dayClaim } from './day.js';
 // `query` arrives as `ladder` because js/app.js already holds a `state.query`,
@@ -36,6 +35,7 @@ import { safeDel, safeGet, safeSet } from './storage.js';
 import { KEY_ORIGIN, NO_WALK, NO_WALK_OVAL, locate, offCampus, ovalOrigin } from './location.js';
 import { fetchJson, parsedIndex } from './data-loader.js';
 import { availableBuildings, hoursFor as buildingHoursFor, pickHoursTerm, shortName } from './buildings.js';
+import { bearingTo, claimFor as roomClaimFor, hourLabel, timelineRows as roomTimelineRows } from './room-timeline.js';
 import {
   busyDayOf,
   clock,
@@ -146,11 +146,6 @@ const CORE_Y = 0.5;
 // A fix this coarse turns every walk time into an estimate, so the row says
 // "~4 min" and the accessible name says "about 4 minutes".
 const COARSE_M = 75;
-
-// Passing periods are 15 minutes and 40% of a day's free blocks are under 20,
-// so a row each fills the room screen with corridor traffic. Anything shorter
-// than this is drawn as a rule between two classes instead.
-const SEAM_MIN = 20;
 
 const COMPASS = ['north', 'north east', 'east', 'south east', 'south', 'south west', 'west', 'north west'];
 
@@ -2264,132 +2259,12 @@ function dayGridHtml(room, bname, date, schedule) {
     </div>`;
 }
 
-// 7 AM, noon, 8 PM. No minutes, because every mark is on the hour.
-function hourLabel(m) {
-  const h = Math.floor(m / 60) % 24;
-  if (h === 0) return '12 AM';
-  if (h === 12) return 'noon';
-  return h < 12 ? `${h} AM` : `${h - 12} PM`;
+function timelineRows(room, buildingName, nowMin, date, schedule) {
+  return roomTimelineRows(room, buildingName, nowMin, date, schedule, hoursFor(room.b, date.getDay()));
 }
 
-// The timeline, as rows. Free blocks are the content and classes are the
-// frame, so a free block carries a start, the word and a length, and a class
-// carries a start and nothing else.
-function timelineRows(room, bname, nowMin, date, schedule) {
-  const hours = hoursFor(room.b, date.getDay());
-  const blocks = blocksOn(room, date, schedule.sessions);
-  const known = Array.isArray(hours);
-  if (hours === null) return { closed: true, rows: [] };
-
-  // With no published hours the timeline is bounded by the room's own first
-  // and last class. The app knows the door was open when a class met in it. It
-  // knows nothing about the hour before.
-  const open = known ? hours[0] : blocks.length ? blocks[0][0] : null;
-  const close = known ? hours[1] : blocks.length ? blocks[blocks.length - 1][1] : null;
-  if (open == null) return { known, rows: [], nothing: true };
-
-  // Clipped to the window, because a block that runs past the close is not
-  // evidence about a locked building.
-  const inside = [];
-  for (const [s, e] of blocks) {
-    const c = [Math.max(s, open), Math.min(e, close)];
-    if (c[1] > c[0]) inside.push(c);
-  }
-
-  const rows = [];
-  if (known) rows.push({ kind: 'edge', t: open, text: `${bname} opens` });
-  else rows.push({ kind: 'edge', text: `before ${clock(open)}, not known` });
-
-  const gap = (from, to) => {
-    const len = to - from;
-    if (len <= 0) return;
-    if (len < SEAM_MIN) {
-      rows.push({ kind: 'seam' });
-      return;
-    }
-    rows.push({ kind: 'free', t: from, end: to, len, now: nowMin != null && nowMin >= from && nowMin < to });
-  };
-
-  let cursor = open;
-  for (const [s, e] of inside) {
-    gap(cursor, s);
-    rows.push({ kind: 'busy', t: s });
-    cursor = Math.max(cursor, e);
-  }
-  gap(cursor, close);
-
-  if (known) rows.push({ kind: 'edge', t: close, text: `${bname} closes` });
-  else rows.push({ kind: 'edge', text: `after ${clock(close)}, not known` });
-
-  return { known, rows, blocks: inside, open, close };
-}
-
-// The one line at the top that makes a claim, and the only place on the room
-// screen that talks about now. js/claim.js decides what is true; this turns the
-// verdict into a sentence.
-//
-// A building nobody publishes hours for gets sentences about CLASSES. The
-// screen used to print "Thompson Library opens at 12:45pm" off the start of the
-// first class, two lines above its own paragraph saying nobody knows when that
-// door unlocks.
-//
-// Every duration on this screen is `c.yours`, which is the engine's formula
-// with the walk in it, and it is absent rather than guessed when the walk is
-// unknown. The room screen is the one place that can say how long you get, so
-// it is the one place where an overstated figure sends somebody across campus.
-function claimFor(tl, nowMin, bname, metres) {
-  const c = roomClaim({ ...tl, now: nowMin, metres });
-  // Kept short and kept at all: this only fires if the hours table drops a
-  // building a built index still ships, which the room screen must survive.
-  const noDoors = () => 'Door hours not published';
-
-  switch (c.kind) {
-    case 'opens':
-      return {
-        head: `Opens ${clock(c.at)}`,
-        sub: c.next != null && c.yours > 0 ? `Free ${clock(c.next)} \u00b7 ${dur(c.yours)}` : '',
-      };
-    case 'before-first-class':
-      return { head: `First class ${clock(c.at)}`, sub: '' };
-    case 'closed-for-day':
-      return { head: 'Closed for the day', sub: '' };
-    case 'after-last-class':
-      return { head: `Last class ended ${clock(c.at)}`, sub: '' };
-    case 'in-class':
-      return {
-        head: `In use till ${clock(c.until)}`,
-        sub:
-          c.next == null
-            ? 'Nothing free after it today'
-            : c.yours > 0
-              ? `Next free ${clock(c.next)}, for ${dur(c.yours)}`
-              : `Next free ${clock(c.next)}`,
-      };
-    case 'no-class-today':
-      return { head: 'No class today', sub: '' };
-    case 'free':
-      // With no published hours the sentence about the door outranks the
-      // sentence about the window. "Yours for 45 min" under a headline that
-      // already admits nobody knows when the building locks reads as a promise
-      // the line above it just refused to make.
-      if (!c.known) {
-        return {
-          head: c.until == null ? 'No class in here for the rest of today' : `No class in here till ${clock(c.until)}`,
-          sub: noDoors(),
-        };
-      }
-      return {
-        head: c.until == null ? 'No class in here for the rest of today' : `Free till ${clock(c.until)}`,
-        sub:
-          c.yours == null
-            ? ''
-            : c.yours > 0
-              ? `Yours for ${dur(c.yours)} once you get there`
-              : 'It closes before you could walk there',
-      };
-    default:
-      return { head: 'Nothing free now', sub: '' };
-  }
+function claimFor(timeline, nowMin, _buildingName, metres) {
+  return roomClaimFor(timeline, nowMin, metres);
 }
 
 // The same line for a date the user is not standing in. js/day.js decides what
@@ -2404,16 +2279,6 @@ function shapeFor(tl, date, schedule) {
     inTerm: inTermOn(iso, state.current, schedule),
     term: state.current?.termName,
   });
-}
-
-const rad = (deg) => (deg * Math.PI) / 180;
-
-// Great-circle initial bearing, degrees clockwise from true north.
-function bearingTo(from, to) {
-  const dLon = rad(to.lon - from.lon);
-  const y = Math.sin(dLon) * Math.cos(rad(to.lat));
-  const x = Math.cos(rad(from.lat)) * Math.sin(rad(to.lat)) - Math.sin(rad(from.lat)) * Math.cos(rad(to.lat)) * Math.cos(dLon);
-  return (((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360;
 }
 
 function roomHtml(id) {

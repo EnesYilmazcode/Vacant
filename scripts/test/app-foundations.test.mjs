@@ -1,8 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { WARP_BOTTOM, WARP_WIDTH, warpPower } from '../../js/card-photo.js';
 import { NO_WALK_OVAL, OVAL, locate } from '../../js/location.js';
+
+const APP = readFileSync(new URL('../../js/app.js', import.meta.url), 'utf8');
+
+test('the card controller imports both helpers it executes', () => {
+  assert.match(
+    APP,
+    /import \{ desktopCardMode, drawCardPhoto \} from ['"]\.\/card-photo\.js['"]/,
+  );
+  assert.match(APP, /if \(desktopCardMode\(\)\) return;/);
+});
 
 test('the card warp stays straight when the source already fits', () => {
   assert.equal(warpPower(400, 300, 400, 300), 1);

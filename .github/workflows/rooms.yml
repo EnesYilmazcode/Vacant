@@ -153,6 +153,14 @@ jobs:
       - name: Test the refreshed data
         run: node --test
 
+      # Registrar schedule changes are expected during a term. Show reviewers
+      # exactly which weekdays gained or lost occupied rooms, but never turn
+      # ordinary data movement into a failed publish.
+      - name: Report production schedule drift
+        if: ${{ always() && !cancelled() }}
+        continue-on-error: true
+        run: node scripts/report-schedule-drift.mjs >> "$GITHUB_STEP_SUMMARY"
+
       # A failed coverage check or test must not publish a newer class index
       # beside an old Room Matrix snapshot.
       - name: Commit if anything changed

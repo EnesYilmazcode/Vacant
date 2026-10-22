@@ -37,6 +37,7 @@ import { fetchJson, parsedIndex } from './data-loader.js';
 import { availableBuildings, hoursFor as buildingHoursFor, pickHoursTerm, shortName } from './buildings.js';
 import { bearingTo, claimFor as roomClaimFor, timelineRows as roomTimelineRows } from './room-timeline.js';
 import { dayGridHtml as roomDayGridHtml } from './room-calendar.js';
+import { backLabel, chromeFor } from './navigation.js';
 import {
   busyDayOf,
   clock,
@@ -2796,29 +2797,9 @@ function showRoom(id, { keepDay = false } = {}) {
   }
 }
 
-// Which controls lead out of a screen, decided here and nowhere else. There are
-// two places a way out can sit: the corner over the map, which holds the menu
-// or the Back arrow and never both, and the panel, which holds a Back of its
-// own on the screens whose corner the menu keeps. Decided in showPane, showAsk
-// and showWay, with CSS hiding and showing the room's pair per breakpoint as
-// well, the four drifted: two mechanisms for one fact is how they do.
-function chromeFor(screen, desk = splitQuery?.matches === true) {
-  if (screen === 'ask') return { corner: null, panel: false };
-  if (screen === 'card') return { corner: 'menu', panel: false };
-  // The way keeps the menu, for the list, the picker and Check again, and its
-  // Back is on the plate naming the room it leaves.
-  if (screen === 'way') return { corner: 'menu', panel: true };
-  // On a desktop the corner is over the map and the panel is across the
-  // window from it, so the corner keeps the menu on every screen and Back goes
-  // in the panel, beside what it leaves. On a phone the sheet is under the
-  // corner, and a screen that is a step down from another gets the arrow.
-  if (desk) return { corner: 'menu', panel: true };
-  return { corner: 'back', panel: false };
-}
-
 function paintChrome() {
-  const { corner, panel } = chromeFor(state.screen);
-  const label = backLabel();
+  const { corner, panel } = chromeFor(state.screen, splitQuery?.matches === true);
+  const label = backLabel(history.state);
   $('back').hidden = corner !== 'back';
   $('menu').hidden = corner !== 'menu';
   $('back').setAttribute('aria-label', label);
@@ -2839,27 +2820,6 @@ function paintChrome() {
     own.hidden = !(panel && room);
     own.setAttribute('aria-label', label);
   }
-}
-
-// What Back reaches, in words, for every control that goes there. The entry
-// underneath is the one Back lands on, and every entry records which screen
-// that is, so the label is read off the entry rather than written once per
-// screen: written per screen, the list said "Back to the card" when the menu
-// had opened it from a room, and a picked origin said it over the way.
-const BACK_TO = {
-  ask: 'Back to the question',
-  card: 'Back to the card',
-  list: 'Back to the room list',
-  way: 'Back to the way',
-  room: 'Back to the room',
-  near: 'Back to the nearest buildings',
-  browse: 'Back to browse buildings',
-  about: 'Back to what Vacant knows',
-};
-
-function backLabel(entry = history.state) {
-  if (entry?.v === 'pick') return 'Back without picking a building';
-  return BACK_TO[entry?.from] ?? 'Back';
 }
 
 // Where the room is: the map with the footprint lit, an arrow to it, one plate

@@ -37,6 +37,7 @@ import { roomClaim } from '../../js/claim.js';
 import { blocksOn, classesOn, dayClaim } from '../../js/day.js';
 import { NO_WALK, NO_WALK_OVAL, OFF_CAMPUS_KM } from '../../js/location.js';
 import { availableBuildings, hoursFor as buildingHoursFor, pickHoursTerm, shortName } from '../../js/buildings.js';
+import { bearingTo, claimFor as roomClaimFor, hourLabel, timelineRows as roomTimelineRows } from '../../js/room-timeline.js';
 import {
   BACK_PX,
   COVER,
@@ -804,6 +805,19 @@ const TIMELINE = {
   ],
 };
 
+test('the room timeline model segments gaps and formats its verdict', () => {
+  const room = { busy: [[4, 930, 1020, 1]] };
+  const date = at('2026-09-03');
+  const timeline = roomTimelineRows(room, 'Nowhere Hall', 735, date, { sessions: INDEX.sessions }, [420, 1170]);
+  assert.deepEqual(timeline.rows, TIMELINE.rows);
+  assert.deepEqual(roomClaimFor(timeline, 735, 191), {
+    head: 'Free till 3:20pm',
+    sub: 'Yours for 3h02 once you get there',
+  });
+  assert.equal(hourLabel(720), 'noon');
+  assert.ok(bearingTo({ lat: 40, lon: -83 }, { lat: 41, lon: -83 }) < 1);
+});
+
 test('the room screen subtracts the walk, the way the engine says to', () => {
   // `gapEnd - PACKUP - now` is the expression engine.js documents as the bug it
   // exists to fix. It shipped here anyway and overstated every claim by exactly
@@ -846,8 +860,7 @@ test('a walk that outlasts the window says so instead of printing zero', () => {
   const claim = roomClaim({ ...TIMELINE, now: 925, metres: 4000 });
   assert.ok(claim.yours <= 0, `a 4 km walk cannot leave ${claim.yours} minutes`);
   // And the screen has a sentence for it rather than a zero.
-  const src = readFileSync(join(ROOT, 'js/app.js'), 'utf8');
-  assert.match(src, /It closes before you could walk there/);
+  assert.equal(roomClaimFor(TIMELINE, 925, 4000).sub, 'It closes before you could walk there');
 });
 
 test('the before-open and in-class claims go through the same formula', () => {
@@ -1236,15 +1249,16 @@ test('a stepped day inside the term gets its own first class', () => {
 });
 
 test('the screen hands one date to the grid, the timeline and the claim', () => {
-  const tl = bodyOf('timelineRows');
-  assert.match(tl, /function timelineRows\([^)]*\bdate\b/, 'timelineRows takes no date');
-  assert.match(tl, /hoursFor\(room\.b, date\.getDay\(\)\)/);
-  assert.match(tl, /blocksOn\(room, date, schedule\.sessions\)/);
-  assert.equal((tl.match(/state\.day/g) ?? []).length, 0, 'timelineRows still reads state.day');
+  const model = readFileSync(join(ROOT, 'js', 'room-timeline.js'), 'utf8');
+  assert.match(model, /function timelineRows\([^)]*\bdate\b/, 'timelineRows takes no date');
+  assert.match(model, /blocksOn\(room, date, schedule\.sessions\)/);
+  assert.equal((model.match(/state\.day/g) ?? []).length, 0, 'timelineRows still reads state.day');
 
   const room = bodyOf('roomHtml');
   assert.match(room, /const date = dayShown\(\)/);
   assert.match(room, /timelineRows\([^)]*\bdate, schedule\)/);
+  const adapter = bodyOf('timelineRows');
+  assert.match(adapter, /hoursFor\(room\.b, date\.getDay\(\)\)/);
   // An equality and nothing else. `roomDayOffset === 0 || true` still reads as
   // a day check and still matches a looser pattern, and it puts today's
   // sentence back over every stepped day.

@@ -1086,80 +1086,33 @@ const weekFrom = (iso) =>
   });
 const EARLY = weekFrom('2026-10-06');
 const LATE = weekFrom('2026-10-19');
-const dayOf = (week, d) => week.find((x) => x.getDay() === d);
 
-// Every room-day whose classes differ across that boundary. This is the
-// reviewable production-data baseline: if the Registrar moves a class, the
-// failure names the exact room and weekday that appeared or disappeared.
-const BOUNDARY_MOVES = {
-  Sun: [],
-  Mon: [
-    'AA0108', 'AA0246', 'BE0120', 'BO0317', 'CZ0330', 'DE0268', 'HA0025',
-    'HC0250', 'HH0159', 'HI0035', 'JR0295', 'KH0116', 'KH0333', 'LZ0021',
-    'PEA0151', 'PS0014', 'RA0059', 'SB0305', 'SB0320',
-  ],
-  Tue: [
-    'AP0388', 'DB0029', 'DB0049', 'DB1116', 'DE0207', 'DE0253', 'EC0014',
-    'EC0258', 'EC0326', 'HH0351', 'KH0112', 'KH0333', 'LZ0021', 'ML0125',
-    'ML0174', 'MP1015', 'PEA0110', 'PEA0151', 'RA0110', 'SB0315', 'SH0100',
-    'SM1005', 'SM2144', 'SOE0200',
-  ],
-  Wed: [
-    'BE0120', 'BO0128', 'BO0313', 'BO0317', 'DB1116', 'DE0268', 'EC0202',
-    'HA0025', 'HC0250', 'HI0031', 'HI0306', 'JR0295', 'KH0104', 'KH0333',
-    'LZ0021', 'PEA0110', 'PEA0151', 'PS0014', 'RA0059', 'SB0320', 'SM1005',
-    'SM1138', 'SOE0200', 'SOE0241', 'TFM0280',
-  ],
-  Thu: [
-    'AP0388', 'DB0029', 'DB0049', 'DB1116', 'DE0207', 'DE0253', 'EC0014',
-    'EC0246', 'EC0258', 'EC0311', 'EC0326', 'HH0351', 'KH0333', 'LZ0021',
-    'ML0100', 'ML0125', 'ML0174', 'PEA0110', 'RA0110', 'SB0315', 'SH0100',
-    'SH0135', 'SM1005', 'SOE0200',
-  ],
-  Fri: [
-    'AA0108', 'BO0313', 'CB0130', 'DB1116', 'DE0268', 'EC0202', 'HA0025',
-    'HC0250', 'KH0112', 'PS0014', 'SB0320', 'SM1005', 'SM1138', 'SOE0200',
-    'SOE0241', 'TFM0280',
-  ],
-  Sat: [],
-};
+test('the date supplies both the session mask and weekday', () => {
+  // Small on purpose. Production schedule changes belong in the drift report,
+  // while this fixture makes the application rule deterministic.
+  const sessions = [
+    ['2026-10-01', '2026-10-14'],
+    ['2026-10-01', '2026-10-31'],
+    ['2026-10-15', '2026-10-31'],
+  ];
+  const room = {
+    busy: [
+      [1, 480, 535, 0], // Monday, first session only
+      [1, 600, 655, 2], // Monday, second session only
+      [2, 720, 775, 1], // Tuesday, full term
+    ],
+  };
+  const earlyMonday = at('2026-10-05');
+  const earlyTuesday = at('2026-10-06');
+  const lateMonday = at('2026-10-19');
+  const lateTuesday = at('2026-10-20');
 
-test('the mask and the weekday both come off the date, over the whole shipped index', () => {
-  // The fixture first. If the term stops straddling this boundary the counts
-  // below stop meaning anything, and this is the line that says so.
-  for (const d of EARLY) assert.deepEqual(activeSessions(INDEX.sessions, isoDate(d)), [true, true, false]);
-  for (const d of LATE) assert.deepEqual(activeSessions(INDEX.sessions, isoDate(d)), [false, true, true]);
-
-  const rooms = Object.entries(INDEX.rooms);
-  const dayNames = Object.keys(BOUNDARY_MOVES);
-  const moved = Object.fromEntries(dayNames.map((name) => [name, []]));
-  for (const [id, room] of rooms) {
-    for (let d = 0; d < 7; d++) {
-      const early = blocksOn(room, dayOf(EARLY, d), INDEX.sessions);
-      const late = blocksOn(room, dayOf(LATE, d), INDEX.sessions);
-      if (JSON.stringify(early) === JSON.stringify(late)) continue;
-      moved[dayNames[d]].push(id);
-    }
-  }
-
-  const pairs = (table) =>
-    Object.entries(table).flatMap(([day, ids]) => ids.map((id) => `${day} ${id}`));
-  const expected = new Set(pairs(BOUNDARY_MOVES));
-  const actual = new Set(pairs(moved));
-  const added = [...actual].filter((pair) => !expected.has(pair));
-  const removed = [...expected].filter((pair) => !actual.has(pair));
-  const detail = [
-    'session-boundary room-days changed',
-    `added: ${added.join(', ') || 'none'}`,
-    `removed: ${removed.join(', ') || 'none'}`,
-  ].join('\n');
-
-  // Reading the weekday off a clock collapses all seven columns onto one, and
-  // dropping the mask makes both sides equal, so the full baseline moves under
-  // either mutation.
-  assert.equal(rooms.length, 425);
-  assert.equal(rooms.length * 7, 2975);
-  assert.equal(added.length + removed.length, 0, detail);
+  assert.deepEqual(activeSessions(sessions, isoDate(earlyMonday)), [true, true, false]);
+  assert.deepEqual(activeSessions(sessions, isoDate(lateMonday)), [false, true, true]);
+  assert.deepEqual(blocksOn(room, earlyMonday, sessions), [[480, 535]]);
+  assert.deepEqual(blocksOn(room, lateMonday, sessions), [[600, 655]]);
+  assert.deepEqual(blocksOn(room, earlyTuesday, sessions), [[720, 775]]);
+  assert.deepEqual(blocksOn(room, lateTuesday, sessions), [[720, 775]]);
 });
 
 test('the grid and the claim read one list of classes, on both sides of the boundary', () => {

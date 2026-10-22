@@ -192,12 +192,19 @@ test('propagation is idempotent', () => {
 
 // --- the committed index, if it has been built ---
 
-const INDEX = new URL('../../data/rooms-1268.json', import.meta.url);
-const readIndex = () => (existsSync(INDEX) ? JSON.parse(readFileSync(INDEX, 'utf8')) : null);
+const CURRENT = new URL('../../data/current.json', import.meta.url);
+const readCurrent = () => (existsSync(CURRENT) ? JSON.parse(readFileSync(CURRENT, 'utf8')) : null);
+const readIndex = () => {
+  const current = readCurrent();
+  if (!current?.rooms) return null;
+  const path = new URL(`../../${current.rooms}`, import.meta.url);
+  return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
+};
 
 test('every busy tuple in the committed index is five integers in range', () => {
   const d = readIndex();
   if (!d) return;
+  assert.ok(Object.keys(d.rooms).length > 0, 'the current room index is not empty');
   assert.ok(Array.isArray(d.courses) && d.courses.length > 0, 'the index carries a course table');
   for (const [id, room] of Object.entries(d.rooms)) {
     for (const b of room.busy) {
@@ -212,6 +219,24 @@ test('every busy tuple in the committed index is five integers in range', () => 
       assert.ok(b[4] === -1 || (b[4] >= 0 && b[4] < d.courses.length), `${id} course ${b[4]}`);
     }
   }
+});
+
+test('the current harvest manifest proves the room crawl converged', () => {
+  const current = readCurrent();
+  if (!current) return;
+  const path = new URL(`../../data/harvest-${current.term}.manifest.json`, import.meta.url);
+  if (!existsSync(path)) return;
+  const manifest = JSON.parse(readFileSync(path, 'utf8'));
+  assert.equal(manifest.term, current.term);
+  assert.equal(manifest.history.length, manifest.passes);
+  assert.ok(manifest.passes >= 3, 'the crawl stopped before its minimum pass count');
+  assert.ok(manifest.facetTotal > 0 && manifest.distinctMeetings >= manifest.facetTotal);
+  assert.ok(manifest.meetingsInARealRoom > 0, 'the crawl found no meetings in rooms');
+  assert.deepEqual(
+    manifest.history.slice(-2).map((pass) => pass.addedWithRoom),
+    [0, 0],
+    'the crawl did not finish with two stable room passes',
+  );
 });
 
 test('the course table is sorted, deduped, and every entry is pointed at', () => {
@@ -341,9 +366,8 @@ test('current.json gates on the published term, and it ends before finals start'
   // staleness gate and offered Independence Hall 100, 727 seats, as free until
   // 10:50 pm.
   const d = readIndex();
-  const path = new URL('../../data/current.json', import.meta.url);
-  if (!d || !existsSync(path)) return;
-  const current = JSON.parse(readFileSync(path, 'utf8'));
+  const current = readCurrent();
+  if (!d || !current) return;
   assert.deepEqual(current.instruction, d.teaching);
   assert.ok(
     current.instruction[1] < d.exams.start,

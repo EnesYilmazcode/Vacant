@@ -391,7 +391,6 @@ test('the handle it clears is the handle it opened', () => {
   geo.watchPosition = () => 7;
   const w = createWatch({ geolocation: () => geo, visible: shown, onFix() {}, onError() {} });
   w.start(gps);
-  assert.equal(w.id, 7);
   w.stop();
   assert.deepEqual(geo.calls.clear, [7], 'the watch was cleared by a handle it never held');
 });
@@ -410,7 +409,6 @@ test('stopping drops the handle, so the watch can come back', () => {
   const w = createWatch({ geolocation: () => geo, visible: shown, onFix() {}, onError() {} });
   w.start(gps);
   w.stop();
-  assert.equal(w.open, false);
   assert.equal(w.start(gps), 'open', 'a handle left set refuses every restart for the session');
   assert.equal(geo.calls.watch.length, 2);
 });
@@ -421,7 +419,7 @@ test('a throw inside clearWatch still drops the handle', () => {
   const w = createWatch({ geolocation: () => geo, visible: shown, onFix() {}, onError() {} });
   w.start(gps);
   assert.equal(w.stop(), 'stopped');
-  assert.equal(w.open, false, 'a failed stop must not strand the handle');
+  assert.equal(w.start(gps), 'open', 'a failed stop must not strand the handle');
 });
 
 test('a hidden page never opens a watch', () => {
@@ -453,12 +451,11 @@ test('the watch stays coarse and refuses a cached fix, read off the options it i
 test('an unsupported or throwing geolocation leaves no handle behind', () => {
   const bare = createWatch({ geolocation: () => ({}), visible: shown, onFix() {}, onError() {} });
   assert.equal(bare.start(gps), 'unsupported');
-  assert.equal(bare.open, false);
+  assert.equal(bare.stop(), 'closed', 'an unsupported geolocation must not believe a watch opened');
   const thrower = createWatch({ geolocation: () => ({ watchPosition() { throw new Error('no'); } }),
     visible: shown, onFix() {}, onError() {} });
   assert.equal(thrower.start(gps), 'threw');
-  assert.equal(thrower.open, false, 'a throw must not leave the app believing a watch is live');
-  assert.equal(thrower.stop(), 'closed');
+  assert.equal(thrower.stop(), 'closed', 'a throw must not leave the app believing a watch is live');
 });
 
 test('js/app.js owns no watch handle of its own any more', () => {

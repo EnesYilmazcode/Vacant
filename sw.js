@@ -178,6 +178,7 @@ const SHELL_ASSETS = [
   SCOPE + 'js/engine.js',
   SCOPE + 'scripts/lib/club-occupancy.mjs',
   SCOPE + 'js/map.js',
+  SCOPE + 'js/navigation.js',
   SCOPE + 'js/route.js',
   SCOPE + 'js/room-timeline.js',
   SCOPE + 'js/room-calendar.js',

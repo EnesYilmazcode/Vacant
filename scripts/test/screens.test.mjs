@@ -39,6 +39,7 @@ import { NO_WALK, NO_WALK_OVAL, OFF_CAMPUS_KM } from '../../js/location.js';
 import { availableBuildings, hoursFor as buildingHoursFor, pickHoursTerm, shortName } from '../../js/buildings.js';
 import { bearingTo, claimFor as roomClaimFor, hourLabel, timelineRows as roomTimelineRows } from '../../js/room-timeline.js';
 import { HOUR_PX, dayGridHtml as roomDayGridHtml } from '../../js/room-calendar.js';
+import { backLabel, chromeFor } from '../../js/navigation.js';
 import {
   BACK_PX,
   COVER,
@@ -1311,9 +1312,9 @@ test('the back button on the room screen names the pane back lands on', () => {
 
   // The pairing, not the presence: a table keyed by the screen underneath, so
   // the near and list arms cannot be swapped back the way they once were.
-  assert.match(APP, /near: 'Back to the nearest buildings'/);
-  assert.match(APP, /list: 'Back to the room list'/);
-  assert.match(APP, /way: 'Back to the way'/);
+  assert.equal(backLabel({ from: 'near' }), 'Back to the nearest buildings');
+  assert.equal(backLabel({ from: 'list' }), 'Back to the room list');
+  assert.equal(backLabel({ from: 'way' }), 'Back to the way');
   assert.match(bodyOf('paintChrome'), /own\.setAttribute\('aria-label', label\)/);
   assert.match(bodyOf('roomHtml'), /id="room-back"/);
   assert.match(bodyOf('wireRoom'), /\$\('room-back'\)\.onclick = \(\) => history\.back\(\)/);
@@ -1550,7 +1551,7 @@ test('the swipe is not the only way to answer the card', () => {
   // the corner belongs to the menu now. Decided in chromeFor and nowhere else:
   // a CSS rule hiding it while showPane un-hid it is two mechanisms for one
   // fact, which is how they drift.
-  assert.match(bodyOf('chromeFor'), /screen === 'card'\) return \{ corner: 'menu', panel: false \}/);
+  assert.deepEqual(chromeFor('card'), { corner: 'menu', panel: false });
   const css = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.equal(/body\.carding #back \{/.test(css), false, 'the CSS hides #back as well');
 
@@ -1586,7 +1587,7 @@ test('neither screen without a back arrow is a dead end', () => {
 
   // The way's Back is on its plate, not only in the menu, and the menu's own
   // Back names where it goes and stands down wherever another Back shows.
-  assert.match(bodyOf('chromeFor'), /screen === 'way'\) return \{ corner: 'menu', panel: true \}/);
+  assert.deepEqual(chromeFor('way'), { corner: 'menu', panel: true });
   assert.match(bodyOf('paintChrome'), /\$\('way-back'\)\.hidden = !\(panel && way\)/);
   assert.match(bodyOf('paintChrome'), /\$\('m-back'\)\.hidden = panel \|\| corner === 'back'/);
   assert.match(bodyOf('paintChrome'), /\$\('m-back'\)\.textContent = label/);
@@ -1618,7 +1619,7 @@ test('neither screen without a back arrow is a dead end', () => {
   // On a desktop the corner never changes hands: it keeps the menu on every
   // screen, so a second click on it cannot land on Back, and every pane's Back
   // is in the panel, beside what it leaves.
-  assert.match(bodyOf('chromeFor'), /if \(desk\) return \{ corner: 'menu', panel: true \}/);
+  assert.deepEqual(chromeFor('room', true), { corner: 'menu', panel: true });
   assert.match(bodyOf('paintChrome'), /\$\('sheet-head'\)\.hidden = !panel \|\| room/);
   assert.match(css, /<div id="sheet-head" hidden>\s*<button type="button" class="bar-btn room-back" id="sheet-back">/);
   assert.match(APP, /\$\('sheet-back'\)\.onclick = \(\) => history\.back\(\)/);
@@ -1850,10 +1851,9 @@ test('back names the screen it lands on, at every step of the answer', () => {
   // the list is one tap behind the card, and a room is behind either.
   // One label for every screen, read off the entry Back lands on, and set
   // where the screen is shown rather than once per screen.
-  assert.match(APP, /ask: 'Back to the question'/);
-  assert.match(APP, /card: 'Back to the card'/);
-  assert.match(bodyOf('backLabel'), /BACK_TO\[entry\?\.from\]/);
-  assert.match(bodyOf('backLabel'), /entry\?\.v === 'pick'\) return 'Back without picking a building'/);
+  assert.equal(backLabel({ from: 'ask' }), 'Back to the question');
+  assert.equal(backLabel({ from: 'card' }), 'Back to the card');
+  assert.equal(backLabel({ v: 'pick', from: 'way' }), 'Back without picking a building');
   assert.match(bodyOf('paintChrome'), /\$\('back'\)\.setAttribute\('aria-label', label\)/);
   for (const fn of ['showCard', 'showList', 'showNear', 'showPick', 'showBrowse', 'showAbout', 'showRoom']) {
     assert.doesNotMatch(bodyOf(fn), /\$\('back'\)\.setAttribute/, `${fn} writes its own Back label again`);

@@ -120,15 +120,15 @@ test('the harvest cadence is not described as a live cron while no workflow exis
 // ---------------------------------------------------------------- location
 
 test('privacy.html describes the real no-location behaviour', () => {
-  const app = read('js/app.js');
+  const location = read('js/location.js');
   const privacy = read('privacy.html');
 
   // What the code actually does with a denied fix. If this stops being the Oval
   // fallback plus an offered picker, the privacy page has to be rewritten with it.
   // Measured, not assumed: a denied fix renders the note and a Pick a building
   // button, and the list still ranks campus-wide from the Oval.
-  assert.match(app, /err\.code === 1 \? 'Location is off'/, 'app.js denied-fix branch moved');
-  assert.match(app, /showing from the Oval/);
+  assert.match(location, /error\.code === 1 \? 'Location is off'/, 'location denied-fix branch moved');
+  assert.match(location, /showing from the Oval/);
 
   assert.match(privacy, /Location is off, showing\s+from the Oval/i);
   assert.match(

@@ -35,6 +35,7 @@ import {
 } from '../../js/state.js';
 import { roomClaim } from '../../js/claim.js';
 import { blocksOn, classesOn, dayClaim } from '../../js/day.js';
+import { NO_WALK, NO_WALK_OVAL, OFF_CAMPUS_KM } from '../../js/location.js';
 import {
   BACK_PX,
   COVER,
@@ -2361,7 +2362,7 @@ test('the off-campus gate is a walk, and the file says which buildings sit outsi
   // CRLF, so without it every figure that landed at the end of a line reads as
   // missing, which is how this test first failed.
   const said = src.replace(/\r?\n\s*\/\/ ?/g, ' ');
-  const gate = Number(src.match(/^const OFF_CAMPUS_KM = ([\d.]+);$/m)[1]);
+  const gate = OFF_CAMPUS_KM;
   assert.equal(gate, 2.2);
 
   // The app's own fallback point, and its own crude km, which is the number the
@@ -2447,7 +2448,7 @@ test('the off-campus gate is a walk, and the file says which buildings sit outsi
       `${b.name} can walk to a building holding a ranked room, so the note is a claim about classrooms and not about campus`,
     );
   }
-  assert.ok(src.includes('No classroom close enough to walk to'));
+  assert.equal(NO_WALK, 'No classroom close enough to walk to');
   assert.ok(!src.includes('You are off campus'), 'the geography claim is back in js/app.js');
   assert.ok(!css.includes('You are off campus'), 'index.html still quotes the deleted sentence as live copy');
 });
@@ -2582,6 +2583,7 @@ test('a missing basemap says so above row one, in print and out loud', () => {
 // tappable rows.
 test('an origin with nothing walkable is answered, not left on a dead end', () => {
   const src = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+  const location = readFileSync(join(ROOT, 'js', 'location.js'), 'utf8');
   const branch = src.slice(src.indexOf('const stranded ='), src.indexOf('  // Nothing is selected until'));
   assert.ok(branch.length > 0, 'the stranded branch in answer() moved');
 
@@ -2593,13 +2595,13 @@ test('an origin with nothing walkable is answered, not left on a dead end', () =
   // carries #note-pick onto a screen whose other controls cannot help.
   assert.match(branch, /state\.origin\?\.source === 'picked'.*useOrigin\(state\.origin, stranded \? NO_WALK : null\)/s);
   // Both notes are the same sentence, so the two screens cannot drift apart.
-  assert.match(src, /const NO_WALK = 'No classroom close enough to walk to';/);
-  assert.match(src, /const NO_WALK_OVAL = `\$\{NO_WALK\}, showing from the Oval`;/);
+  assert.equal(NO_WALK, 'No classroom close enough to walk to');
+  assert.equal(NO_WALK_OVAL, `${NO_WALK}, showing from the Oval`);
   // And the gate still prints it, so the 2.19 km and 2.21 km screens agree.
   // The circle moved into offCampus() when the watch landed (#87), because it
   // now has to run on every accepted position rather than only the first one.
   // scripts/test/follow.test.mjs is what holds it on both paths.
-  assert.match(src, /if \(offCampus\(here\)\) return finish\(oval, NO_WALK_OVAL\);/);
+  assert.match(location, /if \(offCampus\(here\)\) return finish\(oval, NO_WALK_OVAL\);/);
 });
 
 // Three invariants this change turns on, all read out of js/app.js because

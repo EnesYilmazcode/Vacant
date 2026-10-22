@@ -179,6 +179,7 @@ const SHELL_ASSETS = [
   SCOPE + 'js/route.js',
   SCOPE + 'js/pwa.js',
   SCOPE + 'js/install.js',
+  SCOPE + 'js/location.js',
   SCOPE + 'js/firstrun.js',
   SCOPE + 'js/sheet.js',
   SCOPE + 'js/state.js',

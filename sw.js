@@ -168,6 +168,7 @@ const SHELL_ASSETS = [
   SCOPE,
   SHELL_DOC,
   SCOPE + 'js/app.js',
+  SCOPE + 'js/buildings.js',
   SCOPE + 'js/card-photo.js',
   SCOPE + 'js/campus.js',
   SCOPE + 'js/claim.js',

@@ -1,5 +1,4 @@
-// hours.vendor.js is a hand copy, so it needs two guards: the app source it was
-// copied from must still say what it said, and the copy must still answer the
+// The spike adapts the shared building-data module and must still answer the
 // real table the same way a direct read does.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,19 +10,10 @@ const at = (p) => fileURLToPath(new URL(p, import.meta.url));
 const read = (p) => readFileSync(at(p), 'utf8');
 const json = (p) => JSON.parse(read(p));
 
-test('js/app.js still resolves hours the way hours.vendor.js copied', () => {
-  const app = read('../../js/app.js');
-  for (const needle of [
-    "const want = (current?.termName ?? '').toLowerCase().replace(/\\s+/g, '-');",
-    'const exact = terms.find(([slug]) => slug.startsWith(want));',
-    'const rec = state.hoursTerm?.buildings?.[code];',
-    'return rec.hours[day];',
-  ]) {
-    assert.ok(
-      app.includes(needle),
-      `js/app.js no longer contains ${JSON.stringify(needle)}. spikes/hours.vendor.js was copied from it and may now disagree with the app about which doors are open.`,
-    );
-  }
+test('the hours spike delegates to the shared building-data module', () => {
+  const source = read('../hours.vendor.js');
+  assert.match(source, /from '\.\.\/js\/buildings\.js'/);
+  assert.doesNotMatch(source, /Object\.entries\(hours\?\.terms/);
 });
 
 test('the vendored hoursFor answers the shipped table exactly', () => {

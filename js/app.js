@@ -35,6 +35,7 @@ import { drawCardPhoto } from './card-photo.js';
 import { safeDel, safeGet, safeSet } from './storage.js';
 import { KEY_ORIGIN, NO_WALK, NO_WALK_OVAL, locate, offCampus, ovalOrigin } from './location.js';
 import { fetchJson, parsedIndex } from './data-loader.js';
+import { availableBuildings, hoursFor as buildingHoursFor, pickHoursTerm, shortName } from './buildings.js';
 import {
   busyDayOf,
   clock,
@@ -788,27 +789,7 @@ function attachSheet() {
 
 // ---------------------------------------------------------------- answering
 
-// The term the app is SERVING, not whichever table happens to be biggest.
-// Picking the fullest one worked only because Autumn has 47 buildings against
-// Summer's 46; during Summer term it would have ranked every room against
-// Autumn's hours, and Sullivant would have read open until 19:30 when Summer
-// publishes 17:00. That is the assumed-window failure the engine forbids.
-function pickHoursTerm(hours, current) {
-  const want = (current?.termName ?? '').toLowerCase().replace(/\s+/g, '-');
-  const terms = Object.entries(hours?.terms ?? {});
-  const exact = terms.find(([slug]) => slug.startsWith(want));
-  if (exact) return exact;
-  // No table for the live term. Every building then reports unknown hours,
-  // which is honest, rather than borrowing another term's doors.
-  console.warn(`Vacant: no published hours for ${current?.termName}; all buildings will read unknown.`);
-  return [null, null];
-}
-
-function hoursFor(code, day) {
-  const rec = state.hoursTerm?.buildings?.[code];
-  if (!rec) return undefined; // no published hours: shown, tiered below, never assumed
-  return rec.hours[day]; // an [open, close] pair, or null for published-closed
-}
+const hoursFor = (code, day) => buildingHoursFor(state.hoursTerm, code, day);
 
 const nowMinutes = (d) => d.getHours() * 60 + d.getMinutes();
 
@@ -985,15 +966,6 @@ function answer() {
       .filter(Boolean)
       .join(' '),
   );
-}
-
-// A name over 24 characters with a dash in it is the Registrar's
-// "department - building" form, and the half after the dash is the half
-// written on the door.
-function shortName(name) {
-  const s = String(name ?? '');
-  const cut = s.indexOf(' - ');
-  return s.length > 24 && cut > 0 ? s.slice(cut + 3) : s;
 }
 
 function roomLabel(r) {
@@ -2052,26 +2024,9 @@ function clearPickedOrigin() {
 
 // ------------------------------------------------------ browse buildings
 
-function browseGroups() {
-  const groups = new Map();
-  for (const room of state.allResults) {
-    if (!room.hoursKnown || room.wait !== 0) continue;
-    const rooms = groups.get(room.building) ?? [];
-    rooms.push(room);
-    groups.set(room.building, rooms);
-  }
-  return [...groups.entries()]
-    .map(([code, rooms]) => ({
-      code,
-      name: shortName(state.buildings?.[code]?.name ?? rooms[0]?.name ?? code),
-      rooms,
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
 function paintBrowse() {
   const pane = $('browse');
-  const groups = browseGroups();
+  const groups = availableBuildings(state.allResults, state.buildings);
   const active = state.browseBuilding
     ? groups.find((group) => group.code === state.browseBuilding)
     : null;

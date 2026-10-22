@@ -36,6 +36,7 @@ import {
 import { roomClaim } from '../../js/claim.js';
 import { blocksOn, classesOn, dayClaim } from '../../js/day.js';
 import { NO_WALK, NO_WALK_OVAL, OFF_CAMPUS_KM } from '../../js/location.js';
+import { availableBuildings, hoursFor as buildingHoursFor, pickHoursTerm, shortName } from '../../js/buildings.js';
 import {
   BACK_PX,
   COVER,
@@ -413,6 +414,20 @@ test('with no hours table at all every building reads unknown, never open', () =
   assert.equal(groups.open.length, 0);
   assert.equal(groups.closed.length, 0);
   assert.equal(groups.unknown.length, Object.keys(counts).filter((c) => SLICE[c]).length);
+});
+
+test('building data selects only the served term and preserves unknown hours', () => {
+  const warnings = [];
+  const [slug, term] = pickHoursTerm(HOURS, { termName: 'Autumn 2026' }, (message) => warnings.push(message));
+  assert.match(slug, /^autumn-2026/);
+  assert.equal(buildingHoursFor(term, '087', 6), null);
+  assert.equal(buildingHoursFor(term, 'missing', 1), undefined);
+  assert.deepEqual(warnings, []);
+
+  const missing = pickHoursTerm(HOURS, { termName: 'Winter 2099' }, (message) => warnings.push(message));
+  assert.deepEqual(missing, [null, null]);
+  assert.match(warnings[0], /no published hours for Winter 2099/);
+  assert.equal(shortName('Department of Something - Baker Hall'), 'Baker Hall');
 });
 
 test('a building published as closed today is not a building with no hours', () => {
@@ -934,14 +949,18 @@ test('a picked origin ranks rooms from more than one building', () => {
 
 test('browsing buildings is a destination flow, not another origin picker', () => {
   const browse = bodyOf('paintBrowse');
-  const groups = bodyOf('browseGroups');
   const page = readFileSync(join(ROOT, 'index.html'), 'utf8');
   assert.match(page, /id="m-browse">Browse buildings/);
   assert.match(page, /id="browse" class="pane"/);
-  assert.match(groups, /state\.allResults/);
-  assert.match(groups, /room\.hoursKnown/);
-  assert.match(groups, /room\.wait !== 0/);
-  assert.doesNotMatch(groups, /seats|feature|capacity/i);
+  assert.match(browse, /availableBuildings\(state\.allResults, state\.buildings\)/);
+  const groups = availableBuildings([
+    { id: 'open', building: '2', name: 'Zeta', hoursKnown: true, wait: 0, seats: 1 },
+    { id: 'waiting', building: '1', name: 'Alpha', hoursKnown: true, wait: 5 },
+    { id: 'unknown', building: '1', name: 'Alpha', hoursKnown: false, wait: 0 },
+  ], { 2: { name: 'Department of Something - Baker Hall' } });
+  assert.deepEqual(groups.map((group) => group.code), ['2']);
+  assert.deepEqual(groups[0].rooms.map((room) => room.id), ['open']);
+  assert.equal(groups[0].name, 'Baker Hall');
   assert.match(browse, /openRoom\(row\.dataset\.room\)/);
   assert.doesNotMatch(browse, /pickBuilding|commitPickedOrigin/);
   const start = APP.indexOf('const targeted =');

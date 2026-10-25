@@ -1,43 +1,43 @@
 {
   "term": "1268",
-  "runs": 9,
-  "facetTotal": 26366,
+  "runs": 10,
+  "facetTotal": 26371,
   "passes": 4,
   "history": [
     {
       "pass": 1,
-      "saw": 26217,
-      "added": 26217,
-      "addedWithRoom": 8470,
-      "unionAfter": 26217
+      "saw": 26524,
+      "added": 26524,
+      "addedWithRoom": 8468,
+      "unionAfter": 26524
     },
     {
       "pass": 2,
-      "saw": 26071,
-      "added": 554,
-      "addedWithRoom": 2,
-      "unionAfter": 26771
+      "saw": 26268,
+      "added": 436,
+      "addedWithRoom": 4,
+      "unionAfter": 26960
     },
     {
       "pass": 3,
-      "saw": 26174,
-      "added": 297,
+      "saw": 26355,
+      "added": 134,
       "addedWithRoom": 0,
-      "unionAfter": 27068
+      "unionAfter": 27094
     },
     {
       "pass": 4,
-      "saw": 26329,
-      "added": 81,
+      "saw": 26213,
+      "added": 21,
       "addedWithRoom": 0,
-      "unionAfter": 27149
+      "unionAfter": 27115
     }
   ],
-  "distinctMeetings": 27149,
+  "distinctMeetings": 27115,
   "meetingsInARealRoom": 8472,
-  "missedBySinglePass": 932,
-  "roomedMissedBySinglePass": 2,
-  "requests": 542,
+  "missedBySinglePass": 591,
+  "roomedMissedBySinglePass": 4,
+  "requests": 541,
   "buckets": [
     {
       "slug": "1xxx",
@@ -53,7 +53,7 @@
     },
     {
       "slug": "4xxx",
-      "facetCount": 6369
+      "facetCount": 6373
     },
     {
       "slug": "5xxx",
@@ -61,7 +61,7 @@
     },
     {
       "slug": "6xxx",
-      "facetCount": 2301
+      "facetCount": 2302
     },
     {
       "slug": "7xxx",

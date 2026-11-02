@@ -58,12 +58,6 @@ export function toGrid([lon, lat], { bbox, grid }) {
   ];
 }
 
-// Is this coordinate on the map at all? Rooms outside the map radius still
-// belong in the list, they just have nothing to point at.
-export function inBounds([lon, lat], { bbox }) {
-  return lon >= bbox[0] && lon <= bbox[2] && lat >= bbox[1] && lat <= bbox[3];
-}
-
 // Width over height for drawing, so campus is not stretched.
 //
 // Grid space is NOT square: toGrid normalises a non-square bounding box to

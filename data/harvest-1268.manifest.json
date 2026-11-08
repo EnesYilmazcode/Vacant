@@ -1,50 +1,43 @@
 {
   "term": "1268",
-  "runs": 11,
-  "facetTotal": 26375,
-  "passes": 5,
+  "runs": 12,
+  "facetTotal": 26376,
+  "passes": 4,
   "history": [
     {
       "pass": 1,
-      "saw": 26151,
-      "added": 26151,
-      "addedWithRoom": 8467,
-      "unionAfter": 26151
+      "saw": 26572,
+      "added": 26572,
+      "addedWithRoom": 8466,
+      "unionAfter": 26572
     },
     {
       "pass": 2,
-      "saw": 26415,
-      "added": 753,
-      "addedWithRoom": 4,
-      "unionAfter": 26904
+      "saw": 26631,
+      "added": 435,
+      "addedWithRoom": 6,
+      "unionAfter": 27007
     },
     {
       "pass": 3,
-      "saw": 26225,
-      "added": 175,
-      "addedWithRoom": 1,
-      "unionAfter": 27079
+      "saw": 26575,
+      "added": 145,
+      "addedWithRoom": 0,
+      "unionAfter": 27152
     },
     {
       "pass": 4,
-      "saw": 26080,
-      "added": 0,
+      "saw": 26356,
+      "added": 7,
       "addedWithRoom": 0,
-      "unionAfter": 27079
-    },
-    {
-      "pass": 5,
-      "saw": 26279,
-      "added": 32,
-      "addedWithRoom": 0,
-      "unionAfter": 27111
+      "unionAfter": 27159
     }
   ],
-  "distinctMeetings": 27111,
+  "distinctMeetings": 27159,
   "meetingsInARealRoom": 8472,
-  "missedBySinglePass": 960,
-  "roomedMissedBySinglePass": 5,
-  "requests": 676,
+  "missedBySinglePass": 587,
+  "roomedMissedBySinglePass": 6,
+  "requests": 541,
   "buckets": [
     {
       "slug": "1xxx",
@@ -76,7 +69,7 @@
     },
     {
       "slug": "8xxx",
-      "facetCount": 5554
+      "facetCount": 5555
     }
   ]
 }

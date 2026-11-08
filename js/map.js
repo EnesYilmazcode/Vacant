@@ -601,14 +601,7 @@ export function createFrameLoop(request, draw) {
     if (draw(now)) wake();
   }
 
-  return {
-    wake,
-    // Only for tests and for anyone asking whether the loop is idle. There is
-    // no stop(): the loop stops by not asking for another frame.
-    get pending() {
-      return pending;
-    },
-  };
+  return { wake };
 }
 
 // ----------------------------------------------------------------- gestures

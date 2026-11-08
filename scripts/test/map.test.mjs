@@ -626,10 +626,10 @@ test('a settled screen costs one frame and then nothing', () => {
   });
 
   settled.wake();
-  assert.equal(settled.pending, true, 'the wake has to buy a frame');
+  assert.equal(clock.queued, 1, 'the wake has to buy a frame');
   clock.pump();
   assert.equal(painted, 1);
-  assert.equal(settled.pending, false, 'the loop is still holding a frame open');
+  assert.equal(clock.queued, 0, 'the loop re-queued a frame nobody asked for');
 
   // Two seconds of display frames with nobody waking it.
   for (let i = 0; i < 120; i++) clock.pump();
@@ -649,7 +649,7 @@ test('a draw that says it is still moving keeps the loop running', () => {
   flyover.wake();
   for (let i = 0; i < 60; i++) clock.pump();
   assert.equal(painted, 30, 'the drift stopped early or never stopped');
-  assert.equal(flyover.pending, false);
+  assert.equal(clock.queued, 0, 'the loop is still holding a frame open');
 });
 
 test('the loop restarts when whatever settled it starts again', () => {

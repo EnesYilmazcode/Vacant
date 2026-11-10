@@ -1313,6 +1313,29 @@ function shortWindow(win) {
   return win.html.replace('no class rest of today', 'no class');
 }
 
+// The card's headline: how long the room is yours once you are standing in it,
+// which is the one number this app computes that nothing else on campus does.
+// It used to be the third word on a grey line under the room name. A room you
+// have to wait for leads with when it opens instead, and a window the app
+// cannot vouch for gets no headline at all rather than a confident wrong one.
+function heroDur(m) {
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  if (!h) return `${mm} min`;
+  return mm ? `${h}h ${mm}m` : `${h}h`;
+}
+
+function cardHero(r) {
+  const p = windowPhrase(r, closeOf(r.building));
+  if (p.tier === 'unknown') return '';
+  if (p.tier === 'wait') {
+    return `<p class="c-for"><span>Free from</span> <b>${clock(r.availableAt)}</b></p>`;
+  }
+  const m = Math.round(r.usable);
+  if (!Number.isFinite(m) || m <= 0) return '';
+  return `<p class="c-for"><span>Yours for</span> <b>${heroDur(m)}</b></p>`;
+}
+
 // The building and the room, apart. roomLabel() joins them for the list,
 // where a row is one line; this screen exists because the room number is the
 // thing you walk to, and it is the only text on it that gets to be 3.6rem.
@@ -1433,11 +1456,12 @@ function paintCard() {
         <span class="c-stamp no" aria-hidden="true">NEXT</span>
         <span class="c-stamp yes" aria-hidden="true">GO</span>
         <div class="c-plate">
+          ${cardHero(r)}
           <p class="c-b">${esc(building ? `${building} ${room}` : room)}</p>
           <p class="c-facts">
             <span>${short}</span>
             <span class="sep">&middot;</span>
-            <span>${coarse ? '~' : ''}${r.walk} min</span>
+            <span>${coarse ? '~' : ''}${r.walk} min walk</span>
             <span class="sep">&middot;</span>
             <span>${seats.html}</span>${dept.html ? `<span class="sep">&middot;</span><span>departmental</span>` : ''}
           </p>

@@ -1120,6 +1120,215 @@
   #cold .opt { flex: none; width: min(16rem, 100%); }
   .cold-say:empty { display: none; }
   .cold-say { color: var(--warn) !important; }
+
+  /* ===================================================================
+     The quiet layer.
+
+     Everything above is the app's structure, and it stays: every measured
+     fix, every container query, every inset. This block only changes how
+     it LOOKS, and it is written as one layer at the end so it can be read,
+     reviewed or taken out as one thing.
+
+     Three rules it follows:
+     1. The number is the headline. The card leads with how long the room is
+        yours, because that is the one thing this app computes that nothing
+        else does.
+     2. Red means go. It is on the take button, the route and the room on the
+        map. A selected duration, a busy hour on the calendar and a chosen
+        row are not "go", so they are not red.
+     3. One shape. Controls share three radii instead of a 999px pill on
+        everything, and translucent glass over the map and photographs
+        instead of bordered boxes.
+
+     Wrapped in forced-colors: none, so high contrast mode gets the
+     untouched app above, whose borders were written for it.
+     =================================================================== */
+  @media (forced-colors: none) {
+    :root {
+      --r-lg: 20px; --r-md: 14px; --r-sm: 10px;
+      --glass: rgba(13, 17, 23, .66);
+      --hair: rgba(255, 255, 255, .09);
+    }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* --- the question --- */
+    #ask { gap: 1.5rem; }
+    #ask h1 { font-weight: 760; letter-spacing: -.055em; }
+    #ask-q, .opts { max-width: 22rem; }
+    /* Two by two: four equal answers to one question, not three and a
+       leftover. */
+    .opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; }
+    .opt {
+      border-radius: var(--r-md); border-color: var(--hair); background: var(--glass);
+      -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+      font-weight: 600; letter-spacing: -.01em;
+    }
+    .opts .opt { min-height: 76px; font-size: 1.08rem; }
+    /* The remembered duration is a selection, not a destination, so it is
+       lit rather than red. Near-black on --fg is 17:1. */
+    .opt.primary { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+    #ask > .opt, #gate > .opt { border-radius: var(--r-md); min-height: 52px; }
+    .loading, .prov { font-size: .84rem; }
+
+    /* The gate is a screen, not a warning box. */
+    #gate { border: 0; padding: 0; gap: .55rem; max-width: 22rem; }
+    #gate h2 { font-size: 1.4rem; font-weight: 650; letter-spacing: -.02em; line-height: 1.2; }
+    #gate p { font-size: .95rem; line-height: 1.5; }
+    #gate > .opt { margin-top: .6rem; }
+
+    /* --- the corner controls: one small glass disc, everywhere --- */
+    body #back, body #menu {
+      width: 44px; height: 44px; min-width: 44px; min-height: 44px; border-radius: 50%;
+      top: calc(var(--safe-t) + .9rem);
+      background: var(--glass);
+      -webkit-backdrop-filter: blur(12px) saturate(1.2); backdrop-filter: blur(12px) saturate(1.2);
+    }
+    #back .ico, #menu .ico { width: 22px; height: 22px; stroke-width: 2; filter: none; }
+
+    body .m-panel {
+      top: calc(var(--safe-t) + 3.9rem); min-width: 15rem;
+      border-radius: var(--r-lg); border-color: var(--hair);
+      background: rgba(16, 21, 28, .94); padding: .4rem;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+    }
+    .m-item {
+      display: flex; align-items: center; gap: .8rem;
+      border-radius: var(--r-sm); font-weight: 500; padding: .7rem .75rem;
+    }
+    .m-item .ico, #m-back::before { width: 20px; height: 20px; color: var(--dim); }
+    /* Back's label is rewritten per screen (paintChrome), which would wipe an
+       inline icon, so its arrow is drawn here instead. */
+    #m-back::before {
+      content: ''; flex: none; background: var(--dim);
+      -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 4 7 12 15 20'/%3E%3C/svg%3E") center / contain no-repeat;
+      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 4 7 12 15 20'/%3E%3C/svg%3E") center / contain no-repeat;
+    }
+    #m-back { border-bottom: 1px solid var(--hair); border-radius: var(--r-sm) var(--r-sm) 0 0; margin-bottom: .25rem; }
+
+    /* --- the card --- */
+    /* The words moved to the bottom, under the thumb and over the floor, and
+       the room above them is left alone. The scrim is deep only where text
+       sits: --dim measures above 7:1 on everything below 26%. */
+    .c-scrim {
+      background:
+        linear-gradient(180deg, rgba(8, 10, 13, .5) 0%, rgba(8, 10, 13, 0) 16%),
+        linear-gradient(0deg, rgba(8, 10, 13, .95) 0%, rgba(8, 10, 13, .86) 28%, rgba(8, 10, 13, .4) 46%, rgba(8, 10, 13, 0) 60%);
+    }
+    .c-card .c-plate {
+      top: auto; bottom: calc(var(--safe-b) + 6.2rem);
+      left: 0; right: 0; transform: none; margin-inline: auto;
+      width: auto; max-width: var(--col);
+      padding: 0 1.4rem; text-align: left;
+      background: none; border: 0; border-radius: 0;
+      -webkit-backdrop-filter: none; backdrop-filter: none;
+    }
+    .c-for { margin: 0 0 .5rem; display: flex; flex-direction: column; gap: .15rem; }
+    .c-for span { color: var(--dim); font-size: .88rem; font-weight: 500; }
+    .c-for b {
+      font-size: clamp(2.8rem, 14vw, 3.6rem); font-weight: 720; letter-spacing: -.045em;
+      line-height: .95; font-variant-numeric: tabular-nums;
+    }
+    .c-card .c-b { font-size: clamp(1.15rem, 5.6vw, 1.45rem); font-weight: 650; letter-spacing: -.015em; }
+    .c-card .c-facts { justify-content: flex-start; font-size: .9rem; margin-top: .25rem; font-variant-numeric: tabular-nums; }
+    .c-admits { border-top-color: var(--hair); margin-top: .7rem; padding-top: .55rem; }
+    .c-admits .strip, .c-admits p { text-align: left; padding: 0; border: 0; }
+
+    /* Two labelled buttons instead of two bare glyphs. The swipe still works;
+       the buttons say what it does. */
+    .c-card .c-acts {
+      justify-content: stretch; gap: .6rem;
+      padding: 0 1.4rem; max-width: var(--col); margin-inline: auto;
+      bottom: calc(1.2rem + var(--safe-b));
+    }
+    .c-act {
+      flex: 1 1 0; width: auto; height: 54px; gap: .5rem;
+      border-radius: var(--r-md); background: rgba(255, 255, 255, .13);
+      -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+      font: inherit; font-weight: 650; color: var(--fg);
+    }
+    .c-act .ico, .c-act.yes .ico { width: 20px; height: 20px; stroke-width: 2.2; filter: none; }
+    .c-act-label { display: inline; }
+    .c-act.yes { flex-grow: 1.5; background: var(--accent); color: #0b0d10; }
+    /* The end of the deck has one icon button and no label. */
+    #card.done .c-acts { position: static; }
+    #card.done .c-act { flex: none; width: 54px; }
+    #card.done .c-more { border-radius: var(--r-md); border-color: var(--hair); }
+
+    /* --- the way: one solid plate under the corner control --- */
+    #way-plate {
+      top: calc(var(--safe-t) + 4.4rem);
+      background: rgba(13, 17, 23, .9); border-color: var(--hair);
+      border-radius: var(--r-lg); box-shadow: 0 12px 34px rgba(0, 0, 0, .45);
+    }
+    #way-plate .c-b { font-size: 1.25rem; font-weight: 650; }
+    #way-plate .c-facts { font-size: .88rem; font-variant-numeric: tabular-nums; }
+
+    /* --- the sheet and its rows --- */
+    #sheet .grip { width: 38px; height: 5px; border-radius: 3px; background: var(--line-hi); }
+    .bar-btn { border-radius: 12px; border-color: var(--hair); font-weight: 500; }
+    #find input, .browse-search input { border-radius: 12px; border-color: var(--hair); }
+    .asked { padding-top: .7rem; font-size: .82rem; }
+
+    .row { border-left: 0; padding: .8rem 1.25rem; gap: .2rem 1rem; }
+    .row + .row, .b-row + .b-row, .pick-row + .pick-row { border-top-color: var(--hair); }
+    .row.on { border-left: 0; background: rgba(255, 255, 255, .06); }
+    /* The chosen row is marked with a dot by its name rather than a red bar
+       down its edge. */
+    .row.on .r-name::before {
+      content: ''; display: inline-block; width: .5rem; height: .5rem; border-radius: 50%;
+      background: var(--accent); margin-right: .5rem; vertical-align: .12em;
+    }
+    .r-name { font-weight: 650; }
+    .r-walk { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .r-win { font-size: .86rem; font-variant-numeric: tabular-nums; }
+    .grp {
+      text-transform: none; letter-spacing: 0; font-size: .82rem; font-weight: 600;
+      border-color: var(--hair); background: rgba(255, 255, 255, .025);
+    }
+
+    /* --- the room's day --- */
+    /* A class in the way is not "go", so it is a neutral block; the empty
+       stretches are still the answer. */
+    .blk { background: var(--card-hi); border: 1px solid var(--line-hi); color: var(--fg); border-radius: 8px; }
+    .blk span { opacity: 1; color: var(--dim); }
+    .unknown, .diag { border-radius: 12px; }
+
+    /* --- the rails and the pill --- */
+    #note { border-radius: var(--r-md); background: rgba(16, 21, 28, .94); border-color: var(--hair); }
+    .bar { border-top-color: var(--hair); }
+    /* White on --accent is 3.29:1; near-black on it is 6.38. */
+    .bar-go { color: #0b0d10; border-radius: 12px; }
+    .bar-x { border-color: var(--hair); }
+  }
+
+  /* Phone and tablet only: the desktop sheet is a floating panel with its own
+     border and corners, set in the split-workspace block above. */
+  @media (forced-colors: none) and (not ((min-width: 900px) and (hover: hover) and (pointer: fine))) {
+    #sheet {
+      border-top: 0; border-radius: 22px 22px 0 0; background: var(--bg);
+      box-shadow: 0 -12px 40px rgba(0, 0, 0, .45);
+    }
+  }
+
+  @media (forced-colors: none) and (min-width: 900px) and (hover: hover) and (pointer: fine) {
+    #sheet { border-color: var(--hair); border-radius: var(--r-lg); box-shadow: 0 20px 60px rgba(0, 0, 0, .45); }
+    body.carding .c-for b { font-size: clamp(3.6rem, 5vw, 5.2rem); }
+    body.carding .c-b { font-size: clamp(1.4rem, 2vw, 1.9rem); }
+    body.carding .c-media { border-radius: var(--r-lg); border-color: var(--hair); }
+    body.carding .c-act { flex: none; border-radius: var(--r-md); border-color: var(--hair); }
+    body.carding .c-act.yes { border-color: var(--accent); }
+  }
+
+  @media (forced-colors: none) and (hover: hover) and (pointer: fine) {
+    .opt.primary:hover { background: #fff; border-color: #fff; }
+    .row.on:hover { background: rgba(255, 255, 255, .09); }
+    .m-item:hover .ico { color: var(--fg); }
+    .c-act:hover { background: rgba(255, 255, 255, .2); }
+    .c-act.yes:hover { background: var(--accent-hi); }
+  }
 </style>
 </head>
 <body class="asking">
@@ -1141,6 +1350,12 @@
   </symbol>
   <symbol id="i-tick" viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
+  <symbol id="i-building" viewBox="0 0 24 24">
+    <path d="M4 21V5l8-2v18M12 8l8 2v11M3 21h18M7.5 8h1M7.5 12h1M7.5 16h1M15.5 13h1M15.5 17h1"/>
+  </symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5h.01"/></symbol>
 </svg>
 
 <canvas id="map"></canvas>
@@ -1163,11 +1378,11 @@
 <div id="menu-pop" hidden>
   <div class="m-panel">
     <button type="button" class="m-item" id="m-back">Back</button>
-    <button type="button" class="m-item" id="m-list">See all rooms</button>
-    <button type="button" class="m-item" id="m-browse">Browse buildings</button>
-    <button type="button" class="m-item" id="m-pick">Set starting location</button>
-    <button type="button" class="m-item" id="m-recheck">Check again</button>
-    <button type="button" class="m-item" id="m-about">What Vacant knows</button>
+    <button type="button" class="m-item" id="m-list"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg>See all rooms</button>
+    <button type="button" class="m-item" id="m-browse"><svg class="ico" aria-hidden="true"><use href="#i-building"/></svg>Browse buildings</button>
+    <button type="button" class="m-item" id="m-pick"><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg>Set starting location</button>
+    <button type="button" class="m-item" id="m-recheck"><svg class="ico" aria-hidden="true"><use href="#i-refresh"/></svg>Check again</button>
+    <button type="button" class="m-item" id="m-about"><svg class="ico" aria-hidden="true"><use href="#i-info"/></svg>What Vacant knows</button>
   </div>
 </div>
 <p id="say" class="sr" aria-live="polite"></p>

@@ -7,9 +7,10 @@
 // One cache would either re-download the room index on every deploy or pin an
 // installed icon to last month's app.js forever.
 //
-// Measured on 2026-10-12 over the files prepared for the next commit, which is
-// the copy Pages will serve: `gzip -9 -c < <file> | wc -c`.
-// Shell 169,259 bytes, data 115,160.
+// Measured on 2026-11-10 over the files prepared for the next commit, which is
+// the copy Pages will serve: `gzip -9 -c < <file> | wc -c`. The data figure is
+// from 2026-10-12; only the shell changed.
+// Shell 172,989 bytes, data 115,160.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these seventeen files, which is most of a percent of

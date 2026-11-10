@@ -1510,6 +1510,13 @@ test('on a no-class day the busy grid is ignored, and the doors still are not', 
 
 const readData = (file) => JSON.parse(readFileSync(new URL(`../../data/${file}`, import.meta.url), 'utf8'));
 
+// The tests below that quote Autumn 2026 dates, the autumn hours table or a
+// measured figure read this term, not the one current.json names. They used to
+// read the live pointer, so the day it rolled onto Spring 2027 they would have
+// judged a Spring index against Autumn dates and failed the weekly build.
+// Invariants that must hold for every term keep reading current.json.
+const MEASURED_TERM = '1268';
+
 test('every room of the committed index carries the flag the ranking now reads', () => {
   // The build has written `ga` since 2026-08-27 and nothing read it. If a term
   // ever ships without it the ranking silently loses its strongest signal.
@@ -1537,7 +1544,7 @@ test('equirectangular distance matches haversine within a metre for every buildi
 });
 
 test('a query against the committed index answers, and answers the same way twice', () => {
-  const term = readData('current.json').term;
+  const term = MEASURED_TERM;
   const index = readData(`rooms-${term}.json`);
   const buildings = readData(`buildings-${term}.json`).buildings;
   const hours = readData('buildings-hours.json').terms['autumn-2026-classroom-pool-building-schedule'];
@@ -1586,7 +1593,7 @@ test('no rung sentence is contradicted by the rows the shipped list shows under 
   //
   // This replays the app: rank() with the whole day in view, the 90 minute wait
   // filter js/app.js applies, then shape() for the radius and the fold.
-  const term = readData('current.json').term;
+  const term = MEASURED_TERM;
   const index = readData(`rooms-${term}.json`);
   const buildings = readData(`buildings-${term}.json`).buildings;
   const hours = readData('buildings-hours.json').terms['autumn-2026-classroom-pool-building-schedule'];
@@ -1637,7 +1644,7 @@ test('no rung sentence is contradicted by the rows the shipped list shows under 
 test('a Saturday on the real index is honest about what it does not know', () => {
   // 7 of 12,168 committed intervals fall on a Saturday, so the class schedule
   // says almost nothing and the building hours are carrying the whole answer.
-  const term = readData('current.json').term;
+  const term = MEASURED_TERM;
   const index = readData(`rooms-${term}.json`);
   const buildings = readData(`buildings-${term}.json`).buildings;
   const hours = readData('buildings-hours.json').terms['autumn-2026-classroom-pool-building-schedule'];
@@ -1747,7 +1754,7 @@ test('the committed index refuses the finals week it cannot see', () => {
   // the last day of INSTRUCTION, so on December 10 the session mask empties the
   // busy grid and a schedule-only engine reports all 871 rooms free for a week,
   // while finals are running in them.
-  const term = readData('current.json').term;
+  const term = MEASURED_TERM;
   const index = readData(`rooms-${term}.json`);
   const buildings = readData(`buildings-${term}.json`).buildings;
   const hours = readData('buildings-hours.json').terms['autumn-2026-classroom-pool-building-schedule'];
@@ -1772,7 +1779,7 @@ test('the committed index refuses the finals week it cannot see', () => {
 test('the two clusters the silence threshold sits between are three orders apart', () => {
   // The measurement the constant is set from. Every date classes meet, against
   // every date they do not, over the committed index.
-  const term = readData('current.json').term;
+  const term = MEASURED_TERM;
   const index = readData(`rooms-${term}.json`);
   const rooms = Object.values(index.rooms);
 
@@ -1890,7 +1897,7 @@ test('the day bounds still cover the committed index, including the late rooms',
   // class the moment one of those buildings opens a late section again, and the
   // cost of a clamp that is too generous is nothing: it only ever bounds a
   // window the schedule already closed.
-  const term = readData('current.json').term;
+  const term = MEASURED_TERM;
   const index = readData(`rooms-${term}.json`);
   const blocks = Object.entries(index.rooms).flatMap(([id, r]) => (r.busy ?? []).map((b) => [id, ...b]));
 
@@ -2062,7 +2069,7 @@ test('the fold is chosen by the list it makes, so a thinner campus never grows t
 });
 
 test('shape holds the committed index to a walk you would actually make', () => {
-  const term = readData('current.json').term;
+  const term = MEASURED_TERM;
   const index = readData(`rooms-${term}.json`);
   const buildings = readData(`buildings-${term}.json`).buildings;
   const hours = readData('buildings-hours.json').terms['autumn-2026-classroom-pool-building-schedule'];

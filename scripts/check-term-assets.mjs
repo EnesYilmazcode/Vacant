@@ -81,10 +81,11 @@ function main() {
   for (const path of missing) console.error(`Missing: ${path}`);
   console.error(`Refusing to build term ${term}. current.json would name that file, the site cannot fetch`);
   console.error('it, and the app loads everything current.json names at once, so it would not start.');
-  console.error('A term is added by hand, in this order, before this workflow can touch it:');
-  console.error(`  node scripts/fetch-rooms.mjs ${term} && node scripts/build-index.mjs ${term}`);
-  console.error('  node scripts/fetch-buildings.mjs      # reads the term from current.json');
+  console.error('A term is staged locally before this workflow can touch it:');
+  console.error(`  node scripts/roll-term.mjs ${term} --prepare     # leaves current.json alone`);
   console.error('  git add data/ && git commit');
+  console.error(`  node scripts/roll-term.mjs ${term} --flip        # after the live term's finals`);
+  console.error('(fetch-buildings.mjs builds the subset; roll-term passes it --term.)');
   process.exit(1);
 }
 

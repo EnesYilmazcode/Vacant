@@ -46,9 +46,11 @@ test('the CLI exits 0 for the committed term and 1 for one with no buildings fil
   assert.equal(good.status, 0, good.stderr);
   assert.match(good.stdout, /data\/buildings-1268\.json is committed/);
 
-  const bad = run('1272');
+  // Not 1272: that term gets a buildings file the day scripts/roll-term.mjs
+  // stages it, and this would start failing for having done its job.
+  const bad = run('1000');
   assert.equal(bad.status, 1);
-  assert.match(bad.stderr, /Missing: data\/buildings-1272\.json/);
+  assert.match(bad.stderr, /Missing: data\/buildings-1000\.json/);
   assert.match(bad.stderr, /fetch-buildings/, 'the refusal has to say how to fix it');
 });
 

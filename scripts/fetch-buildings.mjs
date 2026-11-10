@@ -10,6 +10,7 @@
 //
 // Usage:  node scripts/fetch-buildings.mjs
 //         node scripts/fetch-buildings.mjs --dry-run
+//         node scripts/fetch-buildings.mjs --term 1272   subset for a term current.json does not name yet
 //
 // One HTTP request pulls the whole layer.
 
@@ -377,13 +378,22 @@ async function main() {
 // The second artifact. Skipped rather than fatal when the room index is not
 // built yet, because a first run has to write buildings.json before
 // build-index.mjs can produce a room index to key the small file against.
+//
+// --term <code> builds the subset for a term current.json does not name yet.
+// That is how scripts/roll-term.mjs stages the next term beside the live one
+// without pointing the app at it: flipping current.json first, only so this
+// script could read the term back out of it, was the old order, and it left
+// the site naming a file that did not exist for as long as this took.
 async function writeSmall(buildings, meta) {
+  const i = process.argv.indexOf('--term');
+  const requested = i > 0 ? process.argv[i + 1] : null;
+  if (requested != null && !/^\d{4}$/.test(requested)) die(`--term wants a four digit term code, got "${requested}"`);
   const currentPath = join(ROOT, 'data', 'current.json');
-  if (!existsSync(currentPath)) {
+  if (!requested && !existsSync(currentPath)) {
     console.warn('no data/current.json, skipping the launch subset. Run build-index.mjs, then re-run this.');
     return;
   }
-  const term = JSON.parse(readFileSync(currentPath, 'utf8')).term;
+  const term = requested ?? JSON.parse(readFileSync(currentPath, 'utf8')).term;
   const roomsPath = join(ROOT, 'data', `rooms-${term}.json`);
   if (!existsSync(roomsPath)) {
     console.warn(`no data/rooms-${term}.json, skipping the launch subset.`);

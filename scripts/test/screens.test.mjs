@@ -61,8 +61,23 @@ import { DETOUR, MAX_WALK, PACKUP, WALK_MPM, activeSessions, calendarOn, distanc
 const ROOT = new URL('../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
 const read = (f) => JSON.parse(readFileSync(join(ROOT, f), 'utf8'));
 
-const CURRENT = read('data/current.json');
 const INDEX = read('data/rooms-1268.json');
+// Every date in this file is an Autumn 2026 date, and INDEX and SLICE are
+// pinned to 1268, so the pointer is pinned with them. Reading the live
+// current.json here broke three tests the day it rolled onto Spring 2027:
+// an Autumn index judged against a Spring term window.
+const LIVE = read('data/current.json');
+const CURRENT = LIVE.term === '1268'
+  ? LIVE
+  : {
+      term: '1268',
+      termName: 'Autumn 2026',
+      generated: LIVE.generated,
+      rooms: 'data/rooms-1268.json',
+      events: 'data/room-events-1268.json',
+      buildings: 'data/buildings-1268.json',
+      instruction: INDEX.teaching,
+    };
 const SLICE = read('data/buildings-1268.json').buildings;
 const FULL = read('data/buildings.json').buildings;
 const HOURS = read('data/buildings-hours.json');

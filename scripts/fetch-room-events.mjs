@@ -581,6 +581,14 @@ export function defaultWeek(now = new Date()) {
   return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}/${d.getUTCFullYear()}`;
 }
 
+async function liveRoomsPath() {
+  const currentPath = join(ROOT, 'data', 'current.json');
+  if (!existsSync(currentPath)) die('no data/current.json, so there is no live term. Pass --index <path>.');
+  const rooms = JSON.parse(await readFile(currentPath, 'utf8')).rooms;
+  if (typeof rooms !== 'string') die('data/current.json names no rooms file. Pass --index <path>.');
+  return rooms;
+}
+
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
   const fromCache = process.argv.includes('--from-cache');
@@ -591,7 +599,10 @@ async function main() {
   if (Number.isNaN(monday.getTime())) die(`--week ${week} is not a date`);
   if (monday.getDay() !== 1) die(`--week ${week} is not a Monday. The matrix renders Mon-Sun.`);
 
-  const indexPath = arg('index', join(ROOT, 'data', 'rooms-1268.json'));
+  // The live term's index, read off current.json. This used to default to
+  // data/rooms-1268.json, which would have swept Autumn's rooms every Sunday
+  // after the term rolled over and failed check-event-coverage.mjs forever.
+  const indexPath = arg('index') ?? join(ROOT, await liveRoomsPath());
   if (!existsSync(indexPath)) die(`no room index at ${indexPath}`);
   const index = JSON.parse(await readFile(indexPath, 'utf8'));
   const all = Object.keys(index.rooms).sort();

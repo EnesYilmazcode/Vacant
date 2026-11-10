@@ -5,8 +5,8 @@
 // Usage:  node scripts/fetch-room-features.mjs
 //         node scripts/fetch-room-features.mjs --dry-run
 //         node scripts/fetch-room-features.mjs --refresh          ignore the page cache
-//         node scripts/fetch-room-features.mjs --term 1268
-//         node scripts/fetch-room-features.mjs --rooms <path>     default data/rooms-1268.json
+//         node scripts/fetch-room-features.mjs --term 1272        default: the term current.json names
+//         node scripts/fetch-room-features.mjs --rooms <path>     default data/rooms-<term>.json
 //
 // Vacant knows when a room is free and nothing about what is inside it. The
 // Registrar's general assignment list publishes furniture, boards, windows and
@@ -28,7 +28,7 @@
 // clean checkout refetches those once and every run after that is free.
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,7 +38,13 @@ import { termName } from './build-index.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE_DIR = join(ROOT, 'data', 'cache');
 const OUT_PATH = join(ROOT, 'data', 'room-features.json');
-const DEFAULT_ROOMS = join(ROOT, 'data', 'rooms-1268.json');
+
+// The term defaults to whichever one data/current.json names, so a rollover
+// does not need the caller to remember a flag that used to be pinned to 1268.
+function liveTerm() {
+  const currentPath = join(ROOT, 'data', 'current.json');
+  return existsSync(currentPath) ? String(JSON.parse(readFileSync(currentPath, 'utf8')).term) : null;
+}
 
 const REGISTRAR_ORIGIN = 'https://registrar.osu.edu';
 const REGISTRAR_INDEX =
@@ -410,8 +416,9 @@ function arg(name, fallback) {
 async function main() {
   const dryRun = process.argv.includes('--dry-run');
   const refresh = process.argv.includes('--refresh');
-  const term = arg('--term', '1268');
-  const roomsPath = arg('--rooms', DEFAULT_ROOMS);
+  const term = arg('--term', liveTerm());
+  if (!/^\d{4}$/.test(term ?? '')) die('no --term given and data/current.json names no term.');
+  const roomsPath = arg('--rooms', join(ROOT, 'data', `rooms-${term}.json`));
   const name = termName(term);
   if (!name) die(`cannot name term ${term}, so there is no Registrar page to look for.`);
   if (!existsSync(roomsPath)) die(`no room index at ${roomsPath}. Pass --rooms <path>.`);

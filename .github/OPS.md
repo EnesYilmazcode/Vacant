@@ -149,17 +149,34 @@ node --test                                                    # zero requests, 
 `rooms.yml` also takes a `term` input if you need to rebuild something other than
 the term `current.json` names. It only accepts a term whose
 `data/buildings-<term>.json` is already committed, and refuses the rest before
-it spends a request. That file is not something the workflow can produce:
-`fetch-buildings.mjs` reads the term back out of `current.json` and needs the
-room index to exist first, so adding a term is three local steps in order.
+it spends a request. That file is not something the workflow can produce, so a
+new term is rolled on locally with [`scripts/roll-term.mjs`](../scripts/roll-term.mjs),
+in two halves:
 
 ```bash
-node scripts/fetch-rooms.mjs <term> && node scripts/build-index.mjs <term>
-node scripts/fetch-buildings.mjs        # reads the term from current.json
-git add data/ && git commit
+node scripts/roll-term.mjs 1272              # print the plan and what would refuse today
+node scripts/roll-term.mjs 1272 --prepare    # any time: harvest, index, buildings subset
+git add data/ && git commit                  # safe, current.json still names the live term
+node scripts/roll-term.mjs 1272 --flip       # after the live term's finals
+git add data/ && git commit && git push
 ```
 
-Skip the middle line and `current.json` names a file the site does not have.
+`--prepare` builds the index with `--no-pointer` and the subset with
+`fetch-buildings.mjs --term`, so the live term keeps answering. `--flip` refuses
+until the live term's finals are over (`--early` overrides) and until
+`data/buildings-hours.json` has the new term's table, since without it every room
+in an undocumented building ships as open. It then pulls the two single-term
+Registrar files, rebuilds with the pointer, sweeps next week's events and runs
+the checks `rooms.yml` runs. If a required step fails it puts back every shared
+file it touched. After the push, the Sunday job carries the new term on its own.
+
+For Autumn 2026 into Spring 2027: finals end 2026-12-17, so the flip can run from
+the 18th. Until then the app correctly shows Autumn; between the flip and the
+first day of Spring classes it shows "has not started yet", with the dates the
+build read from the Registrar.
+
+Done by hand instead, the order matters: point `current.json` at a term whose
+buildings subset is missing and it names a file the site does not have.
 That is not a missing map, it is a dead app: everything `current.json` names is
 fetched in one `Promise.all`, so the 404 rejects the boot. Measured 2026-08-27 at
 393x852 against a `current.json` naming `data/buildings-1272.json`, `#ask` never

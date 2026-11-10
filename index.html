@@ -18,6 +18,11 @@
      this one. That was a 404 on every single page load. -->
 <link rel="icon" href="/Vacant/favicon.ico" sizes="48x48 32x32 16x16">
 <link rel="apple-touch-icon" href="/Vacant/apple-touch-icon.png">
+<!-- The one typeface, self-hosted: privacy.html promises Vacant never loads a
+     font from anybody else. Preloaded so the first card is not drawn in the
+     system face and then redrawn; crossorigin because font fetches are CORS
+     requests even on the same origin, and a preload without it is fetched twice. -->
+<link rel="preload" href="/Vacant/fonts/geist-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
 <!-- Called deprecated everywhere and it costs a Lighthouse warning, but it is
      still the only thing that puts old iOS into standalone mode at all, and a
      campus runs on hand-me-down iPhones. -->
@@ -1143,6 +1148,15 @@
      Wrapped in forced-colors: none, so high contrast mode gets the
      untouched app above, whose borders were written for it.
      =================================================================== */
+  /* Geist, one variable file for every weight, latin only. SIL Open Font
+     License 1.1, from Fontsource's build of the Google Fonts release; see
+     fonts/README.md. swap, so a slow first load still shows words at once. */
+  @font-face {
+    font-family: "Geist";
+    src: url("/Vacant/fonts/geist-latin-wght.woff2") format("woff2");
+    font-weight: 100 900; font-style: normal; font-display: swap;
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
   @media (forced-colors: none) {
     :root {
       --r-lg: 20px; --r-md: 14px; --r-sm: 10px;
@@ -1150,7 +1164,7 @@
       --hair: rgba(255, 255, 255, .09);
     }
     body {
-      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif;
+      font-family: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Roboto, sans-serif;
       -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
     }
 

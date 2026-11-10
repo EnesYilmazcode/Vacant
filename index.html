@@ -1198,14 +1198,21 @@
       display: flex; align-items: center; gap: .8rem;
       border-radius: var(--r-sm); font-weight: 500; padding: .7rem .75rem;
     }
-    .m-item .ico, #m-back::before { width: 20px; height: 20px; color: var(--dim); }
-    /* Back's label is rewritten per screen (paintChrome), which would wipe an
-       inline icon, so its arrow is drawn here instead. */
-    #m-back::before {
-      content: ''; flex: none; background: var(--dim);
-      -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 4 7 12 15 20'/%3E%3C/svg%3E") center / contain no-repeat;
-      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 4 7 12 15 20'/%3E%3C/svg%3E") center / contain no-repeat;
+    /* The icons are drawn here rather than in the markup. Back's label is
+       rewritten per screen (paintChrome), which would wipe an inline icon, and
+       the items' markup is what the tests and the accessible names read, so
+       none of them carries anything but its words. */
+    .m-item::before {
+      content: ''; flex: none; width: 20px; height: 20px; background: var(--dim);
+      -webkit-mask: var(--m-ico) center / contain no-repeat;
+      mask: var(--m-ico) center / contain no-repeat;
     }
+    #m-back { --m-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 4 7 12 15 20'/%3E%3C/svg%3E"); }
+    #m-list { --m-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01'/%3E%3C/svg%3E"); }
+    #m-browse { --m-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 21V5l8-2v18M12 8l8 2v11M3 21h18M7.5 8h1M7.5 12h1M7.5 16h1M15.5 13h1M15.5 17h1'/%3E%3C/svg%3E"); }
+    #m-pick { --m-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z'/%3E%3Ccircle cx='12' cy='10' r='2.4'/%3E%3C/svg%3E"); }
+    #m-recheck { --m-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5'/%3E%3C/svg%3E"); }
+    #m-about { --m-ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5.5M12 7.5h.01'/%3E%3C/svg%3E"); }
     #m-back { border-bottom: 1px solid var(--hair); border-radius: var(--r-sm) var(--r-sm) 0 0; margin-bottom: .25rem; }
 
     /* --- the card --- */
@@ -1219,8 +1226,8 @@
     }
     .c-card .c-plate {
       top: auto; bottom: calc(var(--safe-b) + 6.2rem);
-      left: 0; right: 0; transform: none; margin-inline: auto;
-      width: auto; max-width: var(--col);
+      left: 0; right: 0; transform: none;
+      width: auto; max-width: none;
       padding: 0 1.4rem; text-align: left;
       background: none; border: 0; border-radius: 0;
       -webkit-backdrop-filter: none; backdrop-filter: none;
@@ -1240,7 +1247,7 @@
        the buttons say what it does. */
     .c-card .c-acts {
       justify-content: stretch; gap: .6rem;
-      padding: 0 1.4rem; max-width: var(--col); margin-inline: auto;
+      padding: 0 1.4rem;
       bottom: calc(1.2rem + var(--safe-b));
     }
     .c-act {
@@ -1325,7 +1332,7 @@
   @media (forced-colors: none) and (hover: hover) and (pointer: fine) {
     .opt.primary:hover { background: #fff; border-color: #fff; }
     .row.on:hover { background: rgba(255, 255, 255, .09); }
-    .m-item:hover .ico { color: var(--fg); }
+    .m-item:hover::before { background: var(--fg); }
     .c-act:hover { background: rgba(255, 255, 255, .2); }
     .c-act.yes:hover { background: var(--accent-hi); }
   }
@@ -1350,12 +1357,6 @@
   </symbol>
   <symbol id="i-tick" viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6"/></symbol>
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
-  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
-  <symbol id="i-building" viewBox="0 0 24 24">
-    <path d="M4 21V5l8-2v18M12 8l8 2v11M3 21h18M7.5 8h1M7.5 12h1M7.5 16h1M15.5 13h1M15.5 17h1"/>
-  </symbol>
-  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></symbol>
-  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5h.01"/></symbol>
 </svg>
 
 <canvas id="map"></canvas>
@@ -1378,11 +1379,11 @@
 <div id="menu-pop" hidden>
   <div class="m-panel">
     <button type="button" class="m-item" id="m-back">Back</button>
-    <button type="button" class="m-item" id="m-list"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg>See all rooms</button>
-    <button type="button" class="m-item" id="m-browse"><svg class="ico" aria-hidden="true"><use href="#i-building"/></svg>Browse buildings</button>
-    <button type="button" class="m-item" id="m-pick"><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg>Set starting location</button>
-    <button type="button" class="m-item" id="m-recheck"><svg class="ico" aria-hidden="true"><use href="#i-refresh"/></svg>Check again</button>
-    <button type="button" class="m-item" id="m-about"><svg class="ico" aria-hidden="true"><use href="#i-info"/></svg>What Vacant knows</button>
+    <button type="button" class="m-item" id="m-list">See all rooms</button>
+    <button type="button" class="m-item" id="m-browse">Browse buildings</button>
+    <button type="button" class="m-item" id="m-pick">Set starting location</button>
+    <button type="button" class="m-item" id="m-recheck">Check again</button>
+    <button type="button" class="m-item" id="m-about">What Vacant knows</button>
   </div>
 </div>
 <p id="say" class="sr" aria-live="polite"></p>

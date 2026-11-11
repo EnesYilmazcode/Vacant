@@ -280,6 +280,18 @@ test('the finals refusal offers the libraries, and the app may fall back', () =>
   assert.match(s.action.label, /libraries/i);
 });
 
+test('a closed campus offers the libraries too', () => {
+  // Veterans Day 2026: "campus is closed" had one button, and it listed 46
+  // locked classroom buildings above Thompson Library open till midnight.
+  const index = read('data/rooms-1268.json');
+  const current = { term: '1268', termName: 'Autumn 2026', instruction: index.teaching };
+  const s = resolveState({ now: at('2026-11-11', 11), current, index });
+  assert.equal(s.kind, 'CAMPUS_CLOSED');
+  assert.equal(s.action.study, true);
+  assert.equal(s.action.to, 'near');
+  assert.match(s.action.label, /libraries/i);
+});
+
 // ------------------------------------------------------------ the shipped file
 
 test('the shipped file is the shape the app reads, with a door for every space', () => {
@@ -316,9 +328,11 @@ test('the libraries are on the buildings screen outside finals week too', () => 
 });
 
 test('they lead when the classrooms cannot answer, or when they were asked for', () => {
-  const leads = between('const studyLeads', ';\n');
+  const leads = between('const STUDY_FIRST', ';\n') + between('const studyLeads', ';\n');
   assert.match(leads, /state\.studyAsked === true/);
+  assert.match(leads, /STUDY_FIRST\.has\(state\.situation\?\.kind\)/);
   assert.match(leads, /EXAM_REFUSAL/);
+  assert.match(leads, /CAMPUS_CLOSED/);
   assert.match(leads, /classroomBuildingsOpen === 0/);
 });
 

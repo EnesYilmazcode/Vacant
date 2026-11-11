@@ -199,7 +199,7 @@ export function staleness({ now, current }) {
 
 const REFUSAL = { ranked: false, note: null, classesSuspended: false };
 const TO_NEAR = { label: 'Show nearest buildings anyway', to: 'near' };
-// Finals week sends people to the libraries and the Union first. The app falls
+// Finals week and a closed campus send people to the libraries and the Union first. The app falls
 // back to TO_NEAR's label when their hours did not load, so the button never
 // promises a list that is not there.
 const TO_STUDY = { label: 'Show libraries open now', to: 'near', study: true };
@@ -343,7 +343,10 @@ function refusedState(refusal, { today, current, index, floor }) {
         heading: closed?.name ? `${closed.name}, campus is closed` : 'Campus is closed today',
         body: 'University offices are closed and most buildings are locked, so a room the schedule shows as empty is still a room you cannot get into.',
         detail: null,
-        action: TO_NEAR,
+        // The libraries keep their own hours on a closed day: on Veterans Day
+        // 2026 Thompson was open till midnight and 18th Avenue all night, and
+        // the old button listed 46 locked classroom buildings above them.
+        action: TO_STUDY,
       };
     }
 

@@ -1917,9 +1917,12 @@ const hasStudy = () => (state.study?.length ?? 0) > 0;
 
 // When the libraries lead the buildings screen rather than follow it: when the
 // classroom answer has nowhere to send anybody. Finals week, where Vacant
-// refuses to rank, and any minute with no classroom building open.
+// refuses to rank; a closed campus, where the classroom buildings' weekday
+// hours still read open although their doors are locked; and any minute with
+// no classroom building open.
+const STUDY_FIRST = new Set(['EXAM_REFUSAL', 'CAMPUS_CLOSED']);
 const studyLeads = (classroomBuildingsOpen) =>
-  state.studyAsked === true || state.situation?.kind === 'EXAM_REFUSAL' || classroomBuildingsOpen === 0;
+  state.studyAsked === true || STUDY_FIRST.has(state.situation?.kind) || classroomBuildingsOpen === 0;
 
 // The libraries and the Union worth walking to when no classroom fits: open
 // now, and open long enough once you get there. Thirty minutes is the shortest

@@ -2,9 +2,15 @@
 // class index. The input is the parsed data/room-events-<term>.json document,
 // not an organization calendar, EMS export, or caller-normalized feed.
 //
-// Only `kind: "event"` is occupancy. ROOM BLOCK is retained by the scraper but
-// its meaning to a student is deliberately undecided in docs/DECISIONS.md, so
-// this module reports and excludes it.
+// `kind: "event"` is a registered booking. `kind: "block"` is a ROOM BLOCK: a
+// Registrar hold, labelled only "Room Block | Workshop", inside which another
+// office hands out time the Room Matrix never shows. Decided 2026-11-10 in
+// docs/DECISIONS.md after a student in Lazenby Hall 001 was asked to leave at
+// 7pm by a group that had booked the room inside its 5:30pm-11pm hold. A hold
+// is busy time for ranking, carried as `holds` and labelled HOLD_LABEL so no
+// screen can call it a class or claim to know who is in the room.
+
+export const HOLD_LABEL = 'May be booked';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EVENT_TYPES = new Set(['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR', 'RCPT', 'INTV', 'FAIR', 'DISC']);
@@ -61,6 +67,7 @@ export function normalizeMeetings(roomEvents, { rooms, term } = {}) {
   }
 
   const meetings = [];
+  const holds = [];
   const rejected = [];
   const seen = new Set();
   let blockCount = 0;
@@ -77,7 +84,25 @@ export function normalizeMeetings(roomEvents, { rooms, term } = {}) {
       }
       if (record?.kind === 'block') {
         blockCount += 1;
-        rejected.push(rejection(roomId, record, 'undecided-room-block'));
+        if (!Number.isInteger(record.day) || record.day < 0 || record.day > 6
+          || !Number.isInteger(record.start) || !Number.isInteger(record.end)
+          || record.start < 0 || record.end > 1440 || record.end <= record.start
+          || typeof record.eventId !== 'string' || !/^\d{1,9}$/.test(record.eventId)) {
+          rejected.push(rejection(roomId, record, 'invalid-block'));
+          continue;
+        }
+        const date = dateForDay(meta.weekStart, record.day);
+        const key = JSON.stringify(['hold', roomId, date, record.start, record.end, record.eventId]);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        holds.push({
+          roomId,
+          date,
+          startMinute: record.start,
+          endMinute: record.end,
+          blockId: record.eventId,
+          sourceUrl: meta.source,
+        });
         continue;
       }
       if (record?.kind !== 'event') {
@@ -112,8 +137,12 @@ export function normalizeMeetings(roomEvents, { rooms, term } = {}) {
   meetings.sort((a, b) => a.date.localeCompare(b.date)
     || a.roomId.localeCompare(b.roomId) || a.startMinute - b.startMinute
     || a.endMinute - b.endMinute || a.eventId.localeCompare(b.eventId));
+  holds.sort((a, b) => a.date.localeCompare(b.date)
+    || a.roomId.localeCompare(b.roomId) || a.startMinute - b.startMinute
+    || a.endMinute - b.endMinute || a.blockId.localeCompare(b.blockId));
   return {
     meetings,
+    holds,
     rejected,
     coverage: meta.partial ? 'partial-room-sweep' : 'complete-room-sweep',
     weekStart: meta.weekStart,
@@ -134,36 +163,46 @@ export function overlayForDate(index, roomEvents, { date, classesSuspended = fal
   }
   const normalized = normalizeMeetings(roomEvents, { rooms: index.rooms, term: index.term });
   const meetings = normalized.meetings.filter((meeting) => meeting.date === date);
+  const holds = normalized.holds.filter((hold) => hold.date === date);
   const sessions = (index.sessions ?? []).map((session) => [...session]);
+  // Holds get a course of their own, appended, so the room calendar prints
+  // HOLD_LABEL rather than "In use" or, worse, the name of a class.
+  const courses = [...(index.courses ?? [])];
+  const holdCourse = holds.length ? courses.push(HOLD_LABEL) - 1 : -1;
   const rooms = classesSuspended
     ? Object.fromEntries(Object.entries(index.rooms).map(([id, room]) => [id, { ...room, busy: [] }]))
     : { ...index.rooms };
 
-  if (meetings.length) {
+  if (meetings.length || holds.length) {
     const slot = sessions.length;
     const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
     sessions.push([date, date]);
     const copied = new Set();
-    for (const meeting of meetings) {
-      if (!copied.has(meeting.roomId)) {
-        const original = rooms[meeting.roomId];
-        rooms[meeting.roomId] = {
+    const busyOf = (roomId) => {
+      if (!copied.has(roomId)) {
+        const original = rooms[roomId];
+        rooms[roomId] = {
           ...original,
           busy: (original.busy ?? []).map((busy) => [...busy]),
         };
-        copied.add(meeting.roomId);
+        copied.add(roomId);
       }
-      rooms[meeting.roomId].busy.push([
-        weekday, meeting.startMinute, meeting.endMinute, slot,
-      ]);
+      return rooms[roomId].busy;
+    };
+    for (const meeting of meetings) {
+      busyOf(meeting.roomId).push([weekday, meeting.startMinute, meeting.endMinute, slot]);
+    }
+    for (const hold of holds) {
+      busyOf(hold.roomId).push([weekday, hold.startMinute, hold.endMinute, slot, holdCourse]);
     }
   }
 
   const coversDate = date >= normalized.weekStart && date <= normalized.weekEnd;
   return {
-    index: { ...index, rooms, sessions },
+    index: { ...index, rooms, sessions, courses },
     ...normalized,
     coverage: coversDate ? normalized.coverage : 'outside-snapshot',
     meetings,
+    holds,
   };
 }

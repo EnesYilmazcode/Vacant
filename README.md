@@ -229,8 +229,9 @@ nothing.
 
 **The reservation picture is incomplete.** The Registrar's public Room Matrix
 adds registered non-class events to Vacant's class schedule for the week its
-snapshot covers. Unscheduled use, `ROOM BLOCK` holds and locked room doors are
-still unknown. Outside the snapshot week, Vacant has class data only. The
+snapshot covers. Its `ROOM BLOCK` holds count as "may be booked": a group
+booked through Student Life can turn up inside one, and those bookings are not
+public. Unscheduled use and locked room doors are still unknown. Outside the snapshot week, Vacant has class data only. The
 [ground-truth walk](docs/research/ground-truth-walk.md) is still needed to measure
 how often those gaps change an answer.
 

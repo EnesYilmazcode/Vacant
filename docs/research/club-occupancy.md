@@ -42,7 +42,8 @@ is enough to make the occupancy claim.
   receptions, interviews and fairs, so they carry the same occupancy rule.
 - Duplicate records for the same room, date, time and reservation ID collapse.
 - Unknown fields are never copied into normalized output.
-- `ROOM BLOCK` is counted and reported as `undecided-room-block`, never overlaid.
+- `ROOM BLOCK` becomes a `hold`: busy time labelled "May be booked". Decided
+  2026-11-10, see docs/DECISIONS.md.
 - Dates outside the snapshot return `outside-snapshot`, not an empty-calendar
   claim. A one-date session prevents a weekly recurrence from being invented.
 - The original class index and its existing busy tuples remain unchanged.
@@ -60,7 +61,7 @@ node --test scripts/test/club-occupancy.test.mjs
 ```
 
 The final test reads the committed #114 snapshot and asserts that all 327 events
-are accepted while all 347 ROOM BLOCK records are visible but excluded.
+are accepted. Since 2026-11-10 every ROOM BLOCK record becomes a hold.
 
 `data/current.json` names the term's event snapshot. Application boot fetches it
 beside the class index, ranking queries the overlaid index for the current date,

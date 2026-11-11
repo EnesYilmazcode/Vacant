@@ -923,7 +923,10 @@ const inDay = (m) => m == null || (Number.isFinite(m) && m >= 0 && m <= MINUTES_
 // branch here prints a duration for a building nobody publishes hours for. That
 // is the path that once printed "9h44", by capping an unknown window at
 // midnight and calling the remainder free.
-export function windowPhrase(row, close) {
+// `heldAt` is the minute a Registrar room hold starts in this room today, or
+// null. When the window ends at a hold rather than a class, the row has to say
+// so: the hold is time someone may have booked, and nobody can see who.
+export function windowPhrase(row, close, heldAt = null) {
   if (![row.availableAt, row.usableUntil, row.nextClassAt, close].every(inDay)) {
     return {
       tier: 'unknown',
@@ -949,6 +952,13 @@ export function windowPhrase(row, close) {
   // in. Those are different promises, so they get different sentences rather
   // than one sentence with a marker on the end.
   if (close != null && row.nextClassAt < close) {
+    if (heldAt != null && row.nextClassAt === heldAt) {
+      return {
+        tier: 'strong',
+        text: `free till ${clock(row.usableUntil)}, then may be booked`,
+        say: `free until ${spokenClock(row.usableUntil)}, which is ${spokenDur(PACKUP)} before the Registrar holds the room from ${spokenClock(heldAt)} for bookings Vacant cannot see`,
+      };
+    }
     return {
       tier: 'strong',
       text: `free till ${clock(row.usableUntil)}`,

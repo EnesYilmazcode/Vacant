@@ -12,8 +12,9 @@
 // that day for the finals-week libraries: js/study.js is 1,905 of the shell's
 // 4,367 and data/study-spaces.json is 1,903 of the data's. The data moved again
 // the same evening when the Room Matrix file started carrying two weeks, 7,279
-// gzipped bytes more.
-// Shell 207,131 bytes, data 123,972.
+// gzipped bytes more. The shell then grew 1,615 for the libraries outside
+// finals week: on the buildings screen every night, and in the empty answer.
+// Shell 208,746 bytes, data 123,972.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these seventeen files, which is most of a percent of

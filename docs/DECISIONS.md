@@ -4369,3 +4369,45 @@ never be laid over another week's dates.
 them drawn twice, so 343 holds), 854 round trips, zero invalid or empty grids.
 Pinned in `scripts/test/club-occupancy.test.mjs` and
 `scripts/test/event-coverage.test.mjs`.
+
+## 2026-11-10  The libraries outside finals week
+
+**Decided.** The "Libraries and the Union" group from the finals-week entry
+above now appears on the buildings screen every time its hours are loaded,
+not only in finals week. It is also the way out of an empty answer.
+
+- **On the buildings screen**, the libraries lead when the classrooms cannot
+  answer: finals week, or no classroom building open, which is most nights.
+  Otherwise they follow the open classroom buildings, which are still the
+  nearer doors to try. With the libraries on screen, "Everything is closed"
+  becomes "Every classroom building is closed", because the old sentence is
+  false above a library open till midnight.
+- **When no room fits**, the card and the list name up to two libraries that
+  are open now and still open thirty minutes after the walk ("Not a
+  classroom, but open now: 18th Avenue Library, a 6 minute walk, open till
+  12:00am"), with a "Show libraries open now" button. That button opens the
+  buildings screen with the libraries first, because that is what it promised.
+- **No published hours, no group.** A date outside the file's eight weeks
+  shows no library group at all, rather than "no library is open", which
+  would be a claim about doors nobody has described.
+- **A close after tomorrow morning reads "open all night".** The 18th Avenue
+  Library publishes 24 hours a day, one day at a time, so on a Thursday night
+  the chained close was Friday 11:59pm and printed as "open till 11:59pm",
+  which reads as tonight.
+
+**A bug this exposed.** The empty list referred to `filtered` and `asked()`
+from the room needs filter, which was removed on 2026-09-23 (b9397a6). Every
+search with no answer threw a ReferenceError, and the question screen stayed
+up with nothing on it. That line is gone. Found while checking the new
+fallback, which could not appear without the fix.
+
+**Not done: bookable group study rooms.** Thompson and the 18th Avenue
+Library have group study rooms booked through libraryroombooking.cloud.osu.edu.
+It signs in through OSU's SSO (AWS Cognito), and its availability API needs a
+signed-in user's token. Vacant does not use anyone's credentials: privacy.html
+promises it never asks for a BuckID or a password, a weekly job would have to
+keep one person's login and pass Duo in CI, and republishing what that login
+sees would put one student's access behind a public page. If availability is
+wanted, the route is to ask University Libraries for a read-only feed (room,
+start, end, nothing about who), as the ROOM BLOCK entry proposes for Student
+Life.

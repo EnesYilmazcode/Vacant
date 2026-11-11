@@ -297,3 +297,44 @@ test('the shipped file is the shape the app reads, with a door for every space',
     }
   }
 });
+
+// ------------------------------------------------------------ outside finals
+//
+// The libraries are on the buildings screen whenever their hours loaded, and
+// they are the way out of an empty answer. These read js/app.js the way
+// screens.test.mjs does, because the rules live in its paint functions.
+
+const app = readFileSync(join(ROOT, 'js', 'app.js'), 'utf8');
+const between = (from, to) => app.slice(app.indexOf(from), app.indexOf(to, app.indexOf(from)));
+
+test('the libraries are on the buildings screen outside finals week too', () => {
+  const group = between('function studyGroup(', '\n}\n');
+  assert.match(group, /if \(!hasStudy\(\)\) return ''/);
+  assert.doesNotMatch(group, /EXAM_REFUSAL/);
+  // Nothing published for today is no group at all, not "no library is open".
+  assert.match(group, /if \(!state\.studyRows\.length\) return ''/);
+});
+
+test('they lead when the classrooms cannot answer, or when they were asked for', () => {
+  const leads = between('const studyLeads', ';\n');
+  assert.match(leads, /state\.studyAsked === true/);
+  assert.match(leads, /EXAM_REFUSAL/);
+  assert.match(leads, /classroomBuildingsOpen === 0/);
+});
+
+test('an empty answer names the libraries and offers the button', () => {
+  const empty = between('function emptyAnswer(', '\nfunction wireFootActs');
+  assert.equal((empty.match(/\bstudy,/g) ?? []).length, 4, 'every branch carries the libraries line');
+  assert.match(app, /\$\('c-study'\)\.onclick = \(\) => openNear\(\{ study: true \}\)/);
+  assert.match(app, /\$\('l-study'\)\.onclick = \(\) => openNear\(\{ study: true \}\)/);
+});
+
+test('a close past tomorrow morning reads as all night, not as a time tonight', () => {
+  assert.match(app, /const allNight = \(closesAt\) => closesAt == null \|\| closesAt >= 1440 \+ 7 \* 60;/);
+});
+
+test('the empty list no longer names the removed room needs filter', () => {
+  // `filtered` outlived the filter by seven weeks and threw on every empty answer.
+  const list = between('function paintList(', '\n}\n');
+  assert.doesNotMatch(list.replace(/^\s*\/\/.*$/gm, ''), /\bfiltered\b/);
+});

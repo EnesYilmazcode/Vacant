@@ -32,15 +32,45 @@ export function checkEventCoverage({ current, index, events, now = new Date() })
   if (meta.counts?.roomsParsed !== roomIds.length || meta.counts?.noGrid || meta.counts?.invalidValue) {
     throw new Error('Room Matrix parser did not produce a complete valid sweep.');
   }
-  return { start, end, rooms: roomIds.length };
+  // The weeks ahead are a cushion, not a requirement: a failed second sweep
+  // still publishes the first. What is checked is that whatever IS there is
+  // the next consecutive week of the same term, complete, over the same rooms,
+  // so the app can never lay one week's bookings over another week's dates.
+  let through = end;
+  for (const next of events.ahead ?? []) {
+    const m = next?._meta;
+    const wantStart = addDays(through, 1);
+    const wantEnd = addDays(through, 7);
+    if (!m || m.partial || m.term !== current.term) {
+      throw new Error('A week ahead in the Room Matrix file is partial or belongs to another term.');
+    }
+    if (m.weekStart !== wantStart || m.weekEnd !== wantEnd) {
+      throw new Error(`A week ahead covers ${m.weekStart ?? '?'} through ${m.weekEnd ?? '?'}, expected ${wantStart} through ${wantEnd}.`);
+    }
+    if (JSON.stringify(Object.keys(next.rooms ?? {}).sort()) !== JSON.stringify(roomIds)
+      || m.counts?.roomsParsed !== roomIds.length || m.counts?.noGrid || m.counts?.invalidValue) {
+      throw new Error(`The week of ${m.weekStart} is not a complete valid sweep of the indexed rooms.`);
+    }
+    through = wantEnd;
+  }
+  return { start, end, through, rooms: roomIds.length };
 }
+
+const addDays = (iso, n) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
 
 function main() {
   const current = JSON.parse(readFileSync(join(ROOT, 'data/current.json')));
   const index = JSON.parse(readFileSync(join(ROOT, current.rooms)));
   const events = JSON.parse(readFileSync(join(ROOT, current.events)));
   const result = checkEventCoverage({ current, index, events });
-  console.log(`Room Matrix covers ${result.start} through ${result.end}, ${result.rooms} rooms.`);
+  console.log(`Room Matrix covers ${result.start} through ${result.through}, ${result.rooms} rooms.`);
+  if (result.through === result.end) {
+    console.warn('  warn  no week ahead in the file: a missed Sunday would leave next week class-only.');
+  }
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

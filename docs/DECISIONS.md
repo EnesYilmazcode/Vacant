@@ -4326,3 +4326,46 @@ coverage half of the same problem and is a separate change. The libraries' own
 group study rooms (Thompson and 18th Avenue) are booked through LibCal with a
 login; availability is not used, and they are not named as rooms.
 Pinned in `scripts/test/study-spaces.test.mjs`.
+
+## 2026-11-10  The Room Matrix sweep covers two weeks
+
+**Decided.** The Sunday sweep of the Registrar's Room Matrix now asks for two
+Monday-Sunday weeks, the coming one and the one after, and writes both into
+`room-events-<term>.json`. The first week stays at the top level in exactly the
+shape it always had. The second is under `ahead`, as `{ _meta, rooms }`.
+`overlayForDate` reads whichever snapshot covers the date it is asked about.
+
+**Why.** The file used to hold one week, so the app had no booking data for
+any date past the coming Sunday. If a Sunday run failed or landed late, the new
+week started class-only: every room a club or department had booked read free,
+and the only sign was the room card saying event coverage was unavailable. A
+failed run commits nothing, so last Sunday's file stays live, and its `ahead`
+week is now the week that has just begun.
+
+**Considered and not done:** carrying recurring bookings forward from earlier
+snapshots when a week is missing. It would fill longer gaps, but it would be a
+guess about bookings nobody has published, and the second sweep makes the
+common failure, one missed Sunday, a non-event without guessing.
+
+**What it costs.**
+
+- 854 requests a week instead of 427, about eight minutes. The ceiling the
+  `User-Agent` states for the whole repository went from 1,900 to 2,300
+  (1,089 harvest + 323 room features + 854 room events + 2 library hours =
+  2,268), raised in the string the same day.
+- The file is 234,787 bytes, 14,656 gzipped, up 7,279 gzipped. About 0.14 s
+  more at Chrome's Slow 3G preset, against a 20 s boot deadline.
+
+**Failure rules.** The first week is still what the publish check requires,
+and a failed first week still stops the run. A failed second week is logged
+and dropped, and the first week is written alone: losing the cushion is better
+than losing the week. `check-event-coverage.mjs` checks any week that is
+present: it must be the next consecutive week, of the same term, complete,
+over the same rooms. Otherwise the publish stops, so one week's bookings can
+never be laid over another week's dates.
+
+**Measured.** The first two-week sweep, run 2026-11-10: weeks of 11/09
+(440 events, 284 block cells) and 11/16 (527 events, 346 block cells, three of
+them drawn twice, so 343 holds), 854 round trips, zero invalid or empty grids.
+Pinned in `scripts/test/club-occupancy.test.mjs` and
+`scripts/test/event-coverage.test.mjs`.

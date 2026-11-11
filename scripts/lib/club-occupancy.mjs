@@ -153,6 +153,19 @@ export function normalizeMeetings(roomEvents, { rooms, term } = {}) {
   };
 }
 
+// The weekly snapshot that covers a date. The file is one Monday-Sunday
+// snapshot at the top level, as it always was, plus `ahead`: the following
+// weeks, each in the same { _meta, rooms } shape. A Sunday sweep that fails
+// leaves last Sunday's file in place, and its `ahead` still covers the week
+// that has just begun. A date no snapshot covers gets the top-level one, which
+// overlayForDate then reports as outside-snapshot.
+export function snapshotFor(roomEvents, date) {
+  const covers = (doc) => doc?._meta && date >= doc._meta.weekStart && date <= doc._meta.weekEnd;
+  if (covers(roomEvents)) return roomEvents;
+  const ahead = Array.isArray(roomEvents?.ahead) ? roomEvents.ahead : [];
+  return ahead.find(covers) ?? roomEvents;
+}
+
 // Return an ephemeral class index for one date. Existing tuples are copied only
 // for rooms receiving events, and a one-date session prevents a Room Matrix
 // occurrence from becoming a weekly class. Always overlay the original index,
@@ -161,7 +174,7 @@ export function overlayForDate(index, roomEvents, { date, classesSuspended = fal
   if (!index || typeof index !== 'object' || !validDate(date)) {
     throw new TypeError('Expected a class index and a valid ISO date');
   }
-  const normalized = normalizeMeetings(roomEvents, { rooms: index.rooms, term: index.term });
+  const normalized = normalizeMeetings(snapshotFor(roomEvents, date), { rooms: index.rooms, term: index.term });
   const meetings = normalized.meetings.filter((meeting) => meeting.date === date);
   const holds = normalized.holds.filter((hold) => hold.date === date);
   const sessions = (index.sessions ?? []).map((session) => [...session]);

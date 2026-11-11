@@ -10,8 +10,10 @@
 // Measured on 2026-11-10 over the files prepared for the next commit, which is
 // the copy Pages will serve: `gzip -9 -c < <file> | wc -c`. Both figures moved
 // that day for the finals-week libraries: js/study.js is 1,905 of the shell's
-// 4,367 and data/study-spaces.json is 1,903 of the data's.
-// Shell 207,131 bytes, data 116,693.
+// 4,367 and data/study-spaces.json is 1,903 of the data's. The data moved again
+// the same evening when the Room Matrix file started carrying two weeks, 7,279
+// gzipped bytes more.
+// Shell 207,131 bytes, data 123,972.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these seventeen files, which is most of a percent of

@@ -151,3 +151,54 @@ test('the committed PR #114 snapshot is accepted without an adapter', () => {
   assert.deepEqual(normalized.rejected, []);
   assert.equal(normalized.meetings.every((meeting) => meeting.sourceUrl === roomEvents._meta.source), true);
 });
+
+// Two weeks in one file: the coming week at the top level, as always, and the
+// week after under `ahead`. A failed Sunday leaves this file in place, so the
+// second week is what keeps a Monday from going class-only.
+const twoWeeks = (thisWeek, nextWeek) => ({
+  ...document(thisWeek),
+  ahead: [{
+    _meta: { term: '1268', weekStart: '2026-09-07', weekEnd: '2026-09-13', generated: '2026-09-03', source, partial: false },
+    rooms: { TEST101: nextWeek },
+  }],
+});
+
+test('a date in the week ahead reads the week ahead, with full coverage', () => {
+  const file = twoWeeks([event()], [event({ start: 700, end: 760, eventId: '000657001' })]);
+  const thisThursday = overlayForDate(index(), file, { date: '2026-09-03' });
+  assert.equal(thisThursday.coverage, 'complete-room-sweep');
+  assert.deepEqual(thisThursday.meetings.map((m) => m.startMinute), [610]);
+  const nextThursday = overlayForDate(index(), file, { date: '2026-09-10' });
+  assert.equal(nextThursday.coverage, 'complete-room-sweep');
+  assert.deepEqual(nextThursday.meetings.map((m) => [m.date, m.startMinute]), [['2026-09-10', 700]]);
+  assert.deepEqual(freeGaps(nextThursday.index.rooms.TEST101.busy, 4, 540, 780,
+    activeSessions(nextThursday.index.sessions, '2026-09-10')), [[600, 700], [760, 780]]);
+});
+
+test('a date past every week in the file is still outside the snapshot', () => {
+  const out = overlayForDate(index(), twoWeeks([event()], [event()]), { date: '2026-09-17' });
+  assert.equal(out.coverage, 'outside-snapshot');
+  assert.deepEqual(out.meetings, []);
+});
+
+test('a malformed week ahead is refused, not read', () => {
+  const file = twoWeeks([], [event()]);
+  delete file.ahead[0]._meta.source;
+  assert.throws(() => overlayForDate(index(), file, { date: '2026-09-10' }), TypeError);
+  // The week it does not touch still answers.
+  assert.equal(overlayForDate(index(), file, { date: '2026-09-03' }).coverage, 'complete-room-sweep');
+});
+
+test('every week in the committed file is accepted without an adapter', () => {
+  const roomEvents = JSON.parse(readFileSync(new URL('../../data/room-events-1268.json', import.meta.url)));
+  const rooms = JSON.parse(readFileSync(new URL('../../data/rooms-1268.json', import.meta.url)));
+  for (const week of roomEvents.ahead ?? []) {
+    const normalized = normalizeMeetings(week, { rooms: rooms.rooms, term: rooms.term });
+    assert.equal(normalized.meetings.length, week._meta.counts.events, week._meta.weekStart);
+    // A block the grid draws twice is one hold: the week of 2026-11-16 has 346
+    // block cells and 343 distinct holds. Every cell is still counted.
+    assert.equal(normalized.blockCount, week._meta.counts.blockCells, week._meta.weekStart);
+    assert.ok(normalized.holds.length > 0 && normalized.holds.length <= normalized.blockCount);
+    assert.deepEqual(normalized.rejected, []);
+  }
+});

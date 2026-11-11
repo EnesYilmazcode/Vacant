@@ -49,6 +49,7 @@ const PORT = Number(process.env.PORT || 8137);
 // a class walks in and three because the door locks, which is the distinction
 // the whole app is for. 428 rooms clear a two hour ask at this minute.
 const WHEN = '2026-09-16T10:20:00-04:00';
+const FINALS_WHEN = '2026-12-14T14:00:00-05:00';
 const TZ = 'America/New_York';
 
 // Thompson Library steps, the middle of the Oval.
@@ -495,7 +496,7 @@ async function run() {
     await page.call('Emulation.setTimezoneOverride', { timezoneId: TZ });
     await page.call('Emulation.setGeolocationOverride', WHERE);
     const fixed = new Date(WHEN).getTime();
-    await page.call('Page.addScriptToEvaluateOnNewDocument', { source: pinnedClockSource(fixed) });
+    const clock = await page.call('Page.addScriptToEvaluateOnNewDocument', { source: pinnedClockSource(fixed) });
 
     await page.boot(url);
 
@@ -844,32 +845,14 @@ async function run() {
       `[...document.querySelectorAll('#list .row')].map(r => r.textContent.replace(/\\s+/g, ' ').trim())`,
     );
     console.log('rows   ' + rows.slice(0, 5).join('\n       '));
-    const browsing = await page.evaluate(`(() => ({
-      nomap: document.body.classList.contains('nomap'),
-      sheet: document.getElementById('sheet').getBoundingClientRect().height,
-    }))()`);
+    const selected = await page.evaluate(`!!document.querySelector('#list .row.on')`);
     if (rows.length !== binned) problems.push(`list: ${rows.length} rows behind a deck of ${binned}`);
-    if (!browsing.nomap) problems.push('list: the map is on screen with nothing on it');
-    if (browsing.sheet < 0.7 * SCREEN.height) {
-      problems.push(`list: the sheet rests at ${Math.round(browsing.sheet)}px, not over the map`);
-    }
-    await shoot('list', `${rows.length} rows shown, sheet ${Math.round(browsing.sheet)}px, map covered`);
-
-    // And it cannot be uncovered by hand either. The two snap points have
-    // collapsed onto each other while nothing is selected, so a pull short of
-    // the dismiss travel returns to full rather than opening a band of campus
-    // with nothing on it. No frame: it is the same picture as the one above,
-    // which is the whole claim.
-    await page.dragSheet(60);
-    await page.settled();
-    const pulled = await page.evaluate(`document.getElementById('sheet').getBoundingClientRect().height`);
-    if (Math.abs(pulled - browsing.sheet) > 2) {
-      problems.push(`list: a 60px pull moved the sheet ${Math.round(browsing.sheet)} -> ${Math.round(pulled)}`);
-    }
+    if (selected) problems.push('list: a room was already selected');
+    await shoot('list', `${rows.length} rows, no room selected`);
 
     // 5. one room selected: the map comes out from under the list with the
     //    footprint lit and an arrow drawn to it. The first tap on a row
-    //    selects, so this is one tap and the sheet drops back to peek.
+    //    selects and shows the route in the map above the list.
     // The chosen room is not always above the fold, so the list is scrolled to
     // it first, which is the scroll a thumb does. It stops with the row above it
     // flush against the top of the list rather than centred, because centring
@@ -892,12 +875,12 @@ async function run() {
       sheet: document.getElementById('sheet').getBoundingClientRect().height,
     }))()`);
     if (picked.nomap) problems.push('room: the map stayed covered over a lit room');
-    if (!(picked.sheet < browsing.sheet - 100)) {
-      problems.push(`room: the sheet did not drop (${Math.round(browsing.sheet)} -> ${Math.round(picked.sheet)})`);
+    if (picked.sheet > 0.5 * SCREEN.height) {
+      problems.push(`room: the sheet rests at ${Math.round(picked.sheet)}px, over the map`);
     }
     await shoot(
       'room',
-      `${target.name} selected, sheet ${Math.round(browsing.sheet)}px -> ${Math.round(picked.sheet)}px, map shown`,
+      `${target.name} selected, map shown`,
       target.name,
     );
 
@@ -944,6 +927,19 @@ async function run() {
     // two facts sharing one box with no gap between them.
     if (room.loose) note('facts', `${room.title} reads "${room.facts}"`);
 
+    await page.call('Page.removeScriptToEvaluateOnNewDocument', clock);
+    await page.call('Page.addScriptToEvaluateOnNewDocument', {
+      source: pinnedClockSource(Date.parse(FINALS_WHEN)),
+    });
+    await page.boot(url);
+    await page.waitFor(`document.getElementById('gate-go').textContent === 'Show libraries open now'`,
+      'the finals-week library shortcut');
+    await shoot('finals', 'Finals week, with a shortcut to open libraries');
+    await page.tapSelector('#gate-go');
+    await page.waitFor(`document.querySelector('#near .b-row')`, 'the published study-space hours');
+    await page.settled();
+    await shoot('libraries', 'Libraries and the Union lead the buildings screen');
+
     if (page.errors.length) problems.push(`the page logged ${page.errors.length} error(s): ${page.errors.join(' | ')}`);
 
     if (!CHECK_ONLY && !problems.length) {
@@ -961,6 +957,7 @@ async function run() {
           'scripts/shoot.mjs, read by scripts/test/readme.test.mjs, so the README cannot ' +
           'end up describing a picture that says something else.',
         when: WHEN,
+        finalsWhen: FINALS_WHEN,
         where: WHERE,
         screen: SCREEN,
         room: { name: target.name, row: target.win, claim: room.claim, facts: room.facts },

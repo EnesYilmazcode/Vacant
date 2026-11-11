@@ -11,27 +11,26 @@ narrower question of what each file is and what rights attach to it.
 
 | File | Source | Rights | Provenance |
 | --- | --- | --- | --- |
-| `rooms-1268.json` | Ohio State public class schedule, `https://content.osu.edu/v2/classes/search` | Facts. No rights asserted. Not MIT: that is a software licence and does not fit a dataset | Built 2026-08-29 by `scripts/build-index.mjs` from a walk-until-stable harvest of term 1268, refetched the same day so the course labels are subject CODES. 545 requests over 4 passes. 871 rooms and 96 buildings harvested, **425 rooms in 46 buildings shipped** after the type, restricted-building, distance, weekly-evidence and published-hours filters. Carries a `courses` table of 2,024 subject-and-catalog labels; no section, title or instructor. See `docs/DECISIONS.md`, 2026-08-29 |
+| `rooms-1268.json` | Ohio State public class schedule, `https://content.osu.edu/v2/classes/search` | Public course and room facts | The weekly build ships 425 rooms in 46 buildings after filtering for room type, access restrictions, distance, evidence of regular use, and published building hours. The `courses` table stores subject and catalog labels. `harvest-1268.manifest.json` records the latest harvest passes. |
 | `buildings-1268.json` | Same GIS layer as `buildings.json`, sliced to the buildings that host a class this term. 96 harvested, 46 survive the room filters, which is every building the Registrar publishes hours for | (c) 2025 The Ohio State University, Facilities Information and Technology Services | Split out of `buildings.json` by `scripts/build-index.mjs`. 7.4 KB against the full table's 167 KB |
 | `buildings-hours.json` | Registrar classroom pool building schedule, `https://registrar.osu.edu/staff-resources/class-catalog-and-space/classroom-pool-building-schedule/` | OSU page, scraped. Facts | Fetched 2026-08-26 by `scripts/fetch-building-hours.mjs`. Two term pages, 47 buildings each. 4 cells in Caldwell Lab are malformed upstream and come from `registrar-hours-overrides.json` |
 | `campus.json` | `https://gissvc.osu.edu/arcgis/rest/services/Data/FacilitiesStreets_RO/MapServer`, layers 11, 12, 9 and 13 | (c) 2025 The Ohio State University, Facilities Information and Technology Services | Pulled 2026-08-27 by `scripts/fetch-campus.mjs`. `where=1=1` intersected with a bounding box anchored on class-hosting buildings within 2 km of the Oval. 1,543 features, 13,254 points, 39,054 bytes gzipped |
 | `walk-graph.json` | `https://gissvc.osu.edu/arcgis/rest/services/Data/ReferenceData_RO/MapServer/9`, "Sidewalk Centerline" | (c) 2025 The Ohio State University, Facilities Information and Technology Services | Pulled 2026-09-16 by `scripts/fetch-sidewalks.mjs`. 15,531 segments in a campus envelope, noded, reduced to the largest connected component, contracted over degree-2 runs and pruned past 1,000 m of a published door: **5,242 junctions and 7,977 edges, 21,594 bytes gzipped**. It carries how many metres of pavement joins two junctions and NOT the shape of them, so it cannot draw a route and is not a map. See `docs/DECISIONS.md`, 2026-09-16 |
 | `current.json` | Written by the build | n/a | Names the live term and the files that go with it, and carries the build date so the app can say how stale it is |
+| `room-events-1268.json` | Registrar SIS Room Matrix | Public booking times and type codes | Two Monday-to-Sunday sweeps of registered non-class events and `ROOM BLOCK` holds, with the second under `ahead`. The parser drops free-text booking labels and class cells. |
+| `study-spaces.json` | University Libraries hours feed and Ohio Union hours page | Published opening hours | `scripts/fetch-study-spaces.mjs` refreshes dated hours for seven libraries and the Ohio Union. The app uses these for building access and the study-space fallback. |
+| `photos.json` and `photos/` | OTDI Classroom Services' Learning Spaces Directory | Classroom photographs © The Ohio State University, OTDI Classroom Services | The manifest lists rooms with a local WebP. The app loads individual photos on demand. |
 
 ### Optional room characteristics
 
-The room filter reads an optional `features` array on each room in
-`rooms-<term>.json`. `build-index.mjs` copies only the Registrar's numeric Room
-Characteristics codes from the already committed `room-features.json`; the
-phone does not download that detailed 893 KB source. Code `32` means movable
-tables and chairs, and `44` means whiteboards. The current Autumn 2026 source
+`build-index.mjs` can copy the Registrar's numeric Room Characteristics codes
+from `room-features.json` into an optional `features` array on each indexed room.
+Code `32` means movable tables and chairs, and `44` means whiteboards. The current Autumn 2026 source
 covers 327 of 425 indexed rooms. A new term with no matching feature harvest
 leaves the field absent. Absent means **unknown**, while an empty array means
 the Registrar listed none of those characteristics for that room.
 
-That distinction is intentional: if a student requires a whiteboard, a room
-whose details were never published must not pass the filter. Capacity continues
-to use the existing `cap` field and works independently of `features`.
+Capacity uses the separate `cap` field.
 
 ## The files the app does not fetch
 
@@ -40,8 +39,7 @@ to use the existing `cap` field and works independently of `features`.
 | `buildings.json` | The full GIS building table, 612 buildings within 20 km of the Oval | The source `buildings-1268.json` is cut from. Rebuilding the term slice needs it |
 | `buildings.draft.json` | A working table with an `osm_check_m` audit column on 73 rows | Provenance for the coordinate cross-check. See the ODbL note below |
 | `footprints.draft.json` | An early footprint experiment, superseded by `campus.json` | Kept so nobody redoes it |
-| `room-features.json` | Two published OSU pages: the Registrar general assignment room list, `https://registrar.osu.edu/staff-resources/class-catalog-and-space/general-assignment-rooms/`, and OTDI Classroom Services' Learning Spaces Directory, `https://learningspaces.osu.edu/classrooms`. Facts, no rights asserted. Photos and 360 tours are **linked, never copied**: nothing under `rooms.app.it.osu.edu` is mirrored here, so the images stay Ohio State's | Built 2026-09-03 by `scripts/fetch-room-features.mjs`, 323 requests cold. 328 rooms of the 425 in `rooms-1268.json`: 327 from the Registrar, 311 from Learning Spaces, 310 from both. The 97 with no feature data are listed by facility id in `_meta.coverage.noFeatureDataRooms` and every one of them is departmental rather than general assignment. `_meta` also carries the 15 seating-family and 2 capacity disagreements between the sources rather than picking a winner silently |
-| `room-events-1268.json` | The non-class occupancy of all 425 rooms in `rooms-1268.json` for the week of 08/31/2026: 327 registered events (209 reservation ids, 174 rooms) and 347 Registrar ROOM BLOCK cells (8 block numbers, 56 rooms), 674 records over 215 rooms. Swept 2026-09-03 by `scripts/fetch-room-events.mjs` from the Registrar SIS Room Matrix, `https://courses.erppub.osu.edu/psc/ps/EMPLOYEE/PUB/c/OSR_CUSTOM_MENU.OSR_ROOM_MATRIX.GBL`, public and behind no login. 427 requests, 232 s, one POST per room. Facts, no rights asserted. **The Registrar's free-text booking label is dropped at the parse boundary and is not in this file:** 23 of the 189 distinct labels that week name a real person and no heuristic separates those from the org names, so only the type code survives, MTG/TOUR/INFO/WRKS/SMNR or null for a block | It is what the class harvest cannot see. 8,288 class cells and 9,647 class bookings were counted and thrown away here because Vacant already harvests those, and `_analysis` carries the measured gap: 323 of 327 events and 343 of 347 block cells land in a window Vacant currently calls entirely free, and blocks alone cover 10.7% of every weeknight 5-10pm free room-minute |
+| `room-features.json` | Room characteristics from the Registrar's general assignment room list and OTDI Classroom Services' Learning Spaces Directory | `scripts/fetch-room-features.mjs` records source coverage, facility IDs and disagreements between the sources. Photo assets are fetched separately by `scripts/fetch-room-photos.mjs`. |
 | `harvest-1268.manifest.json` | Per-pass counts for the harvest that built `rooms-1268.json` | The harvest blob itself is not committed, so this is the only record of how it converged |
 | `registrar-hours-overrides.json` | 4 hand-corrected Caldwell Lab cells, each with a written reason | The upstream page is malformed and the override has to be auditable |
 | `cache/registrar/` | The raw Registrar HTML the hours, calendar and room-feature parsers read | So a parser change can be tested without refetching |

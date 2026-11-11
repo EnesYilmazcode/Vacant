@@ -21,9 +21,10 @@ busy when, and serves that table as a static file. Students' phones never talk t
 an Ohio State server. All the load is one harvest job, run about once a week.
 
 **That job runs on a Sunday schedule** in `.github/workflows/rooms.yml`, at
-07:25 UTC (about 3:25am Eastern). The Room Matrix sweep prepares the coming
-Monday-through-Sunday week. The off switch below also names the daily term watch
-and weekly live-API check, which make smaller requests to Ohio State.
+07:25 UTC (2:25am EST or 3:25am EDT). The Room Matrix sweep prepares the coming
+Monday-through-Sunday week and the week after. The off switch below also names
+the daily term watch and weekly live-API check, which make smaller requests to
+Ohio State.
 
 ```
                     scheduled Sunday, about once a week
@@ -61,7 +62,7 @@ free with a class sitting in them.
 
 | | |
 | --- | --- |
-| Cadence | Scheduled weekly in `.github/workflows/rooms.yml` at `'25 7 * * 0'`, Sunday 07:25 UTC (about 3:25am Eastern) |
+| Cadence | Scheduled weekly in `.github/workflows/rooms.yml` at `'25 7 * * 0'`, Sunday 07:25 UTC (2:25am EST or 3:25am EDT) |
 | Requests per run | **545**, measured on term 1268 over 4 passes |
 | Advertised ceiling | **2,300 a week**, for everything in this repository together. `MAX_PASSES` x 8 buckets x 17 pages is 1,089 for the harvest, plus 323 for room features, 854 for two weeks of room events and 2 for library and Union hours, all cold. The `User-Agent` states that ceiling rather than the typical run |
 | Hard stop | `MAX_REQUESTS` is 4,000 and throws rather than fetches |
@@ -204,10 +205,11 @@ regular table, a break table, and lists of break and closed dates.
 
 Seven Columbus libraries are kept, by an allow list in
 `scripts/lib/study-spaces.mjs`; the rest are by appointment, badge only, or
-publish "see our website" instead of hours. This is what the app shows in
-finals week, when Ohio State reassigns classrooms for exams and publishes
-nothing, so Vacant cannot rank rooms. It shows a library's door as open by the
-library's own hours and never says a seat is free.
+publish "see our website" instead of hours. The buildings screen lists these
+study spaces by their published hours and moves them to the top during finals
+week or when all classroom buildings are closed. When a search returns no
+rooms, the app can also suggest up to two spaces with at least 30 minutes left
+after the walk. The hours describe building access. Seat availability is unknown.
 
 A failed fetch leaves the committed file alone and does not stop the room
 index from publishing. The app reads a date the file does not cover as

@@ -1,5 +1,9 @@
 # Launch: the date, the posts, and what not to say
 
+This is the Autumn 2026 launch plan. For the current feature set and screenshots,
+see the [README](../README.md). For publishing and offline behavior, see the
+[deployment guide](DEPLOY.md).
+
 The parked decision was to hold the URL until building hours shipped. They have
 shipped, so this is live. `buildings-hours.json` carries 47 buildings a term from
 the Registrar's classroom pool schedule, and the app labels a building with no

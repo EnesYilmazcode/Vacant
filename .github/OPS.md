@@ -11,7 +11,7 @@ plus one gap that none of them can close and nobody has closed yet.
 
 | File | When (UTC) | What it does | Writes? |
 |---|---|---|---|
-| [`rooms.yml`](workflows/rooms.yml) | Sunday `25 7` | Harvests one term, rebuilds the index, commits what moved | yes, to `main` |
+| [`rooms.yml`](workflows/rooms.yml) | Sunday `25 7` | Rebuilds the active term index, sweeps two weeks of Room Matrix bookings, refreshes study-space hours when available, and publishes the checked data | yes, to `main` |
 | [`stale-watch.yml`](workflows/stale-watch.yml) | daily `15 13` | Fails if `current.json` is over 10 days old, and if the searchable term list moved | no |
 | [`live-rot.yml`](workflows/live-rot.yml) | Thursday `45 8` | Asks the live API four questions about its shape | no |
 | [`test.yml`](workflows/test.yml) | push, pull request | `node --test` | no |
@@ -168,7 +168,8 @@ until the live term's finals are over (`--early` overrides) and until
 in an undocumented building ships as open. It then pulls the two single-term
 Registrar files, rebuilds with the pointer, sweeps next week's events and runs
 the checks `rooms.yml` runs. If a required step fails it puts back every shared
-file it touched. After the push, the Sunday job carries the new term on its own.
+file it touched. The event sweep includes the following week under `ahead`.
+After the push, the Sunday job carries the new term on its own.
 
 For Autumn 2026 into Spring 2027: finals end 2026-12-17, so the flip can run from
 the 18th. Until then the app correctly shows Autumn; between the flip and the
@@ -183,29 +184,11 @@ fetched in one `Promise.all`, so the 404 rejects the boot. Measured 2026-08-27 a
 reached `.ready` inside 15 seconds and all three duration buttons stayed
 disabled.
 
-It harvests one term a week on purpose: a whole term is about 680 requests
-against a university's API, and only the term in session can change an answer.
+The scheduled job harvests one term a week. See the [data guide](../docs/DATA.md)
+for the request budget across the class, booking, and hours sources.
 
-## What has not been exercised
+## Alert tests
 
-Honest list, because a workflow that parses is not a workflow that runs.
-
-- No workflow in this directory has been executed by GitHub Actions. The YAML
-  parses and every `run:` body was extracted from the file and run by hand, but
-  the runner, the `GITHUB_TOKEN` permissions and the push have not been tested.
-- `alert.sh` has filed real issues exactly once, on 2026-08-27, when a stand-in
-  `gh` failed to resolve on Windows and the real one answered instead. Every
-  issue that run created was deleted afterwards and no pre-existing issue was
-  touched. That accident is where the list lag above was measured. It has never
-  run inside Actions. Everything else is covered by a stand-in `gh` in
-  `scripts/test/alert.test.mjs`: create, comment, the twin collapse, a list that
-  never catches up, both quiet-window branches and both usage errors.
-- The 60-day inactivity disable is untested. Nothing here has ever been quiet for
-  60 days.
-- The out-of-band check above is not scheduled anywhere. It has only ever been
-  run by hand. Until it is hosted, a Pages deployment that stops publishing is
-  invisible to everything in this directory.
-- `FORCE_WRITE` and `ALLOW_TERM_DROP` are passed to the build, but no script
-  reads them yet. That is issue #10. Until it lands, `rooms.yml` refuses a
-  dispatch that sets `force` or `dropTerms` rather than running as if the flag
-  had been honoured.
+`scripts/test/alert.test.mjs` uses a stand-in `gh` to exercise issue creation,
+comments, duplicate handling, and quiet windows without making GitHub requests.
+On Windows, add Git Bash's `bin` directory to `PATH` before running the suite.

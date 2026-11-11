@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { activeSessions, freeGaps } from '../../js/engine.js';
-import { normalizeMeetings, overlayForDate } from '../lib/club-occupancy.mjs';
+import { HOLD_LABEL, normalizeMeetings, overlayForDate } from '../lib/club-occupancy.mjs';
 
 const source = 'https://courses.erppub.osu.edu/room-matrix';
 const index = () => ({
@@ -58,12 +58,40 @@ test('an occurrence does not repeat outside the source week', () => {
     activeSessions(out.index.sessions, '2026-09-10')), [[600, 720]]);
 });
 
-test('ROOM BLOCK records remain excluded until their meaning is decided', () => {
-  const block = event({ kind: 'block', type: null, eventId: '33544' });
+test('a ROOM BLOCK is busy time, kept apart from events and labelled as a hold', () => {
+  // Decided 2026-11-10: a group booked Lazenby Hall 001 at 7pm inside its
+  // 5:30pm-11pm block, and the Room Matrix never showed that booking.
+  const block = event({ kind: 'block', type: null, eventId: '35693', start: 1050, end: 1380 });
   const out = overlayForDate(index(), document([event(), block]), { date: '2026-09-03' });
   assert.equal(out.meetings.length, 1);
+  assert.equal(out.holds.length, 1);
   assert.equal(out.blockCount, 1);
-  assert.equal(out.rejected.find((item) => item.eventId === '33544').reason, 'undecided-room-block');
+  assert.deepEqual(out.rejected, []);
+  const busy = out.index.rooms.TEST101.busy;
+  const hold = busy.find((b) => b[1] === 1050);
+  assert.equal(out.index.courses[hold[4]], HOLD_LABEL, 'a hold must never borrow a class name');
+  assert.deepEqual(out.index.courses.slice(0, 1), ['Example class'], 'class course indexes stay put');
+  assert.deepEqual(freeGaps(busy, 4, 900, 1380, activeSessions(out.index.sessions, '2026-09-03')), [[900, 1050]]);
+});
+
+test('a hold on a no-class day still holds the room', () => {
+  const block = event({ kind: 'block', type: null, eventId: '35693', start: 1050, end: 1380 });
+  const out = overlayForDate(index(), document([block]), { date: '2026-09-03', classesSuspended: true });
+  assert.deepEqual(freeGaps(out.index.rooms.TEST101.busy, 4, 480, 1380,
+    activeSessions(out.index.sessions, '2026-09-03')), [[480, 1050]]);
+});
+
+test('a malformed block is rejected rather than guessed at', () => {
+  const bad = event({ kind: 'block', type: null, eventId: 'x', start: 1050, end: 1380 });
+  const out = normalizeMeetings(document([bad]), { rooms: index().rooms, term: '1268' });
+  assert.equal(out.holds.length, 0);
+  assert.deepEqual(out.rejected.map((r) => r.reason), ['invalid-block']);
+});
+
+test('the index without a hold is returned with its own course list', () => {
+  const out = overlayForDate(index(), document([event()]), { date: '2026-09-03' });
+  assert.deepEqual(out.index.courses, ['Example class']);
+  assert.equal(out.holds.length, 0);
 });
 
 test('a no-class day suppresses classes but keeps registered events', () => {
@@ -119,6 +147,7 @@ test('the committed PR #114 snapshot is accepted without an adapter', () => {
   assert.equal(normalized.meetings.length, roomEvents._meta.counts.events);
   assert.equal(normalized.blockCount, roomEvents._meta.counts.blockCells);
   assert.equal(normalized.coverage, 'complete-room-sweep');
-  assert.equal(normalized.rejected.length, normalized.blockCount);
+  assert.equal(normalized.holds.length, normalized.blockCount, 'every committed block becomes a hold');
+  assert.deepEqual(normalized.rejected, []);
   assert.equal(normalized.meetings.every((meeting) => meeting.sourceUrl === roomEvents._meta.source), true);
 });

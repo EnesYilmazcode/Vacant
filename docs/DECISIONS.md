@@ -3162,6 +3162,8 @@ covers the same ground first.
 
 ### ROOM BLOCK is measured but NOT decided
 
+**Superseded 2026-11-10**, see "A ROOM BLOCK is time somebody may have booked" at the bottom of this file.
+
 The matrix carries a second entry type. **347 block cells across 56 rooms,
 2,665 hours a week**, and the shipped index calls the room entirely free for 343
 of them. Enarson Classroom Building holds 34 of its rooms from 5:30pm to 11pm on
@@ -3359,7 +3361,8 @@ to a one-date session without changing the original class index. A query outside
 the swept week is explicitly `outside-snapshot`; an event cannot repeat merely
 because its weekday matches.
 
-`kind: "block"` remains `undecided-room-block` and never becomes busy time here.
+`kind: "block"` remained `undecided-room-block` and never became busy time here,
+until 2026-11-10 (see the end of this file).
 That is the ROOM BLOCK decision above enforced in code rather than left to a
 caller. The test suite reads the committed #114 JSON and requires all 327 events
 to normalize, all 347 blocks to be reported and excluded, and no adapter or
@@ -4208,3 +4211,56 @@ rather than hidden by overwriting one with the other. `WALK` is still beta at
 Google and can omit pavements. And the licence is why there is no line drawn on
 the map: Google's service-specific terms restrict using Routes content with a
 non-Google map, so the steps are text beside the map and never a route on it.
+
+## 2026-11-10  A ROOM BLOCK is time somebody may have booked
+
+**Decided.** `kind: "block"` in `room-events-<term>.json` is now busy time. It
+had been carried and ignored since #114, waiting for somebody to stand outside a
+held room in the evening and see whether anyone came.
+
+Somebody did, without meaning to. A student sat in Lazenby Hall 001 from about
+5pm on a weekday early in November. Vacant had said the room was free until the
+building locked at 11pm: its last class ends at 2:05pm, and the Room Matrix's
+"ROOM BLOCK - 35693 | Room Block | Workshop", 5:30pm to 11pm Monday to Friday,
+was being ignored. At 7pm a group arrived, waited outside until exactly 7:00,
+and said it had the room booked.
+
+That booking is in no data Vacant reads. Every weekly snapshot back to 31
+August shows Lazenby 001 with nothing in the evening but the block, and across
+the whole term no registered event falls inside any block window. The block's
+label names no owner. The likeliest reading, not confirmed by Ohio State, is
+that the Registrar holds evening and weekend time in a small set of classroom
+buildings (Lazenby, Enarson, Cunz, Evans Lab, Hitchcock, Independence,
+McPherson) for Student Life, whose Space Request Tool books student
+organizations into "a limited number of classroom buildings" behind a login.
+The Room Matrix sees the hold, not the bookings inside it.
+
+**What changed.**
+
+- `scripts/lib/club-occupancy.mjs` turns each block into a `hold` and
+  `overlayForDate` adds it as a busy tuple whose course is `HOLD_LABEL`,
+  "May be booked", appended to the index's course list. A hold ends a free
+  window the way a class does, PACKUP included, and a hold in progress keeps
+  the room off the list.
+- The room screen says "May be booked till 11:00pm" inside a hold, and adds
+  "May be booked from 5:30pm" under "Free till 5:20pm" when a hold is what
+  ends the window. The day calendar draws the hold as "May be booked". None of
+  them says "in use" or names a class, because nobody knows whether anyone is
+  in the room or when they come.
+- A row whose window ends at a hold reads "free till 5:20pm, then may be
+  booked".
+- The footnote under the list now says holds count as possibly booked.
+
+**What it costs.** Blocks covered 10.7% of the weeknight 5-10pm free
+room-minutes and 8.95% of Saturday 8am-10pm when measured in September, so the
+app offers noticeably fewer evening and weekend rooms in those seven buildings.
+Some of that time is genuinely empty, as the first two hours in Lazenby were.
+It is not knowable from public data which part, and a room offered and then
+taken away mid-study is the failure this project exists to prevent.
+
+**Not done.** The real fix is the bookings themselves. Student Life's tool
+shows "real time space availability" to signed-in student organizations; asking
+Student Life Events and Conferences for a read-only export of confirmed
+classroom bookings (room, date, start, end, nothing about who) is the next
+step, and nobody has asked yet. Pinned in `scripts/test/holds.test.mjs` with
+the Lazenby case.

@@ -1,8 +1,10 @@
 // Pure room-detail modeling. The controller supplies the selected date and the
 // building's published hours; this module returns timeline rows and copy.
 import { roomClaim } from './claim.js';
-import { blocksOn } from './day.js';
+import { blocksOn, classesOn } from './day.js';
+import { PACKUP } from './engine.js';
 import { clock, dur } from './state.js';
+import { HOLD_LABEL } from '../scripts/lib/club-occupancy.mjs';
 
 export const SEAM_MIN = 20;
 
@@ -13,14 +15,23 @@ export function hourLabel(minutes) {
   return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
 }
 
+// The Registrar holds this room in these windows for bookings the Room Matrix
+// never shows, so the screen can say "may be booked" instead of "in use".
+export function holdsOn(room, date, schedule) {
+  return classesOn(room, date, schedule.sessions, schedule.courses)
+    .filter((item) => item.course === HOLD_LABEL)
+    .map((item) => [item.from, item.to]);
+}
+
 export function timelineRows(room, buildingName, nowMin, date, schedule, hours) {
   const blocks = blocksOn(room, date, schedule.sessions);
+  const holds = holdsOn(room, date, schedule);
   const known = Array.isArray(hours);
-  if (hours === null) return { closed: true, rows: [] };
+  if (hours === null) return { closed: true, rows: [], holds };
 
   const open = known ? hours[0] : blocks.length ? blocks[0][0] : null;
   const close = known ? hours[1] : blocks.length ? blocks[blocks.length - 1][1] : null;
-  if (open == null) return { known, rows: [], nothing: true };
+  if (open == null) return { known, rows: [], nothing: true, holds };
 
   const inside = [];
   for (const [start, end] of blocks) {
@@ -52,11 +63,19 @@ export function timelineRows(room, buildingName, nowMin, date, schedule, hours) 
 
   if (known) rows.push({ kind: 'edge', t: close, text: `${buildingName} closes` });
   else rows.push({ kind: 'edge', text: `after ${clock(close)}, not known` });
-  return { known, rows, blocks: inside, open, close };
+  return { known, rows, blocks: inside, open, close, holds };
 }
 
 export function claimFor(timeline, nowMin, metres) {
   const claim = roomClaim({ ...timeline, now: nowMin, metres });
+  const holds = timeline.holds ?? [];
+  const heldNow = holds.some(([from, to]) => nowMin >= from && nowMin < to);
+  // A free window that ends because a hold starts, not a class.
+  const heldAt = claim.kind === 'free' && claim.until != null
+    ? holds.find(([from]) => from === claim.until + PACKUP)?.[0] ?? null
+    : null;
+  const heldNote = heldAt == null ? '' : `May be booked from ${clock(heldAt)}`;
+  const withHeld = (sub) => [sub, heldNote].filter(Boolean).join(' · ');
   switch (claim.kind) {
     case 'opens':
       return {
@@ -73,7 +92,7 @@ export function claimFor(timeline, nowMin, metres) {
       return { head: `Last class ended ${clock(claim.at)}`, sub: '' };
     case 'in-class':
       return {
-        head: `In use till ${clock(claim.until)}`,
+        head: heldNow ? `May be booked till ${clock(claim.until)}` : `In use till ${clock(claim.until)}`,
         sub: claim.next == null
           ? 'Nothing free after it today'
           : claim.yours > 0
@@ -88,16 +107,16 @@ export function claimFor(timeline, nowMin, metres) {
           head: claim.until == null
             ? 'No class in here for the rest of today'
             : `No class in here till ${clock(claim.until)}`,
-          sub: 'Door hours not published',
+          sub: withHeld('Door hours not published'),
         };
       }
       return {
         head: claim.until == null ? 'No class in here for the rest of today' : `Free till ${clock(claim.until)}`,
-        sub: claim.yours == null
+        sub: withHeld(claim.yours == null
           ? ''
           : claim.yours > 0
             ? `Yours for ${dur(claim.yours)} once you get there`
-            : 'It closes before you could walk there',
+            : 'It closes before you could walk there'),
       };
     default:
       return { head: 'Nothing free now', sub: '' };

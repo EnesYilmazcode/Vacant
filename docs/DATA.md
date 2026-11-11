@@ -178,7 +178,8 @@ org meetings, tours, info sessions) and Registrar ROOM BLOCK holds. On the week
 of 08/31/2026 that was 327 events and 347 block cells, and 323 of the events and
 343 of the block cells land in a window `rooms-1268.json` calls entirely free.
 Blocks alone cover 10.7% of every weeknight 5-10pm free room-minute and 8.95% of
-Saturday 8am-10pm.
+Saturday 8am-10pm. Since 2026-11-10 the app treats a block as time somebody may
+have booked, and says so on the room screen; see DECISIONS.md.
 
 The 8,288 class cells in the same grids are counted and thrown away. The 425
 gzipped pages are cached under `data/cache/sis-room-matrix/` and are **not**

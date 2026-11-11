@@ -35,7 +35,7 @@ import { safeDel, safeGet, safeSet } from './storage.js';
 import { KEY_ORIGIN, NO_WALK, NO_WALK_OVAL, locate, offCampus, ovalOrigin } from './location.js';
 import { fetchJson, parsedIndex } from './data-loader.js';
 import { availableBuildings, hoursFor as buildingHoursFor, pickHoursTerm, shortName } from './buildings.js';
-import { bearingTo, claimFor as roomClaimFor, timelineRows as roomTimelineRows } from './room-timeline.js';
+import { bearingTo, claimFor as roomClaimFor, holdsOn, timelineRows as roomTimelineRows } from './room-timeline.js';
 import { dayGridHtml as roomDayGridHtml } from './room-calendar.js';
 import { backLabel, chromeFor } from './navigation.js';
 import {
@@ -978,8 +978,17 @@ function closeOf(code) {
   return Array.isArray(h) ? h[1] : null;
 }
 
+// The minute a Registrar hold starts in this room today, from the overlaid
+// index refresh() built, or null. See holdsOn in js/room-timeline.js.
+function heldAtOf(r) {
+  const room = state.rooms?.rooms?.[r.id];
+  if (!room) return null;
+  const at = holdsOn(room, clockNow(), state.rooms).find(([from]) => from === r.nextClassAt);
+  return at ? at[0] : null;
+}
+
 function windowOf(r) {
-  const p = windowPhrase(r, closeOf(r.building));
+  const p = windowPhrase(r, closeOf(r.building), heldAtOf(r));
   const warn = p.tier === 'wait' || p.tier === 'unknown';
   return { html: warn ? `<span class="warn">${p.text}</span>` : p.text, say: p.say };
 }
@@ -1027,7 +1036,7 @@ const FOOT_ACTS = `<p class="foot-acts">
 // rows stops being read by row four.
 function coverageCaveat(coverage) {
   return coverage === 'complete-room-sweep'
-    ? 'Registered non-class events from the Room Matrix are included for this week. ROOM BLOCK holds, unscheduled use, and locked doors are not.'
+    ? 'Registered non-class events from the Room Matrix are included for this week, and Registrar room holds count as possibly booked. Unscheduled use and locked doors are not included.'
     : 'Class schedule only for this date. Non-class event coverage is unavailable, doors get locked, and unscheduled use does not appear here.';
 }
 
@@ -1326,7 +1335,7 @@ function heroDur(m) {
 }
 
 function cardHero(r) {
-  const p = windowPhrase(r, closeOf(r.building));
+  const p = windowPhrase(r, closeOf(r.building), heldAtOf(r));
   if (p.tier === 'unknown') return '';
   if (p.tier === 'wait') {
     return `<p class="c-for"><span>Free from</span> <b>${clock(r.availableAt)}</b></p>`;

@@ -54,9 +54,10 @@ the room's daily calendar.
 ## Libraries and the Ohio Union
 
 During finals week, the class schedule cannot establish classroom availability.
-**Show libraries open now** opens the buildings screen with libraries and the
-Ohio Union first. The buildings screen also leads with study spaces when all
-classroom buildings are closed.
+On days the university closes, such as Veterans Day or Thanksgiving, classroom
+buildings are locked. On both, **Show libraries open now** opens the buildings
+screen with libraries and the Ohio Union first. The buildings screen also leads
+with study spaces when all classroom buildings are closed.
 
 When a search returns no rooms, Vacant can suggest nearby study spaces with at
 least 30 minutes left after the walk. Published hours tell you when the building
@@ -77,10 +78,19 @@ is open. Seat availability is unknown.
 - **Published coverage.** The Registrar's table covers 47 buildings, the index touches 46,
   and 0 of the 425 rooms sit in a building whose hours are unpublished.
 - **Room bookings.** The weekly Room Matrix refresh covers two Monday-to-Sunday
-  weeks. Vacant includes registered non-class events and treats Registrar
-  `ROOM BLOCK` holds as possibly booked for covered dates. It flags missing
-  event coverage outside those dates. Unscheduled use and individual room locks
+  weeks. Vacant includes registered non-class events. A Registrar `ROOM BLOCK`
+  is a hold on a room, often for the evening, and student groups can book
+  inside it through a system that is not public. Vacant does not offer a room
+  during a hold and labels that time **may be booked**. It flags missing event
+  coverage outside those two weeks. Unscheduled use and individual room locks
   are unknown. [Data sources and coverage](docs/DATA.md)
+
+## Report a wrong answer
+
+If Vacant sent you to a room that was locked, occupied or booked, open **What
+Vacant knows** from the menu and press **This was wrong**. It opens a
+pre-filled GitHub issue with the app's version and data dates, and you need a
+GitHub account to submit it. Your location is included only if you tick the box.
 
 ## Install and use offline
 
@@ -93,20 +103,22 @@ gzipped. Room photos are cached as you view them.
 
 ## Run locally
 
-Use Node.js 22 or newer for tests and scripts. Serve the repository over HTTP so
-the browser can load the ES modules and JSON.
+Use Node.js 22 or newer for tests and scripts. The app loads its files from
+`/Vacant/`, the path it has on GitHub Pages, so serve the folder that *contains*
+the `Vacant` checkout, not the checkout itself.
 
 ```sh
 git clone https://github.com/EnesYilmazcode/Vacant.git
-cd Vacant
 python3 -m http.server 8000
 ```
 
-Open [localhost:8000](http://localhost:8000). The [developer page](http://localhost:8000/dev/)
-lets you pick a time and starting point. Use `?dev1` on the main page for a
-teaching-day example from Dreese Laboratories, or press **D** three times to
-open the developer panel. The [photo crop preview](http://localhost:8000/dev/warp.html)
-shows how classroom photos fit a phone screen.
+Open [localhost:8000/Vacant/](http://localhost:8000/Vacant/). Opening
+`localhost:8000` from inside the checkout leaves the duration buttons disabled.
+The [developer page](http://localhost:8000/Vacant/dev/) lets you pick a time and
+starting point. Use `?dev1` on the main page for a teaching-day example from
+Dreese Laboratories, or press **D** three times to open the developer panel. The
+[photo crop preview](http://localhost:8000/Vacant/dev/warp.html) shows how
+classroom photos fit a phone screen.
 
 ```sh
 npm test
@@ -130,7 +142,9 @@ hours logic in `js/study.js`.
 
 - [Data sources, refresh cadence, and rebuild commands](docs/DATA.md)
 - [Deployment, rollback, and offline cache](docs/DEPLOY.md)
-- [Scheduled jobs and term rollover](.github/OPS.md)
+- [Scheduled jobs and term rollover](.github/OPS.md). A new term is staged with
+  `node scripts/roll-term.mjs <term> --prepare` and switched on with `--flip`
+  after the current term's finals.
 - [Design decisions](docs/DECISIONS.md) and [research notes](docs/research/)
 - [Backlog](docs/BACKLOG.md) and [ground-truth walk](docs/research/ground-truth-walk.md)
 

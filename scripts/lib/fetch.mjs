@@ -38,7 +38,9 @@ const MAX_REQUESTS = 4000;
 // over 8 buckets of 17 pages, which is 1,089. Quoting the typical number is how
 // the first two drafts of this string ended up understating it: 280, then 700.
 // 1,839 is that 1,089 plus fetch-room-features.mjs at 323 and
-// fetch-room-events.mjs at 427, every one of them cold.
+// fetch-room-events.mjs at 427, every one of them cold. fetch-study-spaces.mjs
+// adds 2 (the libraries' hours feed and the Ohio Union's page), 1,841 in all,
+// still under the stated ceiling.
 const USER_AGENT =
   'Vacant/0.1 (+https://github.com/EnesYilmazcode/Vacant; ' +
   'contact via repo issues) weekly classroom-schedule index, <=1900 requests/week';

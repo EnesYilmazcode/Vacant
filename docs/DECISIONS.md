@@ -4264,3 +4264,65 @@ Student Life Events and Conferences for a read-only export of confirmed
 classroom bookings (room, date, start, end, nothing about who) is the next
 step, and nobody has asked yet. Pinned in `scripts/test/holds.test.mjs` with
 the Lazenby case.
+
+## 2026-11-10  Finals week points at the libraries
+
+**Decided.** The finals-week refusal stays, and it is no longer a dead end.
+Its button reads "Show libraries open now" and leads to the buildings screen,
+which in finals week opens with a "Libraries and the Union" group: seven
+Columbus libraries and the Ohio Union, nearest first, each with the hours that
+place publishes for that date. The classroom buildings follow under their own
+heading.
+
+The refusal itself does not move. Ohio State reassigns classrooms for exams and
+publishes no assignments, so a ranked room list in finals week would be a guess.
+What was wrong was the only way out: "Show nearest buildings anyway" sent people
+to the same classroom buildings, during the one week of the term when free study
+space is hardest to find.
+
+**The data was already public, and structured.** library.osu.edu draws its
+hours page from the University Libraries' LibCal hours feed, which answers
+anonymously as JSON: every location, by date, eight weeks ahead, with its own
+pin. It had finals week in it a month early. Thompson publishes 7:30am-2am for
+Dec 10-16 2026, and the 18th Avenue Library is open around the clock with an
+OSU ID after midnight. The Ohio Union publishes a regular table, a break table
+and lists of dates; that is prose and is parsed defensively. Two requests a
+week in all, in the Sunday job, `scripts/fetch-study-spaces.mjs` into
+`data/study-spaces.json`, 1.9 KB gzipped.
+
+**What it may say, and what it may not.**
+
+- An open row says "open till 2:00am", or "open all night". Unlike a classroom
+  building, the closing time is the useful part: a library that shuts at 6pm
+  and one that shuts at 2am are different answers. Same idea as "free till" on
+  a room card.
+- It never says a seat is free. Nothing public says so; these are doors, not
+  rooms.
+- A date the file does not cover is unpublished, not open. Spaces with nothing
+  published today are left off the list, the same rule that took the 90 rooms
+  in undocumented buildings out of the index on 2026-08-29.
+- A day that ends after midnight carries into the next one, so at 1am on a
+  finals Tuesday Thompson is open until 2am. "24 hours" published one day at a
+  time is followed across days and reads as one closing time.
+
+**An allow list, not a filter.** LibCal has a test entry ("Test Library", lid
+21414), service desks, special collections by appointment, a badge-only
+veterinary library, and libraries that publish "see our website" instead of
+hours. Seven libraries are named by id in `scripts/lib/study-spaces.mjs`. A
+named library that disappears from the feed, or whose pin is more than 150 m
+from the building it is filed under, fails the fetch instead of dropping out
+quietly. Fine Arts is in the Wexner Center, which holds no classrooms, so the
+study file carries its own building points and doors and the sidewalk router
+walks to them like any other.
+
+**A failed fetch does not block the room index.** The step is
+`continue-on-error`. The committed file keeps working until its dates run out,
+then the group empties and the button falls back to "Show nearest buildings
+anyway". The app also falls back to that label if the file fails to load.
+
+**Not done, and next.** The same list belongs on the ordinary buildings screen
+at night and at weekends, and as a way out when no classroom fits. That is the
+coverage half of the same problem and is a separate change. The libraries' own
+group study rooms (Thompson and 18th Avenue) are booked through LibCal with a
+login; availability is not used, and they are not named as rooms.
+Pinned in `scripts/test/study-spaces.test.mjs`.

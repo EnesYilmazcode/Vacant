@@ -185,6 +185,30 @@ The 8,288 class cells in the same grids are counted and thrown away. The 425
 gzipped pages are cached under `data/cache/sis-room-matrix/` and are **not**
 committed: 5.2 MB a week that refetches in four minutes.
 
+### 6. Library and Ohio Union hours
+
+```
+https://osul.libcal.com/api_hours_grid.php?iid=0&format=json&weeks=8
+https://ohiounion.osu.edu/visiting/hours
+```
+
+Read by `scripts/fetch-study-spaces.mjs` into `data/study-spaces.json`. **Two
+requests a week.** The first is the University Libraries' own hours feed, the
+one library.osu.edu renders its hours page from: every location, by date, eight
+weeks ahead. The second is the Ohio Union's hours page, which is prose: a
+regular table, a break table, and lists of break and closed dates.
+
+Seven Columbus libraries are kept, by an allow list in
+`scripts/lib/study-spaces.mjs`; the rest are by appointment, badge only, or
+publish "see our website" instead of hours. This is what the app shows in
+finals week, when Ohio State reassigns classrooms for exams and publishes
+nothing, so Vacant cannot rank rooms. It shows a library's door as open by the
+library's own hours and never says a seat is free.
+
+A failed fetch leaves the committed file alone and does not stop the room
+index from publishing. The app reads a date the file does not cover as
+unpublished, so stale hours age out instead of being shown.
+
 ---
 
 ## What is deliberately thrown away
@@ -328,6 +352,11 @@ node scripts/build-index.mjs
 #    427 requests, about four minutes. Writes room-events-<term>.json: 674
 #    records over 425 rooms for the current week.
 node scripts/fetch-room-events.mjs
+
+# 7. Library and Ohio Union hours. Two requests. Writes study-spaces.json:
+#    seven libraries and the Union, by date, eight weeks ahead. Reads
+#    buildings.json and entrances.json for the doors, so run it after step 1b.
+node scripts/fetch-study-spaces.mjs
 ```
 
 Add `--dry-run` to any of the fetch scripts to see what it would request without

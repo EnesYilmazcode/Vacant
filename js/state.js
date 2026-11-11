@@ -199,6 +199,10 @@ export function staleness({ now, current }) {
 
 const REFUSAL = { ranked: false, note: null, classesSuspended: false };
 const TO_NEAR = { label: 'Show nearest buildings anyway', to: 'near' };
+// Finals week sends people to the libraries and the Union first. The app falls
+// back to TO_NEAR's label when their hours did not load, so the button never
+// promises a list that is not there.
+const TO_STUDY = { label: 'Show libraries open now', to: 'near', study: true };
 
 // Nothing in this file decides WHETHER to refuse. refusalFor() in js/engine.js
 // does, for this screen and for the ladder both, and everything below reads its
@@ -293,7 +297,7 @@ function refusedState(refusal, { today, current, index, floor }) {
           ? `Ohio State reassigns rooms for exams and does not publish the assignments. Vacant cannot tell you what is free until ${fmtDay(nextDay(exams.end))}.`
           : 'Ohio State reassigns rooms for exams and does not publish the assignments, so Vacant cannot tell you what is free.',
         detail: null,
-        action: TO_NEAR,
+        action: TO_STUDY,
       };
     }
 

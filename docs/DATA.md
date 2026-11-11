@@ -63,7 +63,7 @@ free with a class sitting in them.
 | --- | --- |
 | Cadence | Scheduled weekly in `.github/workflows/rooms.yml` at `'25 7 * * 0'`, Sunday 07:25 UTC (about 3:25am Eastern) |
 | Requests per run | **545**, measured on term 1268 over 4 passes |
-| Advertised ceiling | **1,900 a week**, for everything in this repository together. `MAX_PASSES` x 8 buckets x 17 pages is 1,089 for the harvest, plus 323 for room features and 427 for room events, all cold. The `User-Agent` states that ceiling rather than the typical run |
+| Advertised ceiling | **2,300 a week**, for everything in this repository together. `MAX_PASSES` x 8 buckets x 17 pages is 1,089 for the harvest, plus 323 for room features, 854 for two weeks of room events and 2 for library and Union hours, all cold. The `User-Agent` states that ceiling rather than the typical run |
 | Hard stop | `MAX_REQUESTS` is 4,000 and throws rather than fetches |
 | Concurrency | 2, with a 500 ms delay, about 2.9 requests a second |
 | Bytes per page | **37,460 on the wire, gzipped**, measured 2026-08-27 with one request |
@@ -75,7 +75,7 @@ The `User-Agent` says who is calling and how much:
 
 ```
 Vacant/0.1 (+https://github.com/EnesYilmazcode/Vacant; contact via repo issues)
-weekly classroom-schedule index, <=1900 requests/week
+weekly classroom-schedule index, <=2300 requests/week
 ```
 
 That string is hardcoded in `scripts/lib/fetch.mjs`. The scheduled full harvest
@@ -165,7 +165,11 @@ https://courses.erppub.osu.edu/psc/ps/EMPLOYEE/PUB/c/OSR_CUSTOM_MENU.OSR_ROOM_MA
 
 The public room matrix, read by `scripts/fetch-room-events.mjs` into
 `data/room-events-<term>.json`. One GET to open the session, one 302 hop, then one
-POST per room: **427 requests for a 425-room sweep, 232 seconds, one at a time**.
+POST per room: **427 requests for a 425-room sweep, 232 seconds, one at a time**,
+and each Sunday run sweeps **two weeks**, the coming one and the one after, so
+854 requests and about eight minutes. The second week is stored under `ahead` in
+the same file, so a Sunday run that fails still leaves the week that has just
+started covered instead of falling back to the class schedule alone.
 It is the only sweep here that is not a fresh anonymous GET per URL, because
 PeopleSoft hands out its session cookies on a redirect and expects them echoed
 back on every hop. That is also why this one script keeps its own HTTP client
@@ -184,6 +188,30 @@ have booked, and says so on the room screen; see DECISIONS.md.
 The 8,288 class cells in the same grids are counted and thrown away. The 425
 gzipped pages are cached under `data/cache/sis-room-matrix/` and are **not**
 committed: 5.2 MB a week that refetches in four minutes.
+
+### 6. Library and Ohio Union hours
+
+```
+https://osul.libcal.com/api_hours_grid.php?iid=0&format=json&weeks=8
+https://ohiounion.osu.edu/visiting/hours
+```
+
+Read by `scripts/fetch-study-spaces.mjs` into `data/study-spaces.json`. **Two
+requests a week.** The first is the University Libraries' own hours feed, the
+one library.osu.edu renders its hours page from: every location, by date, eight
+weeks ahead. The second is the Ohio Union's hours page, which is prose: a
+regular table, a break table, and lists of break and closed dates.
+
+Seven Columbus libraries are kept, by an allow list in
+`scripts/lib/study-spaces.mjs`; the rest are by appointment, badge only, or
+publish "see our website" instead of hours. This is what the app shows in
+finals week, when Ohio State reassigns classrooms for exams and publishes
+nothing, so Vacant cannot rank rooms. It shows a library's door as open by the
+library's own hours and never says a seat is free.
+
+A failed fetch leaves the committed file alone and does not stop the room
+index from publishing. The app reads a date the file does not cover as
+unpublished, so stale hours age out instead of being shown.
 
 ---
 
@@ -325,9 +353,14 @@ node scripts/fetch-rooms.mjs
 node scripts/build-index.mjs
 
 # 6. Non-class room occupancy. Reads the index step 5 wrote, so it runs last.
-#    427 requests, about four minutes. Writes room-events-<term>.json: 674
-#    records over 425 rooms for the current week.
+#    854 requests, about eight minutes. Writes room-events-<term>.json: this
+#    week, and next week under `ahead`. --weeks 1 sweeps one week.
 node scripts/fetch-room-events.mjs
+
+# 7. Library and Ohio Union hours. Two requests. Writes study-spaces.json:
+#    seven libraries and the Union, by date, eight weeks ahead. Reads
+#    buildings.json and entrances.json for the doors, so run it after step 1b.
+node scripts/fetch-study-spaces.mjs
 ```
 
 Add `--dry-run` to any of the fetch scripts to see what it would request without

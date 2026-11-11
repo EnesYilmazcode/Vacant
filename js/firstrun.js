@@ -22,8 +22,10 @@ const BASE = '/Vacant/';
 //
 // MEASURED, because the direction of the error is the point: too short and a
 // slow load that IS working gets called dead, which is the lie this app exists
-// not to tell. The 493,674 bytes boot() reads, measured on 2026-09-13 and
-// uncompressed from the committed files, include the Room Matrix snapshot.
+// not to tell. The 617,656 bytes boot() reads, measured on 2026-11-10 and
+// uncompressed from the committed files, include the Room Matrix snapshot,
+// which carries two weeks since that day: 234,787 bytes raw, 14,656 gzipped,
+// up 7,279 gzipped from one week, about 0.14 s more at Slow 3G.
 // The earlier five-file path, with
 // the worker out of the way, took 9.59 s over CDP at Chrome's Slow 3G
 // preset (51,200 B/s down, 2,000 ms latency) and 2.69 s at Fast 3G, worst of

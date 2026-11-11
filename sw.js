@@ -8,9 +8,13 @@
 // installed icon to last month's app.js forever.
 //
 // Measured on 2026-11-10 over the files prepared for the next commit, which is
-// the copy Pages will serve: `gzip -9 -c < <file> | wc -c`. The data figure is
-// from 2026-10-12; only the shell changed.
-// Shell 202,764 bytes, data 115,160.
+// the copy Pages will serve: `gzip -9 -c < <file> | wc -c`. Both figures moved
+// that day for the finals-week libraries: js/study.js is 1,905 of the shell's
+// 4,367 and data/study-spaces.json is 1,903 of the data's. The data moved again
+// the same evening when the Room Matrix file started carrying two weeks, 7,279
+// gzipped bytes more. The shell then grew 1,615 for the libraries outside
+// finals week: on the buildings screen every night, and in the empty answer.
+// Shell 208,746 bytes, data 123,972.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these seventeen files, which is most of a percent of
@@ -190,6 +194,7 @@ const SHELL_ASSETS = [
   SCOPE + 'js/sheet.js',
   SCOPE + 'js/state.js',
   SCOPE + 'js/storage.js',
+  SCOPE + 'js/study.js',
   SCOPE + 'manifest.webmanifest',
   SCOPE + 'apple-touch-icon.png',
   SCOPE + 'favicon.ico',
@@ -207,7 +212,10 @@ const SHELL_ASSETS = [
 // deploy that did not touch it. js/app.js AWAITS it at boot, so the first
 // ranking is never the one that gets the straight-line fallback and the second
 // one the routed answer.
-const WARM_ALWAYS = ['data/campus.json', 'data/buildings-hours.json', 'data/walk-graph.json'];
+// data/study-spaces.json is the libraries' and the Union's hours, the one answer
+// the app has in finals week, which is also when a phone is least likely to be
+// on a good network. Not term keyed, so evictOldTerms leaves it alone.
+const WARM_ALWAYS = ['data/campus.json', 'data/buildings-hours.json', 'data/walk-graph.json', 'data/study-spaces.json'];
 
 self.addEventListener('install', (event) => {
   // No skipWaiting here, deliberately. A worker that takes over a live page can

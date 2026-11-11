@@ -4,6 +4,7 @@
 //
 // Usage:  node scripts/fetch-room-events.mjs
 //         node scripts/fetch-room-events.mjs --week 09/28/2026
+//         node scripts/fetch-room-events.mjs --weeks 1      (default 2: this week and next)
 //         node scripts/fetch-room-events.mjs --rooms EC0322,CZ0160,AP0269
 //         node scripts/fetch-room-events.mjs --dry-run
 //         node scripts/fetch-room-events.mjs --week 09/28/2026 --from-cache
@@ -20,6 +21,11 @@
 // for a full 425-room sweep, plus one 302 hop on the GET = 427 HTTP round trips.
 // Sequential by design, one POST at a time with a 120 ms gap: 230 seconds for
 // the full sweep, and it parsed 8288 class cells, 327 events and 347 room blocks.
+//
+// A default run sweeps TWO weeks, the coming one and the one after, so 854
+// round trips and about eight minutes. The second week rides in the same file
+// under `ahead`, so a Sunday that fails still leaves the week that just began
+// covered. docs/DECISIONS.md, 2026-11-10.
 //
 // Class cells are counted and thrown away. So is the Registrar's free text on
 // every booking: 23 of the 189 distinct labels in one week name a real person,
@@ -49,13 +55,20 @@ const CACHE_DIR = join(ROOT, 'data', 'cache', 'sis-room-matrix');
 
 const USER_AGENT =
   'Vacant/0.1 (+https://github.com/EnesYilmazcode/Vacant; contact via repo issues) ' +
-  'weekly non-class room occupancy, <=430 requests/week (part of the <=1900 in scripts/lib/fetch.mjs)';
+  'weekly non-class room occupancy, two weeks ahead, <=860 requests/week (part of the <=2300 in scripts/lib/fetch.mjs)';
 
 const DELAY_MS = 120;
 const TIMEOUT_MS = 60000;
 const RETRIES = 3;
-// 1 GET + 425 POSTs + a redirect hop, with headroom for retries and one reopen.
-const MAX_REQUESTS = 600;
+// 1 GET + 425 POSTs + a redirect hop per week, two weeks a run, with headroom
+// for retries and one reopen in each.
+const MAX_REQUESTS = 1200;
+
+// How many Monday-Sunday weeks a default run sweeps. Two, so the file always
+// carries the week after the one it was built for: a Sunday run that fails or
+// lands late leaves the committed file still covering the week that has just
+// started, instead of every room going class-only on Monday morning.
+const WEEKS = 2;
 
 const MIN_ROOMS = 400;
 // Classes are discarded, but they are the stable half of the grid (8288 cells on
@@ -75,9 +88,12 @@ const EVENT_TYPES = new Set(['MTG', 'TOUR', 'INFO', 'WRKS', 'SMNR', 'RCPT', 'INT
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const COMBINED_BG = 'rgb(222,184,135)';
 
+// Thrown rather than exiting, so a failed sweep of the week AHEAD can be
+// caught and the week that already parsed still written. The entry point at the
+// bottom turns it back into a FATAL line and exit code 1.
+class Fatal extends Error {}
 function die(message) {
-  console.error(`\nFATAL  ${message}`);
-  process.exit(1);
+  throw new Fatal(message);
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -616,11 +632,89 @@ async function main() {
     die(`the index holds ${all.length} rooms, under the ${MIN_ROOMS} floor.`);
   }
 
+  // --week names the first Monday; --weeks how many to sweep from it. A cache
+  // replay is one week unless asked, because the cache holds what was swept.
+  const count = Number(arg('weeks', fromCache ? 1 : WEEKS));
+  if (!Number.isInteger(count) || count < 1 || count > 4) die(`--weeks wants 1 to 4, got "${arg('weeks')}"`);
+  const weeks = Array.from({ length: count }, (_, i) => addWeeks(week, i));
+
+  const sweeps = [];
+  for (const [i, w] of weeks.entries()) {
+    try {
+      sweeps.push(await sweepWeek({ week: w, index, indexPath, rooms, partial, dryRun, fromCache }));
+    } catch (err) {
+      // The first week is what the publish check holds the run to, so it stays
+      // fatal. A week ahead that fails costs only the cushion it would have
+      // given, and throwing it away would throw this week away with it.
+      if (i === 0 || !(err instanceof Fatal)) throw err;
+      console.warn(`\n  warn  the week of ${w} did not sweep (${err.message}); writing ${sweeps.length} week(s).`);
+      break;
+    }
+  }
+
+  const [first, ...later] = sweeps;
+  const payload = later.length
+    ? { ...first, ahead: later.map(({ _meta, rooms: occ }) => ({ _meta: aheadMeta(_meta), rooms: occ })) }
+    : first;
+
+  if (dryRun) {
+    console.log('\nDRY RUN, nothing written.');
+    return;
+  }
+  // A --rooms run is a spot check, not a harvest. It used to land on the same
+  // path as the full sweep and quietly replace 425 rooms with three.
+  const name = partial
+    ? `room-events-${index.term}.subset.json`
+    : `room-events-${index.term}.json`;
+  const outPath = join(ROOT, 'data', name);
+  const json = `${JSON.stringify(payload, null, 1)}\n`;
+
+  // The same fatal scan fetch-building-hours.mjs runs before it writes. The
+  // label is dropped inside parseRoom, so nothing here should ever fire; that
+  // is the point. A record is {kind, day, start, end, type, eventId}, so any
+  // run of letters outside the approved type codes means the drop stopped working.
+  if (/[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(json)) die('an email address reached the output.');
+  if (/\b\d{3}[-.]\d{3}[-.]\d{4}\b/.test(json)) die('a phone number reached the output.');
+  for (const sweep of sweeps) {
+    for (const [fid, recs] of Object.entries(sweep.rooms)) {
+      for (const r of recs) {
+        const stray = Object.keys(r).find((k) => !['kind', 'day', 'start', 'end', 'type', 'eventId'].includes(k));
+        if (stray) die(`${fid} carries an unexpected field "${stray}"; free text must not reach the output.`);
+        if (r.type !== null && !EVENT_TYPES.has(r.type)) {
+          die(`${fid} has type "${r.type}", which is not an approved event code.`);
+        }
+      }
+    }
+  }
+
+  await writeAtomic(outPath, json);
+  console.log(`\nwrote data/${name}, ${sweeps.map((x) => x._meta.weekStart).join(' and ')}`);
+}
+
+// MM/DD/YYYY plus n weeks, still MM/DD/YYYY.
+export function addWeeks(week, n) {
+  const d = new Date(Date.UTC(Number(week.slice(6)), Number(week.slice(0, 2)) - 1, Number(week.slice(3, 5)) + 7 * n));
+  const pad = (x) => String(x).padStart(2, '0');
+  return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}/${d.getUTCFullYear()}`;
+}
+
+// A week ahead keeps the facts about its own sweep and leaves the long notes,
+// which describe both weeks, on the first one.
+function aheadMeta(meta) {
+  const keep = ['term', 'week', 'weekStart', 'weekEnd', 'generated', 'source', 'requests',
+    'cacheReplay', 'wallClockSeconds', 'counts', 'partial', 'invalidValueRooms', 'noGridRooms'];
+  return Object.fromEntries(keep.map((k) => [k, meta[k]]));
+}
+
+// One Monday-Sunday sweep of every room, returned as the document shape this
+// file has always written: { _meta, _analysis, rooms }.
+async function sweepWeek({ week, index, indexPath, rooms, partial, dryRun, fromCache }) {
   const cacheDir = join(CACHE_DIR, week.replace(/\//g, '-'));
   if (!dryRun) await mkdir(cacheDir, { recursive: true });
 
   console.log(`term ${index.term}  week ${week}  ${rooms.length} rooms${partial ? ' (subset)' : ''}`);
   const started = Date.now();
+  const requestsBefore = requests;
   let hidden = fromCache ? null : await openSession();
 
   const out = {};
@@ -776,7 +870,7 @@ async function main() {
       weekEnd: analysis.weekEnd,
       generated: localDate(),
       source: MATRIX_URL,
-      requests,
+      requests: requests - requestsBefore,
       cacheReplay: fromCache,
       wallClockSeconds: wallClock,
       counts,
@@ -808,37 +902,13 @@ async function main() {
     rooms: out,
   };
 
-  if (dryRun) {
-    console.log('\nDRY RUN, nothing written.');
-    return;
-  }
-  // A --rooms run is a spot check, not a harvest. It used to land on the same
-  // path as the full sweep and quietly replace 425 rooms with three.
-  const name = partial
-    ? `room-events-${index.term}.subset.json`
-    : `room-events-${index.term}.json`;
-  const outPath = join(ROOT, 'data', name);
-  const json = `${JSON.stringify(payload, null, 1)}\n`;
-
-  // The same fatal scan fetch-building-hours.mjs runs before it writes. The
-  // label is dropped inside parseRoom, so nothing here should ever fire; that
-  // is the point. A record is {kind, day, start, end, type, eventId}, so any
-  // run of letters outside the approved type codes means the drop stopped working.
-  if (/[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(json)) die('an email address reached the output.');
-  if (/\b\d{3}[-.]\d{3}[-.]\d{4}\b/.test(json)) die('a phone number reached the output.');
-  for (const [fid, recs] of Object.entries(payload.rooms)) {
-    for (const r of recs) {
-      const stray = Object.keys(r).find((k) => !['kind', 'day', 'start', 'end', 'type', 'eventId'].includes(k));
-      if (stray) die(`${fid} carries an unexpected field "${stray}"; free text must not reach the output.`);
-      if (r.type !== null && !EVENT_TYPES.has(r.type)) {
-        die(`${fid} has type "${r.type}", which is not an approved event code.`);
-      }
-    }
-  }
-
-  await writeAtomic(outPath, json);
-  console.log(`\nwrote data/${name}`);
+  return payload;
 }
 
 const invokedDirectly = process.argv[1]?.endsWith('fetch-room-events.mjs');
-if (invokedDirectly) main().catch((err) => die(err.stack ?? err.message));
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error(`\nFATAL  ${err instanceof Fatal ? err.message : err.stack ?? err.message}`);
+    process.exit(1);
+  });
+}

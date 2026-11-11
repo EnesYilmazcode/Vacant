@@ -4264,3 +4264,150 @@ Student Life Events and Conferences for a read-only export of confirmed
 classroom bookings (room, date, start, end, nothing about who) is the next
 step, and nobody has asked yet. Pinned in `scripts/test/holds.test.mjs` with
 the Lazenby case.
+
+## 2026-11-10  Finals week points at the libraries
+
+**Decided.** The finals-week refusal stays, and it is no longer a dead end.
+Its button reads "Show libraries open now" and leads to the buildings screen,
+which in finals week opens with a "Libraries and the Union" group: seven
+Columbus libraries and the Ohio Union, nearest first, each with the hours that
+place publishes for that date. The classroom buildings follow under their own
+heading.
+
+The refusal itself does not move. Ohio State reassigns classrooms for exams and
+publishes no assignments, so a ranked room list in finals week would be a guess.
+What was wrong was the only way out: "Show nearest buildings anyway" sent people
+to the same classroom buildings, during the one week of the term when free study
+space is hardest to find.
+
+**The data was already public, and structured.** library.osu.edu draws its
+hours page from the University Libraries' LibCal hours feed, which answers
+anonymously as JSON: every location, by date, eight weeks ahead, with its own
+pin. It had finals week in it a month early. Thompson publishes 7:30am-2am for
+Dec 10-16 2026, and the 18th Avenue Library is open around the clock with an
+OSU ID after midnight. The Ohio Union publishes a regular table, a break table
+and lists of dates; that is prose and is parsed defensively. Two requests a
+week in all, in the Sunday job, `scripts/fetch-study-spaces.mjs` into
+`data/study-spaces.json`, 1.9 KB gzipped.
+
+**What it may say, and what it may not.**
+
+- An open row says "open till 2:00am", or "open all night". Unlike a classroom
+  building, the closing time is the useful part: a library that shuts at 6pm
+  and one that shuts at 2am are different answers. Same idea as "free till" on
+  a room card.
+- It never says a seat is free. Nothing public says so; these are doors, not
+  rooms.
+- A date the file does not cover is unpublished, not open. Spaces with nothing
+  published today are left off the list, the same rule that took the 90 rooms
+  in undocumented buildings out of the index on 2026-08-29.
+- A day that ends after midnight carries into the next one, so at 1am on a
+  finals Tuesday Thompson is open until 2am. "24 hours" published one day at a
+  time is followed across days and reads as one closing time.
+
+**An allow list, not a filter.** LibCal has a test entry ("Test Library", lid
+21414), service desks, special collections by appointment, a badge-only
+veterinary library, and libraries that publish "see our website" instead of
+hours. Seven libraries are named by id in `scripts/lib/study-spaces.mjs`. A
+named library that disappears from the feed, or whose pin is more than 150 m
+from the building it is filed under, fails the fetch instead of dropping out
+quietly. Fine Arts is in the Wexner Center, which holds no classrooms, so the
+study file carries its own building points and doors and the sidewalk router
+walks to them like any other.
+
+**A failed fetch does not block the room index.** The step is
+`continue-on-error`. The committed file keeps working until its dates run out,
+then the group empties and the button falls back to "Show nearest buildings
+anyway". The app also falls back to that label if the file fails to load.
+
+**Not done, and next.** The same list belongs on the ordinary buildings screen
+at night and at weekends, and as a way out when no classroom fits. That is the
+coverage half of the same problem and is a separate change. The libraries' own
+group study rooms (Thompson and 18th Avenue) are booked through LibCal with a
+login; availability is not used, and they are not named as rooms.
+Pinned in `scripts/test/study-spaces.test.mjs`.
+
+## 2026-11-10  The Room Matrix sweep covers two weeks
+
+**Decided.** The Sunday sweep of the Registrar's Room Matrix now asks for two
+Monday-Sunday weeks, the coming one and the one after, and writes both into
+`room-events-<term>.json`. The first week stays at the top level in exactly the
+shape it always had. The second is under `ahead`, as `{ _meta, rooms }`.
+`overlayForDate` reads whichever snapshot covers the date it is asked about.
+
+**Why.** The file used to hold one week, so the app had no booking data for
+any date past the coming Sunday. If a Sunday run failed or landed late, the new
+week started class-only: every room a club or department had booked read free,
+and the only sign was the room card saying event coverage was unavailable. A
+failed run commits nothing, so last Sunday's file stays live, and its `ahead`
+week is now the week that has just begun.
+
+**Considered and not done:** carrying recurring bookings forward from earlier
+snapshots when a week is missing. It would fill longer gaps, but it would be a
+guess about bookings nobody has published, and the second sweep makes the
+common failure, one missed Sunday, a non-event without guessing.
+
+**What it costs.**
+
+- 854 requests a week instead of 427, about eight minutes. The ceiling the
+  `User-Agent` states for the whole repository went from 1,900 to 2,300
+  (1,089 harvest + 323 room features + 854 room events + 2 library hours =
+  2,268), raised in the string the same day.
+- The file is 234,787 bytes, 14,656 gzipped, up 7,279 gzipped. About 0.14 s
+  more at Chrome's Slow 3G preset, against a 20 s boot deadline.
+
+**Failure rules.** The first week is still what the publish check requires,
+and a failed first week still stops the run. A failed second week is logged
+and dropped, and the first week is written alone: losing the cushion is better
+than losing the week. `check-event-coverage.mjs` checks any week that is
+present: it must be the next consecutive week, of the same term, complete,
+over the same rooms. Otherwise the publish stops, so one week's bookings can
+never be laid over another week's dates.
+
+**Measured.** The first two-week sweep, run 2026-11-10: weeks of 11/09
+(440 events, 284 block cells) and 11/16 (527 events, 346 block cells, three of
+them drawn twice, so 343 holds), 854 round trips, zero invalid or empty grids.
+Pinned in `scripts/test/club-occupancy.test.mjs` and
+`scripts/test/event-coverage.test.mjs`.
+
+## 2026-11-10  The libraries outside finals week
+
+**Decided.** The "Libraries and the Union" group from the finals-week entry
+above now appears on the buildings screen every time its hours are loaded,
+not only in finals week. It is also the way out of an empty answer.
+
+- **On the buildings screen**, the libraries lead when the classrooms cannot
+  answer: finals week, or no classroom building open, which is most nights.
+  Otherwise they follow the open classroom buildings, which are still the
+  nearer doors to try. With the libraries on screen, "Everything is closed"
+  becomes "Every classroom building is closed", because the old sentence is
+  false above a library open till midnight.
+- **When no room fits**, the card and the list name up to two libraries that
+  are open now and still open thirty minutes after the walk ("Not a
+  classroom, but open now: 18th Avenue Library, a 6 minute walk, open till
+  12:00am"), with a "Show libraries open now" button. That button opens the
+  buildings screen with the libraries first, because that is what it promised.
+- **No published hours, no group.** A date outside the file's eight weeks
+  shows no library group at all, rather than "no library is open", which
+  would be a claim about doors nobody has described.
+- **A close after tomorrow morning reads "open all night".** The 18th Avenue
+  Library publishes 24 hours a day, one day at a time, so on a Thursday night
+  the chained close was Friday 11:59pm and printed as "open till 11:59pm",
+  which reads as tonight.
+
+**A bug this exposed.** The empty list referred to `filtered` and `asked()`
+from the room needs filter, which was removed on 2026-09-23 (b9397a6). Every
+search with no answer threw a ReferenceError, and the question screen stayed
+up with nothing on it. That line is gone. Found while checking the new
+fallback, which could not appear without the fix.
+
+**Not done: bookable group study rooms.** Thompson and the 18th Avenue
+Library have group study rooms booked through libraryroombooking.cloud.osu.edu.
+It signs in through OSU's SSO (AWS Cognito), and its availability API needs a
+signed-in user's token. Vacant does not use anyone's credentials: privacy.html
+promises it never asks for a BuckID or a password, a weekly job would have to
+keep one person's login and pass Duo in CI, and republishing what that login
+sees would put one student's access behind a public page. If availability is
+wanted, the route is to ask University Libraries for a read-only feed (room,
+start, end, nothing about who), as the ROOM BLOCK entry proposes for Student
+Life.

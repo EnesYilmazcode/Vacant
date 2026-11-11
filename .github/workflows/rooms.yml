@@ -143,10 +143,20 @@ jobs:
         run: node scripts/fetch-room-events.mjs
 
       # The Sunday run must prepare Monday-Sunday ahead, not re-sweep the week
-      # that ends tonight. A current.json with an expired event file is still a
+      # that ends tonight. It sweeps the week after too, stored under `ahead`,
+      # so one failed Sunday does not leave a whole week without bookings. A current.json with an expired event file is still a
       # successful download, so check its dates and room coverage before push.
       - name: Check next week's event coverage
         run: node scripts/check-event-coverage.mjs
+
+      # The libraries' and the Union's hours, eight weeks ahead, for the finals
+      # week fallback. Two requests. Best effort: a library site that is down
+      # must not hold back the room index, and the app reads a date missing
+      # from the committed file as unpublished, so a missed week ages out
+      # rather than lying.
+      - name: Fetch library and Union hours
+        continue-on-error: true
+        run: node scripts/fetch-study-spaces.mjs
 
       # Bot pushes do not trigger the push test workflow. The weekly data is
       # part of what the suite reads, so the checks belong in this job too.
@@ -175,7 +185,8 @@ jobs:
             'data/rooms-*.json' \
             'data/room-events-*.json' \
             'data/harvest-*.manifest.json' \
-            data/terms.json)
+            data/terms.json \
+            data/study-spaces.json)
           if [ "${#paths[@]}" -eq 0 ]; then
             echo "No data file exists to stage. The build wrote nothing."
             exit 0

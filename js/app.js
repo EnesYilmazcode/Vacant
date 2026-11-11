@@ -38,6 +38,9 @@ import { availableBuildings, hoursFor as buildingHoursFor, pickHoursTerm, shortN
 import { bearingTo, claimFor as roomClaimFor, holdsOn, timelineRows as roomTimelineRows } from './room-timeline.js';
 import { dayGridHtml as roomDayGridHtml } from './room-calendar.js';
 import { backLabel, chromeFor } from './navigation.js';
+import { rankStudySpaces } from './study.js';
+
+const TO_NEAR_LABEL = 'Show nearest buildings anyway';
 import {
   busyDayOf,
   clock,
@@ -1126,11 +1129,18 @@ function paintList() {
     const empty = emptyAnswer();
     list.innerHTML =
       note +
-      (filtered ? asked() : '') +
+      // A `(filtered ? asked() : '')` term sat here after the room needs filter
+      // was removed on 2026-09-23, naming a variable that no longer existed, so
+      // every search with no answer threw and left the question screen frozen.
       `<h2 class="msg" id="list-h" tabindex="-1">${empty.heading}</h2>` +
       `<p class="empty">${empty.body}</p>` +
+      (empty.study
+        ? `<p class="empty">${empty.study}</p>
+           <p class="foot-acts"><button type="button" class="bar-btn" id="l-study">${STUDY_LABEL}</button></p>`
+        : '') +
       FOOT_ACTS;
     wireFootActs(list);
+    if (empty.study) $('l-study').onclick = () => openNear({ study: true });
     focusHeading($('list-h'));
     syncPaneTouch();
     return;
@@ -1225,15 +1235,21 @@ function paintList() {
   syncPaneTouch();
 }
 
+// The button that leaves a classroom answer for the libraries. One string, so
+// the finals refusal, the list and the card cannot drift apart.
+const STUDY_LABEL = 'Show libraries open now';
+
 // One empty answer for the list and the card. Repeating these branches made the
 // list tell the truth while a late-weekend card called zero rows an exhausted
 // deck and offered to show all zero of them.
 function emptyAnswer() {
+  const study = studyInsteadHtml(clockNow());
   const next = state.soonest;
   const far = state.bounds?.beyond;
   const later = far?.waiting;
   if (far?.count) {
     return {
+      study,
       heading: 'Nothing close enough.',
       body: `Nothing within a ${MAX_WALK} minute walk is free.
         <b>${far.count} room${far.count === 1 ? '' : 's'}</b> ${far.count === 1 ? 'is' : 'are'} free further out, the nearest a
@@ -1242,6 +1258,7 @@ function emptyAnswer() {
   }
   if (later?.count) {
     return {
+      study,
       heading: 'Nothing close enough.',
       body: `Nothing within a ${MAX_WALK} minute walk is free.
         <b>${later.count} room${later.count === 1 ? '' : 's'}</b> further out open${later.count === 1 ? 's' : ''} later, the nearest a
@@ -1250,12 +1267,14 @@ function emptyAnswer() {
   }
   if (next) {
     return {
+      study,
       heading: 'Nothing open right now.',
       body: `Every classroom building near you is closed.
         The first one open is <b>${esc(next.name ?? next.id)}</b> at <b>${clock(next.availableAt)}</b>.`,
     };
   }
   return {
+    study,
     heading: 'Nothing open right now.',
     body: `No room is free for ${dur(state.needed)} today. Try a shorter time.`,
   };
@@ -1377,9 +1396,12 @@ function paintCard() {
       card.innerHTML = `
         <h2 class="msg" id="card-h" tabindex="-1">${empty.heading}</h2>
         <p class="c-end">${empty.body}</p>
+        ${empty.study ? `<p class="c-end">${empty.study}</p>
+        <button type="button" class="c-more" id="c-study">${STUDY_LABEL}</button>` : ''}
         <button type="button" class="c-more" id="c-list">See the details</button>`;
       card.classList.add('done');
       $('c-list').onclick = () => openList();
+      if (empty.study) $('c-study').onclick = () => openNear({ study: true });
       focusHeading($('card-h'));
       syncPaneTouch();
       return;
@@ -1849,9 +1871,16 @@ function paintNear(reason) {
   const door = openingPhrase(nearest ? { ...opening, name: shortName(nearest.name) } : opening, state.day);
   const closedNow = door ? `Everything is closed. ${door}.` : 'Everything is closed right now.';
 
-  $('near').innerHTML =
-    `<h2 class="msg" id="near-h" tabindex="-1">${esc(reason.head)}</h2>
-     <p class="why">${esc(reason.body)}</p>` +
+  // The libraries and the Union are on this screen whenever their hours
+  // loaded. They lead when the classrooms cannot answer: finals week, or every
+  // classroom building shut, which is most nights. Otherwise they follow the
+  // open classroom buildings, which are still the nearer doors to try.
+  const study = studyGroup(now);
+  const lead = Boolean(study) && studyLeads(groups.open.length);
+  // "Everything is closed" is false on a screen showing a library open till
+  // 2am, so with the libraries on it the sentence names what is closed.
+  const shutNow = study ? closedNow.replace('Everything is closed', 'Every classroom building is closed') : closedNow;
+  const classrooms =
     openGroup +
     // The one state this screen can reach with nothing at the top: every door
     // we have hours for is shut, which is most of the night. The old sentence
@@ -1859,17 +1888,21 @@ function paintNear(reason) {
     // missing one. It then said only that everything was closed, on a screen
     // already holding all 46 opening times, so it names the first one now and
     // keeps the bare sentence for a table with no doors in it.
-    (groups.open.length ? '' : `<p class="empty">${esc(closedNow)}</p>`) +
-    closedGroup +
+    (groups.open.length ? '' : `<p class="empty">${esc(shutNow)}</p>`) +
+    closedGroup;
+
+  $('near').innerHTML =
+    `<h2 class="msg" id="near-h" tabindex="-1">${esc(reason.head)}</h2>
+     <p class="why">${esc(reason.body)}</p>` +
+    (lead ? `${study}<p class="grp">Classroom buildings</p>${classrooms}` : classrooms + study) +
     FOOT_ACTS;
 
   for (const el of $('near').querySelectorAll('.b-row')) {
     el.onclick = () => selectBuilding(el.dataset.code);
   }
-  const more = $('near').querySelector('[data-more]');
-  if (more) {
+  for (const more of $('near').querySelectorAll('[data-more]')) {
     more.onclick = () => {
-      const box = $('closed-list');
+      const box = $(`${more.dataset.more}-list`);
       box.hidden = !box.hidden;
       more.setAttribute('aria-expanded', String(!box.hidden));
     };
@@ -1878,12 +1911,105 @@ function paintNear(reason) {
   syncPaneTouch();
 }
 
+// Whether there is anything to show. A missing study-spaces.json costs these
+// rows and nothing else.
+const hasStudy = () => (state.study?.length ?? 0) > 0;
+
+// When the libraries lead the buildings screen rather than follow it: when the
+// classroom answer has nowhere to send anybody. Finals week, where Vacant
+// refuses to rank, and any minute with no classroom building open.
+const studyLeads = (classroomBuildingsOpen) =>
+  state.studyAsked === true || state.situation?.kind === 'EXAM_REFUSAL' || classroomBuildingsOpen === 0;
+
+// The libraries and the Union worth walking to when no classroom fits: open
+// now, and open long enough once you get there. Thirty minutes is the shortest
+// ask the app offers, so a library closing sooner than that after the walk is
+// not an answer to anything it was asked.
+const STUDY_MIN_LEFT = 30;
+function studyInstead(now, limit = 2) {
+  if (!hasStudy()) return [];
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  return rankStudySpaces({
+    spaces: state.study,
+    buildings: state.buildings,
+    origin: state.origin,
+    field: state.walkField,
+    now,
+  }).open
+    .filter((s) => s.closesAt == null || s.closesAt - nowMin - s.walk >= STUDY_MIN_LEFT)
+    .slice(0, limit);
+}
+
+// A close after tomorrow's morning is not "till" anything a reader can use
+// tonight: the 18th Avenue Library open from Thursday to Friday 11:59pm read
+// "open till 11:59pm" on Thursday night. Past 7am tomorrow, it is all night.
+const allNight = (closesAt) => closesAt == null || closesAt >= 1440 + 7 * 60;
+
+// One sentence naming them, for the list and the card when no room fits.
+function studyInsteadHtml(now) {
+  const open = studyInstead(now);
+  if (!open.length) return '';
+  const till = (s) => (allNight(s.closesAt) ? 'open all night' : `open till ${clock(s.closesAt)}`);
+  const named = open.map((s) => `<b>${esc(s.name)}</b>, a ${s.walk} minute walk, ${till(s)}`);
+  return `Not a classroom, but open now: ${named.join('; ')}.`;
+}
+
+// The libraries and the Union, by the hours each publishes for today's date.
+// Unlike a classroom building, an open row here says until when: whether a
+// library shuts at 6pm or 2am is the whole difference between them, the same
+// way "free till" is on a room card. Still a door and never a seat.
+function studyGroup(now) {
+  state.studyRows = [];
+  if (!hasStudy()) return '';
+  const { open, closed } = rankStudySpaces({
+    spaces: state.study,
+    buildings: state.buildings,
+    origin: state.origin,
+    field: state.walkField,
+    now,
+  });
+  state.studyRows = [...open, ...closed];
+  // Nothing published for today anywhere, which is every date outside the
+  // file's eight weeks. Saying "no library is open" would be a claim about
+  // doors nobody has described, so the group is simply not there.
+  if (!state.studyRows.length) return '';
+  const DOOR = {
+    open: (s) =>
+      allNight(s.closesAt)
+        ? ['open all night', 'open all night']
+        : [`open till ${clock(s.closesAt)}`, `open until ${spokenClock(s.closesAt)}`],
+    before: (s) => [`opens ${clock(s.opensAt)}`, `shut now, opens at ${spokenClock(s.opensAt)}`],
+    after: () => ['closed for today', 'closed for the rest of today'],
+    'closed-today': () => ['closed today', 'published as closed all day today'],
+  };
+  const row = (s) => {
+    const [text, say] = DOOR[s.when](s);
+    const note = s.note ? `, ${s.note}` : '';
+    return `<button type="button" class="b-row" data-code="${esc(s.code)}"
+        aria-label="${esc(`${s.name}, ${s.walk} minute walk, ${say}${note}`)}">
+      <span class="r-name">${esc(s.name)}</span>
+      <span class="r-walk">${WALK_ICON}${s.walk} min</span>
+      <span class="b-hours">${esc(text)}</span>
+    </button>`;
+  };
+  const head = '<p class="grp">Libraries and the Union</p>';
+  const body = open.length
+    ? open.map(row).join('')
+    : '<p class="empty">No library or the Union is open right now.</p>';
+  const shut = closed.length
+    ? `<p class="grp"><button type="button" class="bar-btn" data-more="study-closed" aria-expanded="false"
+         aria-label="${closed.length} ${closed.length === 1 ? 'library or the Union is' : 'of the libraries and the Union are'} closed now">${closed.length} closed</button></p>
+       <div id="study-closed-list" hidden>${closed.map(row).join('')}</div>`
+    : '';
+  return head + body + shut;
+}
+
 // The buildings screen lights a footprint like the ranked list does, but there
 // is no room to open behind it, so a second tap is not a promise of anything.
 function selectBuilding(code) {
   const b = state.buildings?.[code];
   if (!b) return;
-  const found = [...state.groups.open, ...state.groups.unknown, ...state.groups.closed].find((x) => x.code === code);
+  const found = [...(state.studyRows ?? []), ...state.groups.open, ...state.groups.unknown, ...state.groups.closed].find((x) => x.code === code);
   state.selected = { id: code, building: code, walk: found?.walk ?? null };
   setSheet(restNow(), true);
   frame(state.selected);
@@ -2033,6 +2159,7 @@ function commitPickedOrigin(origin) {
     showList();
     answer();
   } else {
+    state.studyAsked = false;
     showNear();
   }
   say(`Showing rooms from ${origin.label}.`);
@@ -2980,6 +3107,7 @@ function choose(min) {
   if (!state.scheduled) {
     if (state.screen !== 'near') {
       history.pushState({ v: 'near', from: 'ask' }, '', cleanUrl());
+      state.studyAsked = false;
       showNear();
     }
     return;
@@ -3062,7 +3190,11 @@ function openAbout() {
   showAbout();
 }
 
-function openNear() {
+// `study` is set when the press was "Show libraries open now", so the screen
+// it opens leads with the libraries it promised rather than burying them under
+// classroom buildings. Every other way onto this screen clears it.
+function openNear({ study = false } = {}) {
+  state.studyAsked = study;
   history.pushState({ v: 'near', from: state.screen }, '', cleanUrl());
   showNear();
 }
@@ -3087,6 +3219,7 @@ function openWantedRoom() {
     answer();
   } else {
     history.pushState({ v: 'near', from: 'ask' }, '', cleanUrl());
+    state.studyAsked = false;
     showNear();
   }
   openRoom(wanted);
@@ -3197,7 +3330,8 @@ function paintGate() {
   $('gate-d').textContent = s.detail ?? '';
   $('gate-d').hidden = !s.detail;
   $('gate-go').hidden = !s.action;
-  if (s.action) $('gate-go').textContent = s.action.label;
+  // The libraries button only promises libraries when their hours loaded.
+  if (s.action) $('gate-go').textContent = s.action.study && !state.study?.length ? TO_NEAR_LABEL : s.action.label;
   const fresh = $('gate').hidden;
   $('gate').hidden = false;
   if (fresh) focusHeading($('gate-h'));
@@ -3395,7 +3529,7 @@ async function boot() {
       state.photos = new Set();
     });
 
-  const [rooms, roomEvents, buildings, hours, walkGraph, located] = await Promise.all([
+  const [rooms, roomEvents, termBuildings, hours, walkGraph, study, located] = await Promise.all([
     parsedIndex(`${BASE}${current.rooms}`, signal),
     fetchJson(`${BASE}${current.events}`, signal),
     fetchJson(`${BASE}${current.buildings}`, signal).then((d) => d.buildings),
@@ -3406,8 +3540,18 @@ async function boot() {
     // asynchronous failure #115 names. It is 21 KB gzipped, it is in the
     // service worker's shell, and offline it comes from the cache.
     json('walk-graph.json').catch(() => null),
+    // The libraries and the Union. Awaited for the same reason the graph is:
+    // their doors go into the router below, and a walk quoted before they
+    // arrived would be the straight-line one. Small, and a missing file costs
+    // the finals-week fallback and nothing else.
+    json('study-spaces.json').catch(() => null),
     fix,
   ]);
+  // The term's buildings plus the few study spaces sit in that are not
+  // classroom buildings (the Wexner Center, for Fine Arts). The term's own
+  // record wins where both have one, so no classroom walk can move.
+  const buildings = { ...(study?.buildings ?? {}), ...termBuildings };
+  state.study = Array.isArray(study?.spaces) ? study.spaces : [];
   state.classRooms = rooms;
   state.roomEvents = roomEvents;
   const now = clockNow();

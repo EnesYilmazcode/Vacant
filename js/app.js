@@ -39,6 +39,7 @@ import { bearingTo, claimFor as roomClaimFor, holdsOn, timelineRows as roomTimel
 import { dayGridHtml as roomDayGridHtml } from './room-calendar.js';
 import { backLabel, chromeFor } from './navigation.js';
 import { rankStudySpaces } from './study.js';
+import { fetchLibraryRooms, libraryDate, libraryTime, rankLibraryRooms } from './library-rooms.js';
 
 const TO_NEAR_LABEL = 'Show nearest buildings anyway';
 import {
@@ -1138,7 +1139,8 @@ function paintList() {
         ? `<p class="empty">${empty.study}</p>
            <p class="foot-acts"><button type="button" class="bar-btn" id="l-study">${STUDY_LABEL}</button></p>`
         : '') +
-      FOOT_ACTS;
+      LIBRARY_RESULTS + FOOT_ACTS;
+    paintLibraryRooms(list);
     wireFootActs(list);
     if (empty.study) $('l-study').onclick = () => openNear({ study: true });
     focusHeading($('list-h'));
@@ -1157,9 +1159,9 @@ function paintList() {
   if (meets) {
     strip = '';
   } else if (shorter) {
-    strip = `<p class="strip">Nothing near you is free for ${dur(state.needed)}. Closest anyway:</p>`;
+    strip = `<p class="strip">No nearby classroom is free for ${dur(state.needed)}. Closest anyway:</p>`;
   } else if (waiting) {
-    strip = `<p class="strip">Nothing is free this second.</p>`;
+    strip = `<p class="strip">No classroom is free this second.</p>`;
   } else {
     // Every building whose hours we actually have is closed. What is left is
     // rooms nobody publishes hours for, and saying "free" about those would be
@@ -1204,6 +1206,7 @@ function paintList() {
     asked() +
     strip +
     caveat +
+    (!meets ? LIBRARY_RESULTS : '') +
     state.results
       .map((r, i) => {
         const label = roomLabel(r);
@@ -1225,8 +1228,9 @@ function paintList() {
       .join('') +
     foot +
     caveatHtml(state.eventCoverage) +
-    FOOT_ACTS;
+    (meets ? LIBRARY_RESULTS : '') + FOOT_ACTS;
 
+  paintLibraryRooms(list);
   for (const el of list.querySelectorAll('.row')) {
     el.onclick = () => select(Number(el.dataset.i));
   }
@@ -1238,6 +1242,100 @@ function paintList() {
 // The button that leaves a classroom answer for the libraries. One string, so
 // the finals refusal, the list and the card cannot drift apart.
 const STUDY_LABEL = 'Show libraries open now';
+const LIBRARY_RESULTS = '<section data-library-results aria-label="Library group study rooms"></section>';
+const LIBRARY_PORTAL = 'https://libraryroombooking.cloud.osu.edu/';
+let libraryAvailability;
+let libraryCheckedAt = 0;
+let libraryRequest;
+
+function matchingLibraryRooms(now = clockNow()) {
+  return rankLibraryRooms({
+    availability: libraryAvailability, now, duration: state.duration,
+    origin: state.origin, field: state.walkField, buildings: state.buildings,
+  });
+}
+
+function paintLibraryRooms(pane) {
+  if (!state.ready || clockIsPinned()) return;
+  if (pane.id === 'card') {
+    const button = $('c-library');
+    if (!button) return;
+    const count = libraryRequest ? 0 : matchingLibraryRooms().length;
+    button.textContent = count ? `${count} bookable library room${count === 1 ? '' : 's'}` : 'See library group study rooms';
+    return;
+  }
+  const section = pane.querySelector('[data-library-results]');
+  if (!section) return;
+  const duration = state.duration;
+  const rooms = matchingLibraryRooms();
+  const missing = libraryAvailability?.missing ?? [];
+  const missingNames = missing.map(({ id, code }) =>
+    state.study?.find((space) => space.id === `lib-${id}`)?.name ?? state.buildings?.[code]?.name,
+  ).filter(Boolean);
+  const status = libraryRequest
+    ? 'Checking availability…'
+    : missing.length === 3
+      ? 'Ohio State’s availability feed is unavailable. Check the booking site or try again.'
+      : rooms.length
+        ? ''
+        : 'No bookable windows fit this duration today at the libraries checked.';
+  section.innerHTML = `
+    <h2 class="grp" data-library-heading tabindex="-1">Library group study rooms</h2>
+    ${pane.id === 'near' ? `<div class="shortcuts" role="group" aria-label="Group study duration">
+      ${[['30', '30 min'], ['60', '1 hour'], ['120', '2 hours'], ['day', 'Rest of day']]
+        .map(([value, label]) => `<button type="button" class="bar-btn" data-library-duration="${value}"
+          aria-pressed="${duration === value}">${label}</button>`).join('')}
+      </div>` : ''}
+    <p class="empty" role="status" ${status ? '' : 'hidden'}>${status}</p>
+    ${!libraryRequest && missing.length > 0 && missing.length < 3
+      ? `<p class="empty">Couldn’t check ${esc(missingNames.length === missing.length
+        ? missingNames.join(', ') : `${missing.length} libraries`)}.</p>` : ''}
+    ${!libraryRequest && rooms.length ? '<p class="foot">Available to book today. Times are Eastern.</p>' : ''}
+    ${libraryRequest ? '' : rooms.map((room) => `
+      <div class="b-row library-room">
+        <span class="r-name">${esc(room.name)}</span>
+        <span class="r-walk">${WALK_ICON}${room.walk} min</span>
+        <span class="library-room-meta">${esc(room.library)}${room.capacity ? ` · Up to ${esc(room.capacity)} people` : ''}</span>
+        <span class="b-hours">${libraryTime.format(room.start)}–${libraryTime.format(room.end)}</span>
+      </div>`).join('')}
+    <p class="foot-acts"><a class="bar-btn" href="${LIBRARY_PORTAL}" target="_blank" rel="noopener">Reserve with Ohio State</a></p>`;
+  for (const button of section.querySelectorAll('[data-library-duration]')) {
+    button.onclick = () => {
+      state.duration = button.dataset.libraryDuration;
+      safeSet(KEY_DURATION, state.duration);
+      paintDuration();
+      loadLibraryRooms(pane);
+      pane.querySelector(`[data-library-duration="${state.duration}"]`)?.focus();
+    };
+  }
+}
+
+function loadLibraryRooms(pane, force = false) {
+  if (!state.ready || clockIsPinned()) return;
+  const now = clockNow();
+  if (!libraryRequest && (force || libraryAvailability?.date !== libraryDate(now) ||
+      Date.now() - libraryCheckedAt >= 60_000)) {
+    libraryRequest = fetchLibraryRooms(now).then((availability) => {
+      libraryAvailability = availability;
+      libraryCheckedAt = Date.now();
+      libraryRequest = null;
+      if (['card', 'list', 'near'].includes(state.screen)) {
+        const visible = $(state.screen);
+        const focused = document.activeElement?.dataset.libraryDuration;
+        paintLibraryRooms(visible);
+        if (focused) visible.querySelector(`[data-library-duration="${focused}"]`)?.focus();
+      }
+    });
+  }
+  paintLibraryRooms(pane);
+}
+
+function openLibraryResults() {
+  openList();
+  const heading = $('list').querySelector('[data-library-heading]');
+  heading?.scrollIntoView({ block: 'start' });
+  focusHeading(heading);
+}
 
 // One empty answer for the list and the card. Repeating these branches made the
 // list tell the truth while a late-weekend card called zero rows an exhausted
@@ -1250,8 +1348,8 @@ function emptyAnswer() {
   if (far?.count) {
     return {
       study,
-      heading: 'Nothing close enough.',
-      body: `Nothing within a ${MAX_WALK} minute walk is free.
+      heading: 'No classroom close enough.',
+      body: `No classroom within a ${MAX_WALK} minute walk is free.
         <b>${far.count} room${far.count === 1 ? '' : 's'}</b> ${far.count === 1 ? 'is' : 'are'} free further out, the nearest a
         <b>${far.nearest.walk} minute walk</b> to ${esc(shortName(far.nearest.name))}.`,
     };
@@ -1259,8 +1357,8 @@ function emptyAnswer() {
   if (later?.count) {
     return {
       study,
-      heading: 'Nothing close enough.',
-      body: `Nothing within a ${MAX_WALK} minute walk is free.
+      heading: 'No classroom close enough.',
+      body: `No classroom within a ${MAX_WALK} minute walk is free.
         <b>${later.count} room${later.count === 1 ? '' : 's'}</b> further out open${later.count === 1 ? 's' : ''} later, the nearest a
         <b>${later.nearest.walk} minute walk</b> to ${esc(shortName(later.nearest.name))}, from <b>${clock(later.nearest.availableAt)}</b>.`,
     };
@@ -1268,15 +1366,15 @@ function emptyAnswer() {
   if (next) {
     return {
       study,
-      heading: 'Nothing open right now.',
+      heading: 'No classrooms open right now.',
       body: `Every classroom building near you is closed.
         The first one open is <b>${esc(next.name ?? next.id)}</b> at <b>${clock(next.availableAt)}</b>.`,
     };
   }
   return {
     study,
-    heading: 'Nothing open right now.',
-    body: `No room is free for ${dur(state.needed)} today. Try a shorter time.`,
+    heading: 'No classrooms open right now.',
+    body: `No classroom is free for ${dur(state.needed)} today. Try a shorter time.`,
   };
 }
 
@@ -1284,7 +1382,7 @@ function wireFootActs(root) {
   for (const el of root.querySelectorAll('[data-act]')) {
     el.onclick = () => {
       if (el.dataset.act === 'about') openAbout();
-      else refresh();
+      else refresh({ recheckLibraries: true });
     };
   }
 }
@@ -1388,6 +1486,8 @@ function buildingInitials(name) {
 function paintCard() {
   const card = $('card');
   const r = state.results[state.cardIndex];
+  const libraries = clockIsPinned() ? '' :
+    '<button type="button" class="bar-btn" id="c-library">See library group study rooms</button>';
 
   if (!r) {
     const seen = state.results.length;
@@ -1398,9 +1498,12 @@ function paintCard() {
         <p class="c-end">${empty.body}</p>
         ${empty.study ? `<p class="c-end">${empty.study}</p>
         <button type="button" class="c-more" id="c-study">${STUDY_LABEL}</button>` : ''}
-        <button type="button" class="c-more" id="c-list">See the details</button>`;
+        <button type="button" class="c-more" id="c-list">See the details</button>
+        ${libraries}`;
       card.classList.add('done');
       $('c-list').onclick = () => openList();
+      if (libraries) $('c-library').onclick = openLibraryResults;
+      paintLibraryRooms(card);
       if (empty.study) $('c-study').onclick = () => openNear({ study: true });
       focusHeading($('card-h'));
       syncPaneTouch();
@@ -1415,7 +1518,8 @@ function paintCard() {
           <svg class="ico" aria-hidden="true"><use href="#i-back"/></svg>
         </button>
       </p>
-      <button type="button" class="c-more" id="c-list">See all ${seen} in a list</button>`;
+      <button type="button" class="c-more" id="c-list">See all ${seen} in a list</button>
+      ${libraries}`;
     $('card').classList.add('done');
     $('c-again').onclick = () => {
       state.cardIndex = 0;
@@ -1423,6 +1527,8 @@ function paintCard() {
       say(`Back to the first of ${seen}.`);
     };
     $('c-list').onclick = () => openList();
+    if (libraries) $('c-library').onclick = openLibraryResults;
+    paintLibraryRooms(card);
     focusHeading($('card-h'));
     syncPaneTouch();
     return;
@@ -1444,9 +1550,9 @@ function paintCard() {
     : state.tally?.meets
       ? ''
       : state.tally?.shorter
-        ? `<p class="strip">Nothing near you is free for ${dur(state.needed)}. Closest anyway:</p>`
+        ? `<p class="strip">No nearby classroom is free for ${dur(state.needed)}. Closest anyway:</p>`
         : state.tally?.waiting
-          ? '<p class="strip">Nothing is free this second.</p>'
+          ? '<p class="strip">No classroom is free this second.</p>'
           : '<p class="strip">Every building we have hours for is closed.</p>';
 
   // The card's own name is written out. The computed one would read "3 of 35
@@ -1497,6 +1603,7 @@ function paintCard() {
             <span>${seats.html}</span>${dept.html ? `<span class="sep">&middot;</span><span>departmental</span>` : ''}
           </p>
           ${admits ? `<div class="c-admits">${admits}</div>` : ''}
+          ${libraries}
         </div>
         <p class="c-acts">
           <button type="button" class="c-act no" id="c-no" aria-label="Not this one, show the next room">
@@ -1515,6 +1622,8 @@ function paintCard() {
   $('card').classList.remove('done');
   $('c-no').onclick = () => rejectCard();
   $('c-yes').onclick = () => acceptCard();
+  if (libraries) $('c-library').onclick = openLibraryResults;
+  paintLibraryRooms(card);
   // Faded in on decode rather than on load, so the room does not appear as a
   // flash under words already being read. A photograph that 404s or is corrupt
   // leaves the plain card behind it, which is the same card 119 rooms get.
@@ -1894,6 +2003,7 @@ function paintNear(reason) {
   $('near').innerHTML =
     `<h2 class="msg" id="near-h" tabindex="-1">${esc(reason.head)}</h2>
      <p class="why">${esc(reason.body)}</p>` +
+    LIBRARY_RESULTS +
     (lead ? `${study}<p class="grp">Classroom buildings</p>${classrooms}` : classrooms + study) +
     FOOT_ACTS;
 
@@ -2803,6 +2913,7 @@ function showCard() {
   showPane('card');
   $('card').scrollTop = 0;
   paintCard();
+  loadLibraryRooms($('card'));
   sheetHeight();
 }
 
@@ -2816,6 +2927,7 @@ function showList(view = null) {
   state.selected = remembered;
   state.listScroll = Number.isFinite(view?.scroll) ? Math.max(0, view.scroll) : 0;
   showPane('list');
+  loadLibraryRooms($('list'));
   $('list').scrollTop = state.listScroll;
   markRows();
   sheetHeight();
@@ -2825,6 +2937,7 @@ function showNear() {
   state.listScroll = 0;
   showPane('near');
   paintNear(nearReason());
+  loadLibraryRooms($('near'));
   $('near').scrollTop = 0;
   sheetHeight();
   focusHeading($('near-h'));
@@ -3232,7 +3345,7 @@ function openWantedRoom() {
 // Recompute. Never on a timer: a list that re-sorts under a thumb loses the row
 // somebody was reaching for. This fires when the app comes back to the
 // foreground, when the duration changes, and when the user asks.
-function refresh() {
+function refresh({ recheckLibraries = false } = {}) {
   if (!state.classRooms || !state.roomEvents) return;
   const now = clockNow();
   state.situation = resolveState({ now, current: state.current, index: state.classRooms });
@@ -3244,12 +3357,16 @@ function refresh() {
   state.scheduled = roomSearchOn({ now, current: state.current, index: state.rooms, ranked: state.rankable });
   paintGate();
   if (!state.rankable) {
-    if (state.screen !== 'near' && state.screen !== 'about') showAsk();
+    if (state.screen === 'near') loadLibraryRooms($('near'), recheckLibraries);
+    else if (state.screen !== 'about') showAsk();
     return;
   }
   if (!state.scheduled) {
     if (['card', 'list', 'room', 'way'].includes(state.screen)) showNear();
-    else if (state.screen === 'near') paintNear(nearReason());
+    else if (state.screen === 'near') {
+      paintNear(nearReason());
+      loadLibraryRooms($('near'), recheckLibraries);
+    }
     return;
   }
   if (state.screen === 'near') showCard();
@@ -3263,6 +3380,7 @@ function refresh() {
   // to "check again" when the room you took has just been taken by a class.
   const held = state.screen === 'way' ? state.selected?.id : null;
   answer();
+  if (state.screen === 'list' || state.screen === 'card') loadLibraryRooms($(state.screen), recheckLibraries);
   if (!held) return;
   if (state.results.some((r) => r.id === held)) showWay(held);
   else if (history.state?.from === 'card') {

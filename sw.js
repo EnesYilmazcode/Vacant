@@ -14,7 +14,7 @@
 // the same evening when the Room Matrix file started carrying two weeks, 7,279
 // gzipped bytes more. The shell then grew 1,615 for the libraries outside
 // finals week: on the buildings screen every night, and in the empty answer.
-// Shell 208,746 bytes, data 123,972.
+// Shell 212,160 bytes, data 123,972.
 // Run it exactly as written, through the pipe. `gzip -9 -c <file>` with the
 // name as an argument stores each basename in the gzip FNAME header and reads
 // 176 bytes higher across these seventeen files, which is most of a percent of
@@ -94,7 +94,7 @@
 // placeholder is __BUILD_ID__, and a committed sw.js still carrying it means the
 // stamp did not run. scripts/test/sw.test.mjs fails on exactly that. Spelled out
 // rather than built from CACHE_PREFIX, because the stamper rewrites this line.
-const SHELL_CACHE = 'vacant-shell-45985c7';
+const SHELL_CACHE = 'vacant-shell-05c8291';
 const DATA_CACHE = 'vacant-data-v1';
 
 // CacheStorage is per origin, not per path, and enesyilmazcode.github.io also
@@ -195,6 +195,7 @@ const SHELL_ASSETS = [
   SCOPE + 'js/state.js',
   SCOPE + 'js/storage.js',
   SCOPE + 'js/study.js',
+  SCOPE + 'js/library-rooms.js',
   SCOPE + 'manifest.webmanifest',
   SCOPE + 'apple-touch-icon.png',
   SCOPE + 'favicon.ico',

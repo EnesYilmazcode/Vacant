@@ -1455,7 +1455,7 @@ test('js/app.js reads the rung, and the live region says it out loud', () => {
   // describes which question the whole list is answering, so it replaces the
   // row sentence rather than stacking a fourth paragraph over the list.
   const paint = app.slice(app.indexOf('function paintList('));
-  const rowStrip = paint.indexOf('Nothing near you is free for');
+  const rowStrip = paint.indexOf('No nearby classroom is free for');
   const rungStrip = paint.indexOf('if (relaxed) strip =');
   assert.ok(rowStrip > 0 && rungStrip > 0, 'paintList no longer builds both strips');
   assert.ok(rungStrip > rowStrip, 'the rung strip does not take precedence over the row counts');

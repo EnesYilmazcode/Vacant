@@ -741,6 +741,10 @@
   }
   .b-row + .b-row { border-top: 1px solid var(--line); }
   .b-row .b-hours { grid-area: hours; color: var(--dim); font-size: .84rem; white-space: nowrap; }
+  .library-room { cursor: default; }
+  .library-room-meta { grid-area: sub; color: var(--dim); font-size: .84rem; }
+  [data-library-duration][aria-pressed="true"] { color: var(--accent); }
+  #c-library { margin-top: .45rem; }
 
   /* --- the building picker --- */
   .shortcuts { display: flex; flex-wrap: wrap; gap: .45rem; padding: .3rem 1.1rem .7rem; }

@@ -98,7 +98,7 @@ On iPhone, open Vacant in Safari and tap **Share** (sometimes under **…**), th
 **Add to Home Screen**. On Android, use **Install app** in Chrome's menu.
 
 After a successful online load and cache warm-up, Vacant can rank rooms offline
-from the saved schedule. The cached app uses 204 KB of shell and about 121 KB of schedule,
+from the saved schedule. The cached app uses 207 KB of shell and about 121 KB of schedule,
 gzipped. Room photos are cached as you view them.
 
 ## Run locally

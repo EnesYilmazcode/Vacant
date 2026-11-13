@@ -109,15 +109,14 @@
   before the button existed and it was wrong.</p>
   <p>The second is newer and is the more honest one to read twice. Tapping
   <em>Step by step</em> asks Google for the written walk to that building, and
-  that request carries where you are standing. It is the only request Vacant
-  makes to a company other than its own host, it is made to one building you
+  that request carries where you are standing. It is made to one building you
   have already chosen and never to the whole list, and the first time you tap it
   the app says so and waits for you to agree. Say no and nothing is sent; the
   minutes on the screen are measured on your phone either way, so refusing costs
   you the words and none of the numbers.</p>
   <p>You can check: every line of the app is at
   <a href="https://github.com/EnesYilmazcode/Vacant">github.com/EnesYilmazcode/Vacant</a>,
-  and it is 24 JavaScript files with no build step, so what is in the
+  and it is 25 JavaScript files with no build step, so what is in the
   repository is what your browser runs.</p>
   <p>The app does store exactly one thing on your phone, and it is not about you:
   a key called <code>vacant:duration</code> holding how long you last said you
@@ -125,12 +124,14 @@
   removes it. That is the complete list.</p>
 
   <h2>What is known anyway</h2>
-  <p>Two things, and saying "we collect nothing" would make both of them a lie.</p>
   <ul>
     <li><strong>GitHub sees an IP address.</strong> The site is hosted on GitHub Pages.
     Like any web host, GitHub's servers see the address your phone connects from when
     it downloads the page and the schedule file. Vacant has no access to those logs
     and cannot connect them to a location or to each other.</li>
+    <li><strong>Ohio State sees an IP address when Vacant checks library room availability.</strong>
+    The browser requests the booking date and library IDs from Ohio State.
+    Vacant calculates walk times on your device.</li>
     <li><strong>Your browser remembers the location permission.</strong> That grant
     lives in your browser's settings, not in Vacant. You can revoke it at any time and
     the app will not notice, because it never stored anything to forget.</li>
@@ -145,12 +146,8 @@
     donations. This is not a business and it is not allowed to become one.</li>
     <li>No analytics and no tracking pixels. One third-party script, and only
     once you have asked for it: tapping <em>Step by step</em> loads Google's maps
-    library to fetch the written walk. Until then the page loads nothing from any
-    other company, and it never loads fonts, map tiles or an analytics SDK at
-    all. The campus map you see is drawn on your phone from a file in this
-    repository, not fetched as tiles from anyone.</li>
-    <li>Nothing is shared with Ohio State, or with anyone else. There is nothing to
-    share.</li>
+    library to fetch the written walk. The campus map is drawn on your phone from
+    a file in this repository.</li>
   </ul>
 
   <h2>If you say no to location</h2>

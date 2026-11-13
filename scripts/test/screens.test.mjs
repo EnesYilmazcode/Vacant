@@ -1796,7 +1796,7 @@ test('a zero-room answer is not rendered as an exhausted card deck', () => {
   const exhausted = paint.indexOf('That is all of them.');
   assert.ok(empty >= 0 && empty < exhausted, 'the zero-answer branch must run before the exhausted-deck copy');
   assert.match(paint.slice(empty, exhausted), /emptyAnswer\(\)/);
-  assert.match(bodyOf('emptyAnswer'), /No room is free for.*Try a shorter time/s);
+  assert.match(bodyOf('emptyAnswer'), /No classroom is free for.*Try a shorter time/s);
 });
 
 test('a full photo cache does not throw away a photograph that arrived', () => {
@@ -2540,7 +2540,7 @@ test('nothing the empty screen calls free is a room that has not opened yet', ()
   assert.match(empty, /clock\(later\.nearest\.availableAt\)/);
   // The heading follows both, or a screen with only waiting rooms behind it
   // reads "Nothing open right now" over rooms that are open, just not yet.
-  assert.equal((empty.match(/heading: 'Nothing close enough\.'/g) ?? []).length, 2);
+  assert.equal((empty.match(/heading: 'No classroom close enough\.'/g) ?? []).length, 2);
 
   // The live region stops announcing a count over a screen that has none. It
   // used to say "297 rooms free, 0 shown" under "Nothing close enough."

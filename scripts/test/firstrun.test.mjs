@@ -286,8 +286,12 @@ test('the dated byte figure beside the deadline remains representative', () => {
     );
   // Weekly index and event counts vary; 15% leaves room for that movement while
   // still catching a substantial new boot asset or a term-size change.
-  const off = Math.abs(claimed - real) / real;
-  assert.ok(off < 0.15, `the dated comment says ${claimed} bytes and the six files are ${real}, ${(off * 100).toFixed(1)}% out`);
+  // Only growth matters: the deadline is wrong when the load outgrows what was
+  // timed, not when a quiet week ships less. A holiday week (Thanksgiving 2026
+  // took next week's events from 340 ids to 137) shrinks the payload 20%+ and
+  // the deadline still clears it, so a smaller payload is not a failure.
+  const over = (real - claimed) / claimed;
+  assert.ok(over < 0.15, `the dated comment says ${claimed} bytes and the six files are ${real}, ${(over * 100).toFixed(1)}% over`);
 });
 
 test('the boot deadline still clears the slowest load it was measured against', () => {

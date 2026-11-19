@@ -147,7 +147,13 @@ test('the committed PR #114 snapshot is accepted without an adapter', () => {
   assert.equal(normalized.meetings.length, roomEvents._meta.counts.events);
   assert.equal(normalized.blockCount, roomEvents._meta.counts.blockCells);
   assert.equal(normalized.coverage, 'complete-room-sweep');
-  assert.equal(normalized.holds.length, normalized.blockCount, 'every committed block becomes a hold');
+  // The Room Matrix can list the same block cell twice in one sweep (the
+  // 2026-11-15 harvest had 3 of 346), and normalizeMeetings keeps one hold per
+  // distinct cell. So every distinct block becomes a hold, not every row.
+  const distinctBlocks = new Set(Object.entries(roomEvents.rooms).flatMap(([roomId, records]) =>
+    records.filter((record) => record.kind === 'block')
+      .map((record) => JSON.stringify([roomId, record.day, record.start, record.end, record.eventId]))));
+  assert.equal(normalized.holds.length, distinctBlocks.size, 'every distinct committed block becomes a hold');
   assert.deepEqual(normalized.rejected, []);
   assert.equal(normalized.meetings.every((meeting) => meeting.sourceUrl === roomEvents._meta.source), true);
 });
